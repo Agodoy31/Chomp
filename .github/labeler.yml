@@ -1,0 +1,16 @@
+frontend:
+  - changed-files:
+      - any-glob-to-any-file: 'frontend/**'
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file: 'backend/**'
+
+devops:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - '.gitignore'
+          - '.editorconfig'
+          - '.prettierrc'
+          - '.prettierignore'
