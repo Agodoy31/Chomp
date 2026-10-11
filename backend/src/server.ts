@@ -1,7 +1,9 @@
-const http = require('http');
-require('dotenv').config();
-const { Server } = require('socket.io');
-const app = require('./app');
+import http from 'http';
+import dotenv from 'dotenv';
+import { Server, Socket } from 'socket.io';
+import app from './app';
+
+dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
@@ -14,7 +16,7 @@ const io = new Server(server, {
   },
 });
 
-io.on('connection', (socket) => {
+io.on('connection', (socket: Socket) => {
   console.log(`Socket client connected: ${socket.id}`);
 
   socket.on('disconnect', () => {
