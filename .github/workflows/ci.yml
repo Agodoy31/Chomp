@@ -40,7 +40,7 @@ jobs:
         run: npm run build
 
   backend:
-    name: Backend (Test)
+    name: Backend (Build & Test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -60,6 +60,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build backend
+        run: npm run build
 
       - name: Run automated tests
         run: npm test
