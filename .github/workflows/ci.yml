@@ -46,6 +46,8 @@ jobs:
       run:
         working-directory: ./backend
     timeout-minutes: 10
+    env:
+      MONGOMS_DOWNLOAD_DIR: ${{ runner.temp }}/mongodb-binaries
 
     steps:
       - name: Check out repository
@@ -64,7 +66,7 @@ jobs:
       - name: Cache MongoDB binary
         uses: actions/cache@v4
         with:
-          path: ~/.cache/mongodb-binaries
+          path: ${{ runner.temp }}/mongodb-binaries
           key: ${{ runner.os }}-mongodb-binaries-${{ hashFiles('backend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-mongodb-binaries-
