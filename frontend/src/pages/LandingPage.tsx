@@ -7,6 +7,11 @@ import Button from 'react-bootstrap/Button';
 
 export default function LandingPage() {
     const navigate = useNavigate();
+    const scrollToSection = (sectionId: string) => {
+	    const section = document.getElementById(sectionId);
+        if(section)
+	        section.scrollIntoView({ behavior: "smooth" });
+    };  
 
     return (
         <div className="min-vh-100 bg-white text-dark d-flex flex-column">
@@ -108,7 +113,7 @@ export default function LandingPage() {
                             <button
                                 className="btn px-4 py-1 fw-semibold rounded-pill shadow-sm"
                                 style={{
-                                    backgroundColor: '#ABB5EE',
+                                    backgroundColor: '#abb5ee9e',
                                     borderColor: '#3046C3',
                                     color: '#3046C3',
                                     whiteSpace: 'nowrap',
@@ -116,11 +121,49 @@ export default function LandingPage() {
                                     maxWidth: '100%',
                                     height: 70,
                                 }}
+                                onClick={( )=> scrollToSection('featured-clubs')}
                             >
                                 Explore Clubs!
                             </button>
                         </div>
 
+                    </div>
+
+                </section>
+                {/* Featured Clubs Section  */}
+                <section id="featured-clubs" className="py-5 bg-light border-top mt-5">
+                    <div className="container py-4">
+                        <div className="text-center mb-5">
+                            <h2 className="fw-bold" style={{ color: '#3046C3', fontFamily: 'Inter' }}>
+                                Featured UF Organizations
+                            </h2>
+                            <p className="text-muted" style={{ maxWidth: '500px', margin: '0 auto' }}>
+                                Discover some of the most active clubs on campus looking for new members right now.
+                            </p>
+                        </div>
+
+                        {/* Cards Grid */}
+                        <div className="row g-4 justify-content-center">
+                            
+                            {/* Club Card 1 */}
+                            <div className="col-md-4">
+                                <div className="card h-100 shadow-sm border-0 rounded-4 p-3">
+                                    <div className="card-body d-flex flex-column">
+                                        <span className="badge bg-primary-subtle text-primary mb-2 align-self-start">Technology</span>
+                                        <h4 className="card-title fw-semibold text-dark">UF Open Source Club</h4>
+                                        <p className="card-text text-muted small flex-grow-1">
+                                            Collaborate on real-world software projects, build open-source tools, and code with fellow Gators.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Club Card 2 */}
+
+                            {/* Club Card 3 */}
+                            
+
+                        </div>
                     </div>
                 </section>
             </main>
