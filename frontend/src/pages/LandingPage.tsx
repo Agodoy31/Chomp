@@ -24,10 +24,12 @@ export default function LandingPage() {
                     style={{ gridTemplateColumns: '1fr auto 1fr' }}
                 >
                     {/* Left */}
-                    <div>
-                        <span className="badge bg-primary-subtle text-primary fw-bold px-3 py-2 rounded-pill">
-                            UF
-                        </span>
+                    <div className="bg-primary-subtle rounded-3 d-flex align-items-center justify-content-center p-2 shadow-sm" style={{ width: '48px', height: '48px' }}>
+                        <img 
+                            src="https://upload.wikimedia.org/wikipedia/commons/e/e0/UF_Monogram.svg" 
+                            alt="UF Monogram Logo" 
+                            style={{ height: '24px', width: '24px', objectFit: 'contain' }} 
+                        />
                     </div>
 
                     {/* Center */}
@@ -92,7 +94,7 @@ export default function LandingPage() {
                             direct messages to peers and club officers.
                         </p>
 
-                        {/* Buttons: one shared row, wraps on small screens */}
+                        {/* Buttons*/}
                         <div className="d-flex flex-wrap justify-content-center align-items-center gap-3 mt-4">
                             <button
                                 className="btn px-4 py-2 fw-semibold rounded-pill shadow-sm"
@@ -131,7 +133,8 @@ export default function LandingPage() {
 
                 </section>
                 {/* Featured Clubs Section  */}
-                <section id="featured-clubs" className="py-5 bg-light border-top mt-5">
+                <section id="featured-clubs" className="py-5 bg-light border-top mt-5"
+                        style={{ scrollMarginTop: 90 }}>
                     <div className="container py-4">
                         <div className="text-center mb-5">
                             <h2 className="fw-bold" style={{ color: '#3046C3', fontFamily: 'Inter' }}>
@@ -144,7 +147,6 @@ export default function LandingPage() {
 
                         {/* Cards Grid */}
                         <div className="row g-4 justify-content-center">
-                            
                             {/* Club Card 1 */}
                             <div className="col-md-4">
                                 <div className="card h-100 shadow-sm border-0 rounded-4 p-3">
@@ -152,17 +154,43 @@ export default function LandingPage() {
                                         <span className="badge bg-primary-subtle text-primary mb-2 align-self-start">Technology</span>
                                         <h4 className="card-title fw-semibold text-dark">UF Open Source Club</h4>
                                         <p className="card-text text-muted small flex-grow-1">
-                                            Collaborate on real-world software projects, build open-source tools, and code with fellow Gators.
+                                            Join us to promote, support, and create open source software in Gainesville and beyond.
+                                            The club organizes casual coding, a twice-weekly meeting dedicated to working on open source code, planning or proposing projects, or just hanging out.
                                         </p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Club Card 2 */}
-
-                            {/* Club Card 3 */}
+                             
+                                <div className=" col-12 col-md-4">
+                                    <div className="card h-100 shadow-sm border-0 rounded-4 p-3">
+                                        <div className="card-body d-flex flex-column">
+                                            <span className="badge bg-primary-subtle text-primary mb-2 align-self-start">Technology</span>
+                                            <h4 className="card-title fw-semibold text-dark">Association for Computing Machinery</h4>
+                                            <p className="card-text text-muted small flex-grow-1">
+                                                ACM at UF is your guide to breaking into tech, helping you prepare for and navigate an ever-changing job market in computer science.
+                                                Join us for weekly workshops, recruiter events, and swing by The Fishbowl (ACM Office Hours)
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             
-
+                            
+                            {/* Club Card 3 */}
+                                <div className="col-12 col-md-4">
+                                    <div className="card h-100 shadow-sm border-0 rounded-4 p-3">
+                                        <div className="card-body d-flex flex-column">
+                                            <span className="badge bg-primary-subtle text-primary mb-2 align-self-start">Technology</span>
+                                            <h4 className="card-title fw-semibold text-dark">WiNGHacks</h4>
+                                            <p className="card-text text-muted small flex-grow-1">
+                                                UF's first hackthon created to uplift Women, Non-binary and Gender minority students in their technology journey.
+                                                Learn new skills, network with their peers, and create innovative projects for a chance to win category prizes.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            
                         </div>
                     </div>
                 </section>
