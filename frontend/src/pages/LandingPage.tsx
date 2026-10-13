@@ -148,7 +148,7 @@ export default function LandingPage() {
                         {/* Cards Grid */}
                         <div className="row g-4 justify-content-center">
                             {/* Club Card 1 */}
-                            <div className="col-md-4">
+                            <div className="col-12 col-md-4">
                                 <div className="card h-100 shadow-sm border-0 rounded-4 p-3">
                                     <div className="card-body d-flex flex-column">
                                         <span className="badge bg-primary-subtle text-primary mb-2 align-self-start">Technology</span>
@@ -184,7 +184,7 @@ export default function LandingPage() {
                                             <span className="badge bg-primary-subtle text-primary mb-2 align-self-start">Technology</span>
                                             <h4 className="card-title fw-semibold text-dark">WiNGHacks</h4>
                                             <p className="card-text text-muted small flex-grow-1">
-                                                UF's first hackthon created to uplift Women, Non-binary and Gender minority students in their technology journey.
+                                                UF's first hackathon created to uplift Women, Non-binary and Gender minority students in their technology journey.
                                                 Learn new skills, network with their peers, and create innovative projects for a chance to win category prizes.
                                             </p>
                                         </div>
