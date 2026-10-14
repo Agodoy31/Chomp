@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll } from '@jest/globals';
 import mongoose from 'mongoose';
-import { Club, type Club as ClubRecord } from '../../clubs/model/clubModel';
+import { Club, type Club as ClubRecord } from '../../src/clubs/model/clubModel';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 
 function clubInput(overrides: Record<string, unknown> = {}) {

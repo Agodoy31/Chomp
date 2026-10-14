@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll } from '@jest/globals';
 import mongoose from 'mongoose';
-import { Membership, type Membership as MembershipRecord } from '../../clubs/model/memberModel';
+import { Membership, type Membership as MembershipRecord } from '../../src/clubs/model/memberModel';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 
 function membershipInput(overrides: Record<string, unknown> = {}) {
