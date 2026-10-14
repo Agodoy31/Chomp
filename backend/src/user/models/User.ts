@@ -3,8 +3,11 @@ import {model, Schema} from "mongoose";
 
 export type { IUserDocument } from '../interfaces/user.interfaces';
 
+<<<<<<< HEAD
 const uflEmailRegex = /^[a-zA-Z0-9._-]+@ufl\.edu$/;
 
+=======
+>>>>>>> c487571 (finished model for users)
 const userSchema = new Schema<IUserDocument>({
     email: {
         type: String,
@@ -13,7 +16,13 @@ const userSchema = new Schema<IUserDocument>({
         unique: true,
         lowercase: true, // need to make sure that @ufl.edu is lowercase
         validate: {
+<<<<<<< HEAD
             validator: (value: string) => uflEmailRegex.test(value),
+=======
+            validator: (value: string) => {
+                return value.endsWith("@ufl.edu") && value.length > 8;
+            },
+>>>>>>> c487571 (finished model for users)
             message: "email must be a ufl email"
         }
     },
