@@ -46,4 +46,36 @@ describe('In-Memory MongoDB Test Helper', () => {
     const count = await TestItemModel.countDocuments();
     expect(count).toBe(0);
   });
+
+  it('should commit multi document transactions successfully', async () => {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await TestItemModel.create([{ name: 'Tx Commit', count: 100 }], { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    const found = await TestItemModel.findOne({ name: 'Tx Commit' });
+    expect(found).not.toBeNull();
+    expect(found?.count).toBe(100);
+  });
+
+  it('should abort multi document transactions and rollback on error', async () => {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await TestItemModel.create([{ name: 'Tx Rollback', count: 200 }], { session });
+        throw new Error('Simulated transaction failure');
+      });
+    } catch {
+      // Expected error caught to verify rollback
+    } finally {
+      await session.endSession();
+    }
+
+    const found = await TestItemModel.findOne({ name: 'Tx Rollback' });
+    expect(found).toBeNull();
+  });
 });

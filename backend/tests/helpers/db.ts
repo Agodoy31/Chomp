@@ -1,17 +1,23 @@
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
-let mongoServer: MongoMemoryServer | null = null;
+let replSet: MongoMemoryReplSet | null = null;
 
 /**
- * Connect to an isolated in-memory MongoDB instance.
- * Starts a new MongoMemoryServer if one is not already running.
+ * Connect to an isolated in-memory MongoDB replica set.
+ * Starts a new MongoMemoryReplSet with a single node if one is not already running.
+ * Single node replica set provides full multi document transaction support.
  */
 export const connectTestDb = async (): Promise<void> => {
-  if (!mongoServer) {
-    mongoServer = await MongoMemoryServer.create();
+  if (!replSet) {
+    replSet = await MongoMemoryReplSet.create({
+      replSet: {
+        count: 1,
+        storageEngine: 'wiredTiger',
+      },
+    });
   }
-  const uri = mongoServer.getUri();
+  const uri = replSet.getUri();
 
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(uri);
@@ -33,7 +39,7 @@ export const clearTestDb = async (): Promise<void> => {
 };
 
 /**
- * Drop the database, close the Mongoose connection, and stop the in-memory server.
+ * Drop the database, close the Mongoose connection, and stop the in-memory replica set.
  * Use in afterAll hooks to ensure clean test suite teardown.
  */
 export const closeTestDb = async (): Promise<void> => {
@@ -41,8 +47,8 @@ export const closeTestDb = async (): Promise<void> => {
     await mongoose.connection.dropDatabase();
     await mongoose.connection.close();
   }
-  if (mongoServer) {
-    await mongoServer.stop();
-    mongoServer = null;
+  if (replSet) {
+    await replSet.stop();
+    replSet = null;
   }
 };
