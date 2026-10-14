@@ -7,4 +7,6 @@ export interface IUserDocument extends Document {
     name: string;
     bio?: string;
     isAdmin: boolean;
+    createdAt: Date;
+    updatedAt: Date;
 }
