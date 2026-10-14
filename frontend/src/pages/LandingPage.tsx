@@ -26,7 +26,7 @@ export default function LandingPage() {
                     {/* Left */}
                     <div className="bg-primary-subtle rounded-3 d-flex align-items-center justify-content-center p-2 shadow-sm" style={{ width: '48px', height: '48px' }}>
                         <img 
-                            src="https://upload.wikimedia.org/wikipedia/commons/e/e0/UF_Monogram.svg" 
+                            src="/UF_Monogram.svg"
                             alt="UF Monogram Logo" 
                             style={{ height: '24px', width: '24px', objectFit: 'contain' }} 
                         />
