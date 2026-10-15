@@ -1,4 +1,5 @@
 // See Issue #98: https://github.com/Agodoy31/Chomp/issues/98
+// See Issue #100: https://github.com/Agodoy31/Chomp/issues/100
 import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
@@ -88,6 +89,97 @@ export async function createDirectConversation(
       }
     }
 
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+}
+
+function deduplicateObjectIds(ids: Types.ObjectId[]): Types.ObjectId[] {
+  const seen = new Set<string>();
+  const uniqueIds: Types.ObjectId[] = [];
+
+  for (const id of ids) {
+    // Set compares object references, so convert to hex strings so multiple occurrences of the same user ID are reduced to one
+    const key = id.toString();
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueIds.push(id);
+    }
+  }
+
+  return uniqueIds;
+}
+
+export async function createGroupConversation(
+  creatorId: Types.ObjectId,
+  participantIds: Types.ObjectId[],
+  title?: string
+): Promise<IConversation> {
+  if (!Array.isArray(participantIds)) {
+    throw new Error('participantIds must be an array');
+  }
+
+  if (!creatorId || !mongoose.isObjectIdOrHexString(creatorId)) {
+    throw new Error('Valid creatorId is required');
+  }
+
+  for (const id of participantIds) {
+    if (!id || !mongoose.isObjectIdOrHexString(id)) {
+      throw new Error('Valid participantId is required');
+    }
+  }
+
+  const allParticipantIds = [creatorId, ...participantIds];
+  const uniqueParticipants = deduplicateObjectIds(allParticipantIds);
+
+  if (uniqueParticipants.length < 2) {
+    throw new Error('Group conversation requires at least two distinct participants');
+  }
+
+  const usersExist = await validateUsersExist(uniqueParticipants);
+  if (!usersExist) {
+    throw new Error('One or more users do not exist');
+  }
+
+  // Treat blank titles as undefined so Mongoose omits the title field rather than storing empty whitespace in MongoDB
+  const trimmedTitle =
+    typeof title === 'string' && title.trim().length > 0 ? title.trim() : undefined;
+
+  // Wrap both writes in a transaction so if participant creation fails, the conversation is rolled back instead of left orphaned
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const [conversation] = await Conversation.create(
+      [
+        {
+          type: ConversationType.GROUP,
+          ...(trimmedTitle !== undefined ? { title: trimmedTitle } : {}),
+        },
+      ],
+      { session }
+    );
+
+    // Build membership records linking each user to this chat so we can batch insert them in one database call
+    const participantDocs = uniqueParticipants.map((userId) => {
+      return {
+        conversationId: conversation._id,
+        userId,
+      };
+    });
+
+    await ConversationParticipant.create(participantDocs, {
+      session,
+      ordered: true,
+    });
+
+    await session.commitTransaction();
+
+    return conversation.toObject<IConversation>();
+  } catch (error: any) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
     throw error;
   } finally {
     await session.endSession();
