@@ -22,10 +22,15 @@ const userSchema = new Schema<IUserDocument>({
         required: [true, "a password is required"],
         select: false, // don't return this value by default when querying
     },
-    name:{
+    firstName:{
         type: String,
         trim: true,
-        required: [true, "display name is required"],
+        required: [true, "first name is required"],
+    },
+    lastName:{
+        type: String,
+        trim: true,
+        required: [true, "last name is required"],
     },
     bio: {
         type: String,
