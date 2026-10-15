@@ -2,18 +2,23 @@ import { InferSchemaType, Schema, model } from 'mongoose';
 
 const meetingSchema = new Schema(
   {
-    day: { type: String },
-    time: { type: String },
-    location: { type: String },
+    day: { type: String, trim: true },
+    time: { type: String, trim: true },
+    location: { type: String, trim: true },
   },
   { _id: false }
 );
 
 const clubSchema = new Schema(
   {
-    name: { type: String, required: true },
-    description: { type: String, required: true },
-    category: { type: String },
+    name: { type: String, required: true, trim: true },
+    description: { type: String, required: true, trim: true, maxlength: 1000},
+    category: { 
+      type: String, 
+      enum: ['ACADEMIC', 'CULTURAL', 'SPORTS', 'OTHER'] as const,
+      default: 'OTHER',
+      required: true,
+    },
     meeting: { type: meetingSchema },
     proposerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: {

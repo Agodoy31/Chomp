@@ -34,7 +34,7 @@ describe('Club model', () => {
     expect(record.description).toBe('Weekly chess matches');
     expect(record.proposerId).toEqual(club.proposerId);
     expect(record.status).toBe('PENDING');
-    expect(record.category).toBeUndefined();
+    expect(record.category).toBe('OTHER');
     expect(record.meeting).toBeUndefined();
     expect(club.createdAt).toBeInstanceOf(Date);
     expect(club.updatedAt).toBeInstanceOf(Date);
@@ -44,7 +44,7 @@ describe('Club model', () => {
   it('stores category and meeting details without a meeting id', async () => {
     const club = await Club.create(
       clubInput({
-        category: 'Recreation',
+        category: 'ACADEMIC',
         meeting: {
           day: 'Wednesday',
           time: '6:30 PM',
@@ -53,6 +53,7 @@ describe('Club model', () => {
       })
     );
 
+    expect(club.category).toBe('ACADEMIC');
     expect(club.toObject().meeting).toEqual({
       day: 'Wednesday',
       time: '6:30 PM',
@@ -72,6 +73,69 @@ describe('Club model', () => {
     await expect(Club.create(clubInput({ status: 'ACTIVE' }))).rejects.toThrow(
       mongoose.Error.ValidationError
     );
+  });
+
+  it.each(['ACADEMIC', 'CULTURAL', 'SPORTS', 'OTHER'])(
+    'stores the %s category',
+    async (category) => {
+      const club = await Club.create(clubInput({ category }));
+      expect(club.category).toBe(category);
+    }
+  );
+
+  it('rejects an unknown category', async () => {
+    await expect(Club.create(clubInput({ category: 'Recreation' }))).rejects.toThrow(
+      mongoose.Error.ValidationError
+    );
+  });
+
+  it('trims name, description, and meeting details', async () => {
+    const club = await Club.create(
+      clubInput({
+        name: '  Chess Club  ',
+        description: '  Weekly chess matches  ',
+        meeting: {
+          day: '  Wednesday  ',
+          time: '  6:30 PM  ',
+          location: '  Turlington Hall 2304  ',
+        },
+      })
+    );
+
+    expect(club.name).toBe('Chess Club');
+    expect(club.description).toBe('Weekly chess matches');
+    expect(club.toObject().meeting).toEqual({
+      day: 'Wednesday',
+      time: '6:30 PM',
+      location: 'Turlington Hall 2304',
+    });
+  });
+
+  it.each(['name', 'description'])(
+    'rejects a %s that is only whitespace',
+    async (field) => {
+      await expect(Club.create(clubInput({ [field]: '   ' }))).rejects.toThrow(
+        mongoose.Error.ValidationError
+      );
+    }
+  );
+
+  it('accepts a description of 1000 characters and rejects a longer one', async () => {
+    const description = 'a'.repeat(1000);
+    const club = await Club.create(clubInput({ description }));
+    expect(club.description).toHaveLength(1000);
+
+    await expect(Club.create(clubInput({ description: 'a'.repeat(1001) }))).rejects.toThrow(
+      mongoose.Error.ValidationError
+    );
+  });
+
+  it('compares approved names after trimming surrounding spaces', async () => {
+    await Club.create(clubInput({ name: '  Robotics  ', status: 'APPROVED' }));
+
+    await expect(
+      Club.create(clubInput({ name: 'robotics', status: 'APPROVED' }))
+    ).rejects.toMatchObject({ code: 11000 });
   });
 
   it('rejects a second approved club with the same name in any letter case', async () => {
