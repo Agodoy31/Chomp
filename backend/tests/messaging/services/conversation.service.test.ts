@@ -5,22 +5,27 @@ import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
-import { createDirectConversation } from '../../../src/messaging/services/conversation.service';
+import {
+  createDirectConversation,
+  getConversationById,
+  getConversationDocumentById,
+} from '../../../src/messaging/services/conversation.service';
+
+beforeAll(async () => {
+  await connectTestDb();
+  await Promise.all([Conversation.init(), ConversationParticipant.init()]);
+}, 60000);
+
+afterEach(async () => {
+  jest.restoreAllMocks();
+  await clearTestDb();
+});
+
+afterAll(async () => {
+  await closeTestDb();
+});
 
 describe('createDirectConversation service', () => {
-  beforeAll(async () => {
-    await connectTestDb();
-    await Promise.all([Conversation.init(), ConversationParticipant.init()]);
-  }, 60000);
-
-  afterEach(async () => {
-    jest.restoreAllMocks();
-    await clearTestDb();
-  });
-
-  afterAll(async () => {
-    await closeTestDb();
-  });
 
   it('creates new direct conversation and persists two participants in a transaction with isNew set to true', async () => {
     const user1 = new Types.ObjectId();
@@ -177,3 +182,88 @@ describe('createDirectConversation service', () => {
     expect(participants).toHaveLength(0);
   });
 });
+
+describe('getConversationById service', () => {
+  it('returns conversation plain object when valid conversation exists', async () => {
+    const user1 = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const dmPairKey = [user1.toString(), user2.toString()].sort().join(':');
+
+    const created = await Conversation.create({
+      type: ConversationType.DIRECT,
+      dmPairKey,
+    });
+
+    const result = await getConversationById(created._id);
+
+    expect(result).not.toBeNull();
+    expect(result?._id.toString()).toBe(created._id.toString());
+    expect(result?.type).toBe(ConversationType.DIRECT);
+    expect(result?.dmPairKey).toBe(dmPairKey);
+    expect(result instanceof Conversation).toBe(false);
+    expect((result as any).save).toBeUndefined();
+  });
+
+  it('returns null when valid ObjectId is not in database', async () => {
+    const nonExistentId = new Types.ObjectId();
+    const result = await getConversationById(nonExistentId);
+    expect(result).toBeNull();
+  });
+
+  it('throws error when conversationId is missing or invalid', async () => {
+    await expect(
+      getConversationById(null as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationById(undefined as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationById('invalid-id' as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+  });
+});
+
+describe('getConversationDocumentById service', () => {
+  it('returns full Mongoose document when valid conversation exists', async () => {
+    const user1 = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const dmPairKey = [user1.toString(), user2.toString()].sort().join(':');
+
+    const created = await Conversation.create({
+      type: ConversationType.DIRECT,
+      dmPairKey,
+    });
+
+    const result = await getConversationDocumentById(created._id);
+
+    expect(result).not.toBeNull();
+    expect(result?._id.toString()).toBe(created._id.toString());
+    expect(result?.type).toBe(ConversationType.DIRECT);
+    expect(result?.dmPairKey).toBe(dmPairKey);
+    expect(result instanceof Conversation).toBe(true);
+    expect(typeof (result as any).save).toBe('function');
+  });
+
+  it('returns null when valid ObjectId is not in database', async () => {
+    const nonExistentId = new Types.ObjectId();
+    const result = await getConversationDocumentById(nonExistentId);
+    expect(result).toBeNull();
+  });
+
+  it('throws error when conversationId is missing or invalid', async () => {
+    await expect(
+      getConversationDocumentById(null as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationDocumentById(undefined as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationDocumentById('invalid-id' as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+  });
+});
+

@@ -1,6 +1,6 @@
 // See Issue #98: https://github.com/Agodoy31/Chomp/issues/98
 import mongoose, { Types } from 'mongoose';
-import { Conversation } from '../models/Conversation';
+import { Conversation, IConversationDocument } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
 import { ConversationType } from '../interfaces/conversation.interfaces';
 import {
@@ -83,3 +83,24 @@ export async function createDirectConversation(
     await session.endSession();
   }
 }
+
+export async function getConversationById(
+  conversationId: Types.ObjectId
+): Promise<IConversation | null> {
+  if (!conversationId || !Types.ObjectId.isValid(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  return Conversation.findById(conversationId).lean<IConversation>().exec();
+}
+
+export async function getConversationDocumentById(
+  conversationId: Types.ObjectId
+): Promise<IConversationDocument | null> {
+  if (!conversationId || !Types.ObjectId.isValid(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  return Conversation.findById(conversationId).exec();
+}
+
