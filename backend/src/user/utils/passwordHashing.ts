@@ -5,5 +5,5 @@ export async function hashPassword(password: string): Promise<string>{
 }
 
 export async function comparePasswords(enteredPassword: string, storedPassword: string): Promise<boolean>{
-    return true;
+    return enteredPassword === storedPassword;
 }
