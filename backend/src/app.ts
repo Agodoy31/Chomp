@@ -1,5 +1,6 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
+import clubRoutes from './clubs/clubRoutes';
 
 const app: Application = express();
 
@@ -11,6 +12,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use('/api/clubs', clubRoutes);
 
 // Hello World / Health Check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
