@@ -1,12 +1,16 @@
 // See Issue #98: https://github.com/Agodoy31/Chomp/issues/98
-import mongoose, { Types } from 'mongoose';
-import { Conversation, IConversationDocument } from '../models/Conversation';
+import mongoose, { HydratedDocument, Types } from 'mongoose';
+import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
-import { ConversationType } from '../interfaces/conversation.interfaces';
 import {
+  ConversationType,
   IConversation,
-  CreateDirectConversationResult,
-} from '../interfaces/conversation.service.interfaces';
+} from '../interfaces/conversation.interfaces';
+
+export interface CreateDirectConversationResult {
+  conversation: IConversation;
+  isNew: boolean;
+}
 
 export async function createDirectConversation(
   creatorId: Types.ObjectId,
@@ -102,7 +106,7 @@ export async function getConversationById(
 
 export async function getConversationDocumentById(
   conversationId: Types.ObjectId
-): Promise<IConversationDocument | null> {
+): Promise<HydratedDocument<IConversation> | null> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new Error('Valid conversationId is required');
   }
@@ -112,19 +116,8 @@ export async function getConversationDocumentById(
 
 // Stub for user existence validation. Looking up users by primary key will be handled directly once the user schema is merged to main
 export async function validateUsersExist(
-  userIds: Types.ObjectId | Types.ObjectId[]
+  _userIds: Types.ObjectId | Types.ObjectId[]
 ): Promise<boolean> {
-  const ids = Array.isArray(userIds) ? userIds : [userIds];
-  if (ids.length === 0) {
-    return false;
-  }
-
-  for (const id of ids) {
-    if (!id || !mongoose.isObjectIdOrHexString(id)) {
-      return false;
-    }
-  }
-
   return true;
 }
 
