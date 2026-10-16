@@ -1,4 +1,5 @@
 // See Issue #98: https://github.com/Agodoy31/Chomp/issues/98
+// See Issue #100: https://github.com/Agodoy31/Chomp/issues/100
 import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jest/globals';
 import { Types } from 'mongoose';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
@@ -7,6 +8,7 @@ import { ConversationParticipant } from '../../../src/messaging/models/Conversat
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
 import {
   createDirectConversation,
+  createGroupConversation,
   getConversationById,
   getConversationDocumentById,
 } from '../../../src/messaging/services/conversation.service';
@@ -264,6 +266,215 @@ describe('getConversationDocumentById service', () => {
     await expect(
       getConversationDocumentById('invalid-id' as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid conversationId is required');
+  });
+});
+
+describe('createGroupConversation service', () => {
+  it('creates group conversation with title and saves all participants in a transaction', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const user3 = new Types.ObjectId();
+    const title = 'Study Group';
+
+    const result = await createGroupConversation(creatorId, [user2, user3], title);
+
+    expect(result).toBeDefined();
+    expect(result._id).toBeDefined();
+    expect(result.type).toBe(ConversationType.GROUP);
+    expect(result.title).toBe(title);
+
+    const participants = await ConversationParticipant.find({
+      conversationId: result._id,
+    })
+      .lean()
+      .exec();
+
+    expect(participants).toHaveLength(3);
+    const participantUserIds = participants.map((p) => {
+      return p.userId.toString();
+    });
+    expect(participantUserIds).toContain(creatorId.toString());
+    expect(participantUserIds).toContain(user2.toString());
+    expect(participantUserIds).toContain(user3.toString());
+  });
+
+  it('trims leading and trailing whitespace from group title', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const untrimmedTitle = '  Algorithms Study Group  ';
+
+    const result = await createGroupConversation(creatorId, [user2], untrimmedTitle);
+
+    expect(result.title).toBe('Algorithms Study Group');
+
+    const savedInDb = await Conversation.findById(result._id).lean().exec();
+    expect(savedInDb?.title).toBe('Algorithms Study Group');
+  });
+
+  it('automatically includes creator as participant when omitted from participant list', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const user3 = new Types.ObjectId();
+
+    const result = await createGroupConversation(
+      creatorId,
+      [user2, user3],
+      'Project Team'
+    );
+
+    const participants = await ConversationParticipant.find({
+      conversationId: result._id,
+    })
+      .lean()
+      .exec();
+
+    expect(participants).toHaveLength(3);
+    const participantUserIds = participants.map((p) => {
+      return p.userId.toString();
+    });
+    expect(participantUserIds).toContain(creatorId.toString());
+  });
+
+  it('deduplicates duplicate IDs in participant list without throwing unique index collisions', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const user3 = new Types.ObjectId();
+
+    const result = await createGroupConversation(
+      creatorId,
+      [user2, user2, user3, creatorId],
+      'Deduplication Test'
+    );
+
+    const participants = await ConversationParticipant.find({
+      conversationId: result._id,
+    })
+      .lean()
+      .exec();
+
+    expect(participants).toHaveLength(3);
+    const participantUserIds = participants.map((p) => {
+      return p.userId.toString();
+    });
+    expect(participantUserIds).toContain(creatorId.toString());
+    expect(participantUserIds).toContain(user2.toString());
+    expect(participantUserIds).toContain(user3.toString());
+  });
+
+  it('throws error when creatorId is missing or invalid', async () => {
+    const user2 = new Types.ObjectId();
+
+    await expect(
+      createGroupConversation(null as unknown as Types.ObjectId, [user2], 'Title')
+    ).rejects.toThrow('Valid creatorId is required');
+
+    await expect(
+      createGroupConversation(undefined as unknown as Types.ObjectId, [user2], 'Title')
+    ).rejects.toThrow('Valid creatorId is required');
+
+    await expect(
+      createGroupConversation('invalid-id' as unknown as Types.ObjectId, [user2], 'Title')
+    ).rejects.toThrow('Valid creatorId is required');
+  });
+
+  it('throws error when participantIds is not an array', async () => {
+    const creatorId = new Types.ObjectId();
+
+    await expect(
+      createGroupConversation(
+        creatorId,
+        null as unknown as Types.ObjectId[],
+        'Title'
+      )
+    ).rejects.toThrow('participantIds must be an array');
+
+    await expect(
+      createGroupConversation(
+        creatorId,
+        'not-an-array' as unknown as Types.ObjectId[],
+        'Title'
+      )
+    ).rejects.toThrow('participantIds must be an array');
+  });
+
+  it('throws error when participantIds contains missing or invalid IDs', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+
+    await expect(
+      createGroupConversation(
+        creatorId,
+        [user2, null as unknown as Types.ObjectId],
+        'Title'
+      )
+    ).rejects.toThrow('Valid participantId is required');
+
+    await expect(
+      createGroupConversation(
+        creatorId,
+        [user2, undefined as unknown as Types.ObjectId],
+        'Title'
+      )
+    ).rejects.toThrow('Valid participantId is required');
+
+    await expect(
+      createGroupConversation(
+        creatorId,
+        [user2, 'invalid-id' as unknown as Types.ObjectId],
+        'Title'
+      )
+    ).rejects.toThrow('Valid participantId is required');
+  });
+
+  it('throws error when group has fewer than two distinct participants', async () => {
+    const creatorId = new Types.ObjectId();
+
+    await expect(
+      createGroupConversation(creatorId, [], 'Title')
+    ).rejects.toThrow('Group conversation requires at least two distinct participants');
+
+    await expect(
+      createGroupConversation(creatorId, [creatorId], 'Title')
+    ).rejects.toThrow('Group conversation requires at least two distinct participants');
+  });
+
+  it('rolls back transaction cleanly without creating orphaned conversation if participant creation fails', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const title = 'Rollback Test Group';
+
+    jest
+      .spyOn(ConversationParticipant, 'create')
+      .mockRejectedValueOnce(new Error('Simulated participant creation failure'));
+
+    await expect(
+      createGroupConversation(creatorId, [user2], title)
+    ).rejects.toThrow('Simulated participant creation failure');
+
+    const orphanedConversation = await Conversation.findOne({ title }).lean().exec();
+    expect(orphanedConversation).toBeNull();
+
+    const participants = await ConversationParticipant.find({
+      userId: { $in: [creatorId, user2] },
+    })
+      .lean()
+      .exec();
+    expect(participants).toHaveLength(0);
+  });
+
+  it('returns lean plain object matching IConversation interface', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+    const title = 'Plain Object Group';
+
+    const result = await createGroupConversation(creatorId, [user2], title);
+
+    expect(typeof result).toBe('object');
+    expect(result).not.toBeNull();
+    expect(result instanceof Conversation).toBe(false);
+    expect(typeof (result as any).save).toBe('undefined');
+    expect(result.type).toBe(ConversationType.GROUP);
+    expect(result.title).toBe(title);
   });
 });
 
