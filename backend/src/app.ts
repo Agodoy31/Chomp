@@ -1,5 +1,6 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
+import authRoutes from './user/routes/auth.routes';
 
 const app: Application = express();
 
@@ -11,6 +12,9 @@ app.use(
   })
 );
 app.use(express.json());
+
+// foward all requests starting with '/api/auth' to the auth routes file
+app.use("/api/auth", authRoutes);
 
 // Hello World / Health Check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
