@@ -34,6 +34,24 @@ describe('User Model Testing', () => {
       expect(user.updatedAt).toBeInstanceOf(Date);
     });
 
+    test('rejects email with double at sign', async () => {
+      await expect(User.create({
+        email: 'altert@@ufl.edu',
+        hashedPassword: 'hashedPassword123',
+        firstName: 'Albert',
+        lastName: 'Gator',
+      })).rejects.toThrow(/email must be a ufl email/i);
+    });
+
+    test('rejects email with double at sign', async () => {
+      await expect(User.create({
+        email: 'altert gator@ufl.edu',
+        hashedPassword: 'hashedPassword123',
+        firstName: 'Albert',
+        lastName: 'Gator',
+      })).rejects.toThrow(/email must be a ufl email/i);
+    });
+
     test('creates a user with custom bio and isAdmin explicitly set', async () => {
       const user = await User.create({
         email: 'alberta@ufl.edu',
