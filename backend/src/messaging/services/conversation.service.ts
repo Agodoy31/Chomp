@@ -12,11 +12,11 @@ export async function createDirectConversation(
   creatorId: Types.ObjectId,
   recipientId: Types.ObjectId
 ): Promise<CreateDirectConversationResult> {
-  if (!creatorId || !Types.ObjectId.isValid(creatorId)) {
+  if (!creatorId || !mongoose.isObjectIdOrHexString(creatorId)) {
     throw new Error('Valid creatorId is required');
   }
 
-  if (!recipientId || !Types.ObjectId.isValid(recipientId)) {
+  if (!recipientId || !mongoose.isObjectIdOrHexString(recipientId)) {
     throw new Error('Valid recipientId is required');
   }
 
@@ -24,7 +24,7 @@ export async function createDirectConversation(
     throw new Error('Cannot start a direct message conversation with yourself');
   }
 
-  // Verify users exist once user service is available
+  // Verify users exist once the user schema is merged to main
   const usersExist = await validateUsersExist([creatorId, recipientId]);
   if (!usersExist) {
     throw new Error('One or more users do not exist');
@@ -93,7 +93,7 @@ export async function createDirectConversation(
 export async function getConversationById(
   conversationId: Types.ObjectId
 ): Promise<IConversation | null> {
-  if (!conversationId || !Types.ObjectId.isValid(conversationId)) {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new Error('Valid conversationId is required');
   }
 
@@ -103,14 +103,14 @@ export async function getConversationById(
 export async function getConversationDocumentById(
   conversationId: Types.ObjectId
 ): Promise<IConversationDocument | null> {
-  if (!conversationId || !Types.ObjectId.isValid(conversationId)) {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new Error('Valid conversationId is required');
   }
 
   return Conversation.findById(conversationId).exec();
 }
 
-// Stub for user existence validation. Ideally this should be a service of the users subsystem once implemented
+// Stub for user existence validation. Looking up users by primary key will be handled directly once the user schema is merged to main
 export async function validateUsersExist(
   userIds: Types.ObjectId | Types.ObjectId[]
 ): Promise<boolean> {
@@ -120,7 +120,7 @@ export async function validateUsersExist(
   }
 
   for (const id of ids) {
-    if (!id || !Types.ObjectId.isValid(id)) {
+    if (!id || !mongoose.isObjectIdOrHexString(id)) {
       return false;
     }
   }
