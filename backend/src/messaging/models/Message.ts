@@ -1,10 +1,10 @@
 // See Issue #50: https://github.com/Agodoy31/Chomp/issues/50
 import { Schema, model } from 'mongoose';
-import { IMessageDocument } from '../interfaces/message.interfaces';
+import { IMessage } from '../interfaces/message.interfaces';
 
-export type { IMessageDocument } from '../interfaces/message.interfaces';
+export type { IMessage } from '../interfaces/message.interfaces';
 
-const messageSchema = new Schema<IMessageDocument>(
+const messageSchema = new Schema<IMessage>(
   {
     conversationId: {
       type: Schema.Types.ObjectId,
@@ -53,7 +53,7 @@ const messageSchema = new Schema<IMessageDocument>(
 // Compound index supports efficient descending message history pagination
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 
-export const Message = model<IMessageDocument>(
+export const Message = model<IMessage>(
   'Message',
   messageSchema,
   'messages'

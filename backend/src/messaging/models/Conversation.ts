@@ -2,13 +2,13 @@
 import { Schema, model } from 'mongoose';
 import {
   ConversationType,
-  IConversationDocument,
+  IConversation,
 } from '../interfaces/conversation.interfaces';
 
 export { ConversationType } from '../interfaces/conversation.interfaces';
-export type { IConversationDocument } from '../interfaces/conversation.interfaces';
+export type { IConversation } from '../interfaces/conversation.interfaces';
 
-const conversationSchema = new Schema<IConversationDocument>(
+const conversationSchema = new Schema<IConversation>(
   {
     type: {
       type: String,
@@ -92,7 +92,7 @@ conversationSchema.index(
   }
 );
 
-export const Conversation = model<IConversationDocument>(
+export const Conversation = model<IConversation>(
   'Conversation',
   conversationSchema,
   'conversations'
