@@ -35,18 +35,6 @@ describe('Conversation Model', () => {
       expect(conv.updatedAt).toBeInstanceOf(Date);
     });
 
-    it('creates a GROUP conversation without title', async () => {
-      const conv = await Conversation.create({
-        type: ConversationType.GROUP,
-      });
-
-      expect(conv.type).toBe(ConversationType.GROUP);
-      expect(conv.title).toBeUndefined();
-      expect(conv.dmPairKey).toBeUndefined();
-      expect(conv.clubId).toBeUndefined();
-      expect(conv.createdAt).toBeInstanceOf(Date);
-      expect(conv.updatedAt).toBeInstanceOf(Date);
-    });
 
     it('creates a GROUP conversation with title', async () => {
       const conv = await Conversation.create({
@@ -132,10 +120,33 @@ describe('Conversation Model', () => {
       ).rejects.toThrow();
     });
 
+    it('rejects GROUP conversation when title is missing or only whitespace', async () => {
+      await expect(
+        Conversation.create({
+          type: ConversationType.GROUP,
+        })
+      ).rejects.toThrow();
+
+      await expect(
+        Conversation.create({
+          type: ConversationType.GROUP,
+          title: '',
+        })
+      ).rejects.toThrow();
+
+      await expect(
+        Conversation.create({
+          type: ConversationType.GROUP,
+          title: '   ',
+        })
+      ).rejects.toThrow();
+    });
+
     it('rejects GROUP conversation when dmPairKey is supplied', async () => {
       await expect(
         Conversation.create({
           type: ConversationType.GROUP,
+          title: 'Study Group',
           dmPairKey: 'user1:user2',
         })
       ).rejects.toThrow();
@@ -145,6 +156,7 @@ describe('Conversation Model', () => {
       await expect(
         Conversation.create({
           type: ConversationType.GROUP,
+          title: 'Study Group',
           clubId: new Types.ObjectId(),
         })
       ).rejects.toThrow();

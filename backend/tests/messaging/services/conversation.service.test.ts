@@ -7,6 +7,7 @@ import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
 import {
+  DEFAULT_GROUP_CONVERSATION_TITLE,
   createDirectConversation,
   createGroupConversation,
   getConversationById,
@@ -309,6 +310,29 @@ describe('createGroupConversation service', () => {
 
     const savedInDb = await Conversation.findById(result._id).lean().exec();
     expect(savedInDb?.title).toBe('Algorithms Study Group');
+  });
+
+  it('falls back to default title when title is undefined or omitted', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+
+    const result = await createGroupConversation(creatorId, [user2]);
+
+    expect(result.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
+
+    const savedInDb = await Conversation.findById(result._id).lean().exec();
+    expect(savedInDb?.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
+  });
+
+  it('falls back to default title when title is empty string or whitespace only', async () => {
+    const creatorId = new Types.ObjectId();
+    const user2 = new Types.ObjectId();
+
+    const emptyResult = await createGroupConversation(creatorId, [user2], '');
+    expect(emptyResult.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
+
+    const whitespaceResult = await createGroupConversation(creatorId, [user2], '   ');
+    expect(whitespaceResult.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
   });
 
   it('automatically includes creator as participant when omitted from participant list', async () => {

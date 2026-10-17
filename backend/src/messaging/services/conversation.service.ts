@@ -8,6 +8,8 @@ import {
   IConversation,
 } from '../interfaces/conversation.interfaces';
 
+export const DEFAULT_GROUP_CONVERSATION_TITLE = 'Group Chat';
+
 export interface CreateDirectConversationResult {
   conversation: IConversation;
   isNew: boolean;
@@ -142,9 +144,11 @@ export async function createGroupConversation(
     throw new Error('One or more users do not exist');
   }
 
-  // Treat blank titles as undefined so Mongoose omits the title field rather than storing empty whitespace in MongoDB
-  const trimmedTitle =
-    typeof title === 'string' && title.trim().length > 0 ? title.trim() : undefined;
+  // Fall back to default title when title is omitted or blank whitespace and trim custom titles
+  const resolvedTitle =
+    typeof title === 'string' && title.trim().length > 0
+      ? title.trim()
+      : DEFAULT_GROUP_CONVERSATION_TITLE;
 
   // Wrap both writes in a transaction so if participant creation fails, the conversation is rolled back instead of left orphaned
   const session = await mongoose.startSession();
@@ -154,7 +158,7 @@ export async function createGroupConversation(
       [
         {
           type: ConversationType.GROUP,
-          ...(trimmedTitle !== undefined ? { title: trimmedTitle } : {}),
+          title: resolvedTitle,
         },
       ],
       { session }
