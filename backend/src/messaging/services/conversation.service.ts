@@ -7,6 +7,7 @@ import {
   ConversationType,
   IConversation,
 } from '../interfaces/conversation.interfaces';
+import { User } from '../../user/models/User';
 
 export const DEFAULT_GROUP_CONVERSATION_TITLE = 'Group Chat';
 
@@ -210,10 +211,19 @@ export async function getConversationDocumentById(
   return Conversation.findById(conversationId).exec();
 }
 
-// Stub for user existence validation. Looking up users by primary key will be handled directly once the user schema is merged to main
+// Validate that all specified user IDs exist in the users collection
 export async function validateUsersExist(
-  _userIds: Types.ObjectId | Types.ObjectId[]
+  userIds: Types.ObjectId | Types.ObjectId[]
 ): Promise<boolean> {
-  return true;
+  const ids = Array.isArray(userIds) ? userIds : [userIds];
+  if (ids.length === 0) {
+    return false;
+  }
+
+  const existingCount = await User.countDocuments({
+    _id: { $in: ids },
+  }).exec();
+
+  return existingCount === ids.length;
 }
 
