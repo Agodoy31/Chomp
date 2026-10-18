@@ -1,9 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import ClubCard from '../components/ClubCard';
 import type { Club } from '../types/club';
-import '@fontsource/irish-grover';
-import '@fontsource/inter';
-import Button from 'react-bootstrap/Button';
+import Header from '../components/Header';
 
 const mockClubs: Club[] = [
   {
@@ -79,61 +77,13 @@ export default function ClubDiscovery() {
 
   return (
     <div className="min-vh-100 bg-light">
-      {/* TODO: this header is copied from LandingPage. Will move to shared Header component after log in/logout states. */}
-      <header className="w-100 bg-white border-bottom sticky-top shadow-sm">
-        <div
-          className="container-fluid px-3 px-sm-4 py-3 d-grid align-items-center"
-          style={{ gridTemplateColumns: '1fr auto 1fr' }}
-        >
-          {/* Left */}
-          <div
-            className="bg-primary-subtle rounded-3 d-flex align-items-center justify-content-center p-2 shadow-sm"
-            style={{ width: '48px', height: '48px' }}
-          >
-            <img
-              src="/UF_Monogram.svg"
-              alt="UF Monogram Logo"
-              style={{ height: '24px', width: '24px', objectFit: 'contain' }}
-            />
-          </div>
-
-          {/* Center */}
-          <span
-            className="fw-bold"
-            style={{
-              color: '#3046C3',
-              fontFamily: 'Irish Grover',
-              fontStyle: 'italic',
-              fontSize: 'clamp(24px, 6vw, 50px)',
-              whiteSpace: 'nowrap',
-              padding: 15,
-            }}
-          >
-            Chomp!
-          </span>
-
-          {/* Right */}
-          <div className="d-flex justify-content-end gap-1 gap-sm-2">
-            <Button
-              size="sm"
-              variant="outline-primary"
-              onClick={() => navigate('/login')}
-            >
-              Login
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => navigate('/signup')}
-            >
-              Sign Up
-            </Button>
-          </div>
-        </div>
-      </header>
-
+      <Header/>
       <div className="container py-5">
-        <h1 className="fw-bold mb-4" style={{ color: '#3046C3' }}>
+        <h1 className="fw-bold mb-4" 
+        style={{ 
+          color: '#3046C3',
+          fontFamily: 'Inter'
+        }}>
           Discover Clubs
         </h1>
 
