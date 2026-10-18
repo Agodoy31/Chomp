@@ -422,3 +422,34 @@ export async function validateUsersExist(
   return existingCount === ids.length;
 }
 
+export async function isUserParticipant(
+  conversationId: Types.ObjectId,
+  userId: Types.ObjectId
+): Promise<boolean> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
+    throw new Error('Valid userId is required');
+  }
+
+  const participantExists = await ConversationParticipant.exists({
+    conversationId,
+    userId,
+  });
+
+  return Boolean(participantExists);
+}
+
+export async function getConversationParticipants(
+  conversationId: Types.ObjectId
+): Promise<IConversationParticipant[]> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  return ConversationParticipant.find({ conversationId })
+    .lean<IConversationParticipant[]>()
+    .exec();
+}
