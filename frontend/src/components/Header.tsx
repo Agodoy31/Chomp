@@ -7,7 +7,12 @@ export default function Header() {
   // TODO: once auth is merged, have log out button instead of Login / Sign Up for logged-in users.
 
   return (
-    <header className="w-100 bg-white border-bottom sticky-top shadow-sm">
+    <header className="w-100 border-bottom sticky-top shadow-sm" 
+      style={{
+        background:"#3046C3"
+
+
+      }}>
       {/* 3 columns: left and right are equal, so the logo is always centered */}
       <div
         className="container-fluid px-3 px-sm-4 py-3 d-grid align-items-center"
@@ -30,7 +35,7 @@ export default function Header() {
           to="/"
           className="fw-bold"
           style={{
-            color: '#3046C3',
+            color: 'white',
             fontFamily: 'Irish Grover',
             fontStyle: 'italic',
             fontSize: 'clamp(24px, 6vw, 50px)',
@@ -46,14 +51,15 @@ export default function Header() {
         <div className="d-flex justify-content-end gap-1 gap-sm-2">
           <Button
             size="sm"
-            variant="outline-primary"
+            variant="outline-light"
             onClick={() => navigate('/login')}
           >
             Login
           </Button>
           <Button
             size="sm"
-            variant="primary"
+            className="fw-normal px-3 text-white border-0"
+            style={{ backgroundColor: '#F07833' }}
             onClick={() => navigate('/signup')}
           >
             Sign Up
