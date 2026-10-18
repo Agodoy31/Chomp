@@ -10,11 +10,14 @@ import { User, IUserDocument } from '../../../src/user/models/User';
 import { Club } from '../../../src/clubs/model/clubModel';
 import {
   DEFAULT_GROUP_CONVERSATION_TITLE,
+  addParticipantsToConversation,
   createChannel,
   createDirectConversation,
   createGroupConversation,
   getConversationById,
   getConversationDocumentById,
+  getConversationParticipants,
+  isUserParticipant,
   validateUsersExist,
 } from '../../../src/messaging/services/conversation.service';
 
@@ -843,7 +846,7 @@ describe('createChannel service', () => {
 
     jest
       .spyOn(ConversationParticipant, 'create')
-      .mockRejectedValueOnce(new Error('Participant write failed') as never);
+      .mockRejectedValueOnce(new Error('Participant write failed'));
 
     await expect(
       createChannel(club._id, 'rollback-channel', [user._id])
@@ -854,6 +857,259 @@ describe('createChannel service', () => {
       title: 'rollback-channel',
     }).lean().exec();
     expect(conversation).toBeNull();
+  });
+});
+
+describe('isUserParticipant service', () => {
+  it('returns true when user is participant in conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Participant Check Group');
+
+    const isUser1Participant = await isUserParticipant(group._id, user1._id);
+    const isUser2Participant = await isUserParticipant(group._id, user2._id);
+
+    expect(isUser1Participant).toBe(true);
+    expect(isUser2Participant).toBe(true);
+  });
+
+  it('returns false when user is not participant in conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const outsider = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Participant Check Group');
+
+    const isOutsiderParticipant = await isUserParticipant(group._id, outsider._id);
+
+    expect(isOutsiderParticipant).toBe(false);
+  });
+
+  it('throws error when conversationId is missing or invalid', async () => {
+    const user = await createTestUser();
+
+    await expect(
+      isUserParticipant(null as unknown as Types.ObjectId, user._id)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      isUserParticipant(undefined as unknown as Types.ObjectId, user._id)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      isUserParticipant('invalid-id' as unknown as Types.ObjectId, user._id)
+    ).rejects.toThrow('Valid conversationId is required');
+  });
+
+  it('throws error when userId is missing or invalid', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Participant Check Group');
+
+    await expect(
+      isUserParticipant(group._id, null as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid userId is required');
+
+    await expect(
+      isUserParticipant(group._id, undefined as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid userId is required');
+
+    await expect(
+      isUserParticipant(group._id, 'invalid-id' as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid userId is required');
+  });
+});
+
+describe('getConversationParticipants service', () => {
+  it('returns all participant records for conversation as plain objects', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Participants Query Group');
+
+    const participants = await getConversationParticipants(group._id);
+
+    expect(participants).toHaveLength(2);
+    expect(participants[0] instanceof ConversationParticipant).toBe(false);
+    expect((participants[0] as any).save).toBeUndefined();
+
+    const participantUserIds = participants.map((p) => {
+      return p.userId.toString();
+    });
+    expect(participantUserIds).toContain(user1._id.toString());
+    expect(participantUserIds).toContain(user2._id.toString());
+  });
+
+  it('returns empty array when conversation has no participants', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+    const channel = await createChannel(club._id, 'empty-participants-channel');
+
+    const participants = await getConversationParticipants(channel._id);
+
+    expect(participants).toEqual([]);
+  });
+
+  it('throws error when conversationId is missing or invalid', async () => {
+    await expect(
+      getConversationParticipants(null as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationParticipants(undefined as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationParticipants('invalid-id' as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid conversationId is required');
+  });
+});
+
+describe('addParticipantsToConversation service', () => {
+  it('adds participants to group conversation and returns plain objects', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Add Participants Group');
+
+    const user3 = await createTestUser();
+    const user4 = await createTestUser();
+
+    const added = await addParticipantsToConversation(group._id, [user3._id, user4._id]);
+
+    expect(added).toHaveLength(2);
+    expect(added[0] instanceof ConversationParticipant).toBe(false);
+    expect((added[0] as any).save).toBeUndefined();
+
+    const addedIds = added.map((p) => {
+      return p.userId.toString();
+    });
+    expect(addedIds).toContain(user3._id.toString());
+    expect(addedIds).toContain(user4._id.toString());
+
+    const allInDb = await ConversationParticipant.find({
+      conversationId: group._id,
+    }).lean().exec();
+    expect(allInDb).toHaveLength(4);
+  });
+
+  it('ignores users who are already participants without throwing duplicate key errors', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Duplicate Ignore Group');
+
+    const user3 = await createTestUser();
+
+    const firstAdd = await addParticipantsToConversation(group._id, [
+      user1._id,
+      user2._id,
+      user3._id,
+    ]);
+    expect(firstAdd).toHaveLength(1);
+    expect(firstAdd[0].userId.toString()).toBe(user3._id.toString());
+
+    const secondAdd = await addParticipantsToConversation(group._id, [
+      user1._id,
+      user3._id,
+    ]);
+    expect(secondAdd).toHaveLength(0);
+
+    const allInDb = await ConversationParticipant.find({
+      conversationId: group._id,
+    }).lean().exec();
+    expect(allInDb).toHaveLength(3);
+  });
+
+  it('throws error when attempting to add participants to a direct conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const directResult = await createDirectConversation(user1._id, user2._id);
+    const user3 = await createTestUser();
+
+    await expect(
+      addParticipantsToConversation(directResult.conversation._id, [user3._id])
+    ).rejects.toThrow('Cannot add participants to a direct conversation');
+  });
+
+  it('throws error when conversation does not exist', async () => {
+    const nonExistentConversationId = new Types.ObjectId();
+    const user = await createTestUser();
+
+    await expect(
+      addParticipantsToConversation(nonExistentConversationId, [user._id])
+    ).rejects.toThrow('Conversation does not exist');
+  });
+
+  it('throws error when conversationId is missing or invalid', async () => {
+    const user = await createTestUser();
+
+    await expect(
+      addParticipantsToConversation(null as unknown as Types.ObjectId, [user._id])
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      addParticipantsToConversation(undefined as unknown as Types.ObjectId, [user._id])
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      addParticipantsToConversation('invalid-id' as unknown as Types.ObjectId, [user._id])
+    ).rejects.toThrow('Valid conversationId is required');
+  });
+
+  it('throws error when userIds is not an array', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Array Check Group');
+
+    await expect(
+      addParticipantsToConversation(group._id, null as unknown as Types.ObjectId[])
+    ).rejects.toThrow('userIds must be an array');
+
+    await expect(
+      addParticipantsToConversation(group._id, undefined as unknown as Types.ObjectId[])
+    ).rejects.toThrow('userIds must be an array');
+
+    await expect(
+      addParticipantsToConversation(group._id, 'not-an-array' as unknown as Types.ObjectId[])
+    ).rejects.toThrow('userIds must be an array');
+  });
+
+  it('throws error when any userId is invalid', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Valid User ID Check Group');
+    const validUser = await createTestUser();
+
+    await expect(
+      addParticipantsToConversation(group._id, [validUser._id, null as unknown as Types.ObjectId])
+    ).rejects.toThrow('Valid participantId is required');
+
+    await expect(
+      addParticipantsToConversation(group._id, [validUser._id, undefined as unknown as Types.ObjectId])
+    ).rejects.toThrow('Valid participantId is required');
+
+    await expect(
+      addParticipantsToConversation(group._id, [validUser._id, 'invalid-id' as unknown as Types.ObjectId])
+    ).rejects.toThrow('Valid participantId is required');
+  });
+
+  it('throws error when one or more users do not exist', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Existence Check Group');
+    const existingUser = await createTestUser();
+    const nonExistentUserId = new Types.ObjectId();
+
+    await expect(
+      addParticipantsToConversation(group._id, [existingUser._id, nonExistentUserId])
+    ).rejects.toThrow('One or more users do not exist');
+  });
+
+  it('returns empty array when userIds array is empty', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Empty Array Check Group');
+
+    const added = await addParticipantsToConversation(group._id, []);
+
+    expect(added).toEqual([]);
   });
 });
 

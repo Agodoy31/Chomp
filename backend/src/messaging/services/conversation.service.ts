@@ -322,7 +322,7 @@ export async function createChannel(
       return conversation.toObject<IConversation>();
     } catch (error: any) {
       if (error && error.code === 11000) {
-        throw new Error('A channel with this title already exists in the club');
+        throw new Error('A channel with this title already exists in the club', { cause: error });
       }
       throw error;
     }
@@ -342,7 +342,7 @@ export async function createChannel(
       return conversation.toObject<IConversation>();
     } catch (error: any) {
       if (error && error.code === 11000) {
-        throw new Error('A channel with this title already exists in the club');
+        throw new Error('A channel with this title already exists in the club', { cause: error });
       }
       throw error;
     }
@@ -378,7 +378,7 @@ export async function createChannel(
       await session.abortTransaction();
     }
     if (error && error.code === 11000) {
-      throw new Error('A channel with this title already exists in the club');
+      throw new Error('A channel with this title already exists in the club', { cause: error });
     }
     throw error;
   } finally {
