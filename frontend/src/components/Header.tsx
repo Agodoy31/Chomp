@@ -10,9 +10,8 @@ export default function Header() {
     <header className="w-100 border-bottom sticky-top shadow-sm" 
       style={{
         background:"#3046C3"
-
-
-      }}>
+      }}
+    >
       {/* 3 columns: left and right are equal, so the logo is always centered */}
       <div
         className="container-fluid px-3 px-sm-4 py-3 d-grid align-items-center"
