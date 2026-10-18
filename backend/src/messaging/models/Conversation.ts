@@ -59,6 +59,9 @@ conversationSchema.pre('validate', function (next) {
     if (this.clubId !== undefined && this.clubId !== null) {
       this.invalidate('clubId', 'clubId is rejected for GROUP conversations');
     }
+    if (!this.title || this.title.trim().length === 0) {
+      this.invalidate('title', 'title is required for GROUP conversations');
+    }
   } else if (this.type === ConversationType.CHANNEL) {
     if (this.dmPairKey !== undefined && this.dmPairKey !== null) {
       this.invalidate('dmPairKey', 'dmPairKey is rejected for CHANNEL conversations');
