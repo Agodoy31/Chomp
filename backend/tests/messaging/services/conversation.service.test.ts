@@ -1,14 +1,16 @@
 // See Issue #98: https://github.com/Agodoy31/Chomp/issues/98
 // See Issue #100: https://github.com/Agodoy31/Chomp/issues/100
 import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jest/globals';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
 import { User, IUserDocument } from '../../../src/user/models/User';
+import { Club } from '../../../src/clubs/model/clubModel';
 import {
   DEFAULT_GROUP_CONVERSATION_TITLE,
+  createChannel,
   createDirectConversation,
   createGroupConversation,
   getConversationById,
@@ -19,6 +21,7 @@ import {
 beforeAll(async () => {
   await connectTestDb();
   await Promise.all([
+    Club.init(),
     Conversation.init(),
     ConversationParticipant.init(),
     User.init(),
@@ -35,6 +38,22 @@ async function createTestUser(
     hashedPassword: 'hashedPassword123',
     firstName: 'Albert',
     lastName: 'Gator',
+    ...overrides,
+  });
+}
+
+async function createTestClub(
+  proposerId: Types.ObjectId,
+  overrides: Partial<any> = {}
+): Promise<any> {
+  const clubId = overrides._id ?? new Types.ObjectId();
+  return Club.create({
+    _id: clubId,
+    name: `Test Club ${clubId.toString()}`,
+    description: 'A test club description',
+    category: 'ACADEMIC',
+    proposerId,
+    status: 'APPROVED',
     ...overrides,
   });
 }
@@ -637,6 +656,204 @@ describe('validateUsersExist service', () => {
     const result = await validateUsersExist([]);
     expect(result).toBe(false);
     expect(countDocumentsSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('createChannel service', () => {
+  it('creates channel conversation with trimmed title and returns plain IConversation object', async () => {
+    const user = await createTestUser();
+    const club = await createTestClub(user._id);
+
+    const result = await createChannel(club._id, '  general  ');
+
+    expect(result).toBeDefined();
+    expect(result._id).toBeDefined();
+    expect(result.type).toBe(ConversationType.CHANNEL);
+    expect(result.title).toBe('general');
+    expect(result.clubId?.toString()).toBe(club._id.toString());
+    expect((result as any).save).toBeUndefined();
+
+    const inDb = await Conversation.findById(result._id).lean().exec();
+    expect(inDb).not.toBeNull();
+    expect(inDb?.title).toBe('general');
+    expect(inDb?.type).toBe(ConversationType.CHANNEL);
+
+    const participants = await ConversationParticipant.find({
+      conversationId: result._id,
+    }).lean().exec();
+    expect(participants).toHaveLength(0);
+  });
+
+  it('creates channel with initial participants in a transaction', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+
+    const result = await createChannel(club._id, 'announcements', [user1._id, user2._id]);
+
+    expect(result).toBeDefined();
+    expect(result.type).toBe(ConversationType.CHANNEL);
+    expect(result.title).toBe('announcements');
+    expect(result.clubId?.toString()).toBe(club._id.toString());
+
+    const participants = await ConversationParticipant.find({
+      conversationId: result._id,
+    }).lean().exec();
+    expect(participants).toHaveLength(2);
+    const participantUserIds = participants.map((p) => {
+      return p.userId.toString();
+    });
+    expect(participantUserIds).toContain(user1._id.toString());
+    expect(participantUserIds).toContain(user2._id.toString());
+  });
+
+  it('creates channel and initial participants within caller transaction when session is provided', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+    const user = await createTestUser();
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    let result;
+    try {
+      result = await createChannel(club._id, 'caller-transaction-channel', [user._id], session);
+      await session.commitTransaction();
+    } finally {
+      await session.endSession();
+    }
+
+    expect(result).toBeDefined();
+    const inDb = await Conversation.findById(result._id).lean().exec();
+    expect(inDb).not.toBeNull();
+    expect(inDb?.title).toBe('caller-transaction-channel');
+
+    const participants = await ConversationParticipant.find({
+      conversationId: result._id,
+    }).lean().exec();
+    expect(participants).toHaveLength(1);
+    expect(participants[0].userId.toString()).toBe(user._id.toString());
+  });
+
+  it('throws error when target club does not exist', async () => {
+    const nonExistentClubId = new Types.ObjectId();
+
+    await expect(
+      createChannel(nonExistentClubId, 'general')
+    ).rejects.toThrow('Club does not exist');
+  });
+
+  it('throws error when channel title is duplicate within the same club case-insensitively', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+
+    await createChannel(club._id, 'events');
+
+    await expect(
+      createChannel(club._id, 'Events')
+    ).rejects.toThrow('A channel with this title already exists in the club');
+  });
+
+  it('allows identical channel titles across different clubs', async () => {
+    const creator = await createTestUser();
+    const club1 = await createTestClub(creator._id);
+    const club2 = await createTestClub(creator._id);
+
+    const channel1 = await createChannel(club1._id, 'general');
+    const channel2 = await createChannel(club2._id, 'general');
+
+    expect(channel1).toBeDefined();
+    expect(channel2).toBeDefined();
+    expect(channel1._id.toString()).not.toBe(channel2._id.toString());
+    expect(channel1.clubId?.toString()).toBe(club1._id.toString());
+    expect(channel2.clubId?.toString()).toBe(club2._id.toString());
+    expect(channel1.title).toBe('general');
+    expect(channel2.title).toBe('general');
+  });
+
+  it('throws error when clubId is missing or invalid', async () => {
+    await expect(
+      createChannel(null as unknown as Types.ObjectId, 'general')
+    ).rejects.toThrow('Valid clubId is required');
+
+    await expect(
+      createChannel(undefined as unknown as Types.ObjectId, 'general')
+    ).rejects.toThrow('Valid clubId is required');
+
+    await expect(
+      createChannel('invalid-id' as unknown as Types.ObjectId, 'general')
+    ).rejects.toThrow('Valid clubId is required');
+  });
+
+  it('throws error when title is missing or whitespace only', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+
+    await expect(
+      createChannel(club._id, '')
+    ).rejects.toThrow('Channel title is required');
+
+    await expect(
+      createChannel(club._id, '   ')
+    ).rejects.toThrow('Channel title is required');
+
+    await expect(
+      createChannel(club._id, null as unknown as string)
+    ).rejects.toThrow('Channel title is required');
+  });
+
+  it('throws error when participantIds is not an array', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+
+    await expect(
+      createChannel(club._id, 'general', null as any)
+    ).rejects.toThrow('participantIds must be an array');
+
+    await expect(
+      createChannel(club._id, 'general', 'not-an-array' as any)
+    ).rejects.toThrow('participantIds must be an array');
+  });
+
+  it('throws error when any participant ID is invalid', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+    const validUser = await createTestUser();
+
+    await expect(
+      createChannel(club._id, 'general', [validUser._id, 'invalid-id' as any])
+    ).rejects.toThrow('Valid participantId is required');
+  });
+
+  it('throws error when one or more participant users do not exist', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+    const nonExistentUserId = new Types.ObjectId();
+
+    await expect(
+      createChannel(club._id, 'general', [nonExistentUserId])
+    ).rejects.toThrow('One or more users do not exist');
+  });
+
+  it('aborts transaction and rolls back channel if participant creation fails', async () => {
+    const creator = await createTestUser();
+    const club = await createTestClub(creator._id);
+    const user = await createTestUser();
+
+    jest
+      .spyOn(ConversationParticipant, 'create')
+      .mockRejectedValueOnce(new Error('Participant write failed') as never);
+
+    await expect(
+      createChannel(club._id, 'rollback-channel', [user._id])
+    ).rejects.toThrow('Participant write failed');
+
+    const conversation = await Conversation.findOne({
+      clubId: club._id,
+      title: 'rollback-channel',
+    }).lean().exec();
+    expect(conversation).toBeNull();
   });
 });
 

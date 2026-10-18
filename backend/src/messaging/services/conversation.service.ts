@@ -213,9 +213,13 @@ export async function addParticipantsToConversation(
     }
   }
 
-  const conversation = await Conversation.findById(conversationId)
+  const conversationQuery = Conversation.findById(conversationId)
     .select('type')
     .lean();
+  if (session) {
+    conversationQuery.session(session);
+  }
+  const conversation = await conversationQuery.exec();
 
   if (!conversation) {
     throw new Error('Conversation does not exist');
@@ -235,12 +239,16 @@ export async function addParticipantsToConversation(
     throw new Error('One or more users do not exist');
   }
 
-  const existing = await ConversationParticipant.find({
+  const existingQuery = ConversationParticipant.find({
     conversationId,
     userId: { $in: uniqueUserIds },
   })
     .select('userId')
     .lean();
+  if (session) {
+    existingQuery.session(session);
+  }
+  const existing = await existingQuery.exec();
 
   const existingSet = new Set(existing.map((p) => p.userId.toString()));
   const usersToAdd = uniqueUserIds.filter((id) => !existingSet.has(id.toString()));
@@ -276,6 +284,10 @@ export async function createChannel(
 
   if (typeof title !== 'string' || title.trim().length === 0) {
     throw new Error('Channel title is required');
+  }
+
+  if (!Array.isArray(participantIds)) {
+    throw new Error('participantIds must be an array');
   }
 
   const clubExists = await Club.exists({ _id: clubId });
