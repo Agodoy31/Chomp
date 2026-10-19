@@ -19,6 +19,8 @@ import {
   getConversationDocumentById,
   getConversationParticipants,
   isUserParticipant,
+  leaveConversation,
+  removeParticipantFromConversation,
   updateConversationTitle,
   validateUsersExist,
 } from '../../../src/messaging/services/conversation.service';
@@ -1371,4 +1373,168 @@ describe('updateConversationTitle service', () => {
     ).rejects.toThrow('A channel with this title already exists in the club');
   });
 });
+
+describe('removeParticipantFromConversation and leaveConversation services', () => {
+  it('removes target participant from group conversation when requested by a member', async () => {
+    const user1 = await createTestUser({
+      firstName: 'Dennis',
+      lastName: 'Heckler',
+      email: 'turlington_screamer@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Midtown',
+      lastName: 'Survivor',
+      email: 'gator_beverage@ufl.edu',
+    });
+    const user3 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'FoodCourter',
+      email: 'subway_line_eternal@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      user1._id,
+      [user2._id, user3._id],
+      'French Fries Monument Preservation Society'
+    );
+    const result = await removeParticipantFromConversation(group._id, user1._id, user2._id);
+
+    expect(result).toBe(true);
+
+    const isUser2StillParticipant = await isUserParticipant(group._id, user2._id);
+    expect(isUser2StillParticipant).toBe(false);
+
+    const isUser1StillParticipant = await isUserParticipant(group._id, user1._id);
+    expect(isUser1StillParticipant).toBe(true);
+
+    const isUser3StillParticipant = await isUserParticipant(group._id, user3._id);
+    expect(isUser3StillParticipant).toBe(true);
+  });
+
+  it('removes requesting user when calling leaveConversation', async () => {
+    const user1 = await createTestUser({
+      firstName: 'Dennis',
+      lastName: 'Heckler',
+      email: 'turlington_screamer@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Midtown',
+      lastName: 'Survivor',
+      email: 'gator_beverage@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      user1._id,
+      [user2._id],
+      'Marston Basement Study Group'
+    );
+    const result = await leaveConversation(group._id, user1._id);
+
+    expect(result).toBe(true);
+
+    const isUser1StillParticipant = await isUserParticipant(group._id, user1._id);
+    expect(isUser1StillParticipant).toBe(false);
+
+    const isUser2StillParticipant = await isUserParticipant(group._id, user2._id);
+    expect(isUser2StillParticipant).toBe(true);
+  });
+
+  it('retains conversation document when the last participant leaves', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+
+    const group = await createGroupConversation(
+      user1._id,
+      [user2._id],
+      'Marston Basement Study Group'
+    );
+    await leaveConversation(group._id, user1._id);
+    await leaveConversation(group._id, user2._id);
+
+    const remainingParticipants = await getConversationParticipants(group._id);
+    expect(remainingParticipants).toHaveLength(0);
+
+    const conversationInDb = await Conversation.findById(group._id).lean();
+    expect(conversationInDb).not.toBeNull();
+    expect(conversationInDb?._id.toString()).toBe(group._id.toString());
+  });
+
+  it('rejects removing participant from a direct conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const direct = await createDirectConversation(user1._id, user2._id);
+
+    await expect(
+      removeParticipantFromConversation(direct.conversation._id, user1._id, user2._id)
+    ).rejects.toThrow('Cannot remove participants from a direct conversation');
+  });
+
+  it('rejects when requesting user is not a participant in the conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const nonMember = await createTestUser();
+
+    const group = await createGroupConversation(
+      user1._id,
+      [user2._id],
+      'Marston Basement Study Group'
+    );
+
+    await expect(
+      removeParticipantFromConversation(group._id, nonMember._id, user2._id)
+    ).rejects.toThrow('User is not a participant in this conversation');
+  });
+
+  it('rejects when target user is not a participant in the conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const outsider = await createTestUser();
+
+    const group = await createGroupConversation(
+      user1._id,
+      [user2._id],
+      'Marston Basement Study Group'
+    );
+
+    await expect(
+      removeParticipantFromConversation(group._id, user1._id, outsider._id)
+    ).rejects.toThrow('Target user is not a participant in this conversation');
+  });
+
+  it('throws validation error on missing or invalid parameters', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const group = await createGroupConversation(
+      user1._id,
+      [user2._id],
+      'Marston Basement Study Group'
+    );
+    const fakeId = new Types.ObjectId();
+
+    await expect(
+      removeParticipantFromConversation(null as unknown as Types.ObjectId, user1._id, user2._id)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      removeParticipantFromConversation(group._id, null as unknown as Types.ObjectId, user2._id)
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      removeParticipantFromConversation(group._id, user1._id, null as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid targetUserId is required');
+
+    await expect(
+      removeParticipantFromConversation(fakeId, user1._id, user2._id)
+    ).rejects.toThrow('Conversation not found');
+
+    await expect(
+      leaveConversation(null as unknown as Types.ObjectId, user1._id)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      leaveConversation(group._id, null as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid userId is required');
+  });
+});
+
 
