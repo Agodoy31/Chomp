@@ -16,3 +16,19 @@ export interface IConversation {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface IUserSummary {
+  _id: Types.ObjectId;
+  firstName: string;
+  lastName: string;
+}
+
+export interface IConversationDetails {
+  _id: Types.ObjectId;
+  type: ConversationType;
+  title?: string;
+  clubId?: Types.ObjectId;
+  displayName: string;
+  participants: IUserSummary[];
+}
+
