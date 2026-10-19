@@ -2,34 +2,19 @@ import { describe, it, expect, beforeAll, afterEach, afterAll } from '@jest/glob
 import express, { NextFunction, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import request from 'supertest';
-import { CustomError } from '../../src/errors/customError';
-import { joinClub } from '../../src/clubs/controllers/membershipController';
+import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 
-// Stands in for the error handler that will be added to app.ts.
-function handleError(error: unknown, _req: Request, res: Response, _next: NextFunction) {
-  if (error instanceof CustomError) {
-    res.status(error.statusCode).json({ message: error.message, code: error.code });
-    return;
-  }
-
-  res.status(500).json({ message: 'Internal server error', code: 'ERR_INTERNAL' });
-}
-
-function joinApp(user?: { id: string }) {
-  const testApp = express();
-  testApp.use(express.json());
-  testApp.use((req: Request, _res: Response, next: NextFunction) => {
-    if (user) {
-      (req as Request & { session?: { user?: { id: string } } }).session = { user };
-    }
+function asUser(userId: string) {
+  const wrapper = express();
+  wrapper.use((req: Request, _res: Response, next: NextFunction) => {
+    (req as Request & { session?: { userId?: string } }).session = { userId };
     next();
   });
-  testApp.post('/api/clubs/:clubId/join', joinClub);
-  testApp.use(handleError);
-  return testApp;
+  wrapper.use(app);
+  return wrapper;
 }
 
 async function createClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
@@ -59,7 +44,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     const club = await createClub();
     const userId = new mongoose.Types.ObjectId().toHexString();
 
-    const res = await request(joinApp({ id: userId })).post(`/api/clubs/${club._id.toString()}/join`);
+    const res = await request(asUser(userId)).post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(201);
     expect(res.body.userId).toBe(userId);
@@ -83,9 +68,7 @@ describe('POST /api/clubs/:clubId/join', () => {
       status: 'INACTIVE',
     });
 
-    const res = await request(joinApp({ id: userId.toHexString() })).post(
-      `/api/clubs/${club._id.toString()}/join`
-    );
+    const res = await request(asUser(userId.toHexString())).post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(201);
     expect(res.body._id).toBe(inactive._id.toString());
@@ -102,7 +85,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     const userId = new mongoose.Types.ObjectId().toHexString();
     const missingId = new mongoose.Types.ObjectId().toHexString();
 
-    const res = await request(joinApp({ id: userId })).post(`/api/clubs/${missingId}/join`);
+    const res = await request(asUser(userId)).post(`/api/clubs/${missingId}/join`);
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('ERR_CLUB_NOT_FOUND');
@@ -117,7 +100,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     const club = await createClub(status);
     const userId = new mongoose.Types.ObjectId().toHexString();
 
-    const res = await request(joinApp({ id: userId })).post(`/api/clubs/${club._id.toString()}/join`);
+    const res = await request(asUser(userId)).post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('ERR_CLUB_NOT_APPROVED');
@@ -128,7 +111,7 @@ describe('POST /api/clubs/:clubId/join', () => {
   it('returns 401 when the student is not logged in', async () => {
     const club = await createClub();
 
-    const res = await request(joinApp()).post(`/api/clubs/${club._id.toString()}/join`);
+    const res = await request(app).post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('ERR_AUTHENTICATION_REQUIRED');
@@ -141,9 +124,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     const userId = new mongoose.Types.ObjectId();
     await Membership.create({ userId, clubId: club._id, status: 'REMOVED' });
 
-    const res = await request(joinApp({ id: userId.toHexString() })).post(
-      `/api/clubs/${club._id.toString()}/join`
-    );
+    const res = await request(asUser(userId.toHexString())).post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('ERR_MEMBER_REMOVED');
@@ -158,9 +139,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     const userId = new mongoose.Types.ObjectId();
     await Membership.create({ userId, clubId: club._id, status: 'ACTIVE' });
 
-    const res = await request(joinApp({ id: userId.toHexString() })).post(
-      `/api/clubs/${club._id.toString()}/join`
-    );
+    const res = await request(asUser(userId.toHexString())).post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('ERR_ALREADY_MEMBER');
@@ -176,9 +155,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     const userId = new mongoose.Types.ObjectId();
     await Membership.create({ userId, clubId: club._id, status });
 
-    const res = await request(joinApp({ id: userId.toHexString() })).post(
-      `/api/clubs/${club._id.toString()}/join`
-    );
+    const res = await request(asUser(userId.toHexString())).post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('ERR_ALREADY_MEMBER');
