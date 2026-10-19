@@ -44,7 +44,7 @@ function readUserId(req: RequestWithSession): string {
 }
 
 function isDuplicateKey(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 11000;
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
 
 function rejectionForClub(status: string): ClubNotApprovedError {
