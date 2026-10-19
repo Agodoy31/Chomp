@@ -7,6 +7,8 @@ import { ConversationParticipant } from '../models/ConversationParticipant';
 import {
   ConversationType,
   IConversation,
+  IConversationDetails,
+  IUserSummary,
 } from '../interfaces/conversation.interfaces';
 import { IConversationParticipant } from '../interfaces/conversationParticipant.interfaces';
 import { User } from '../../user/models/User';
@@ -453,3 +455,86 @@ export async function getConversationParticipants(
     .lean<IConversationParticipant[]>()
     .exec();
 }
+
+export async function getConversationDetails(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId
+): Promise<IConversationDetails | null> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  const isParticipant = await isUserParticipant(conversationId, requestingUserId);
+  if (!isParticipant) {
+    return null;
+  }
+
+  const conversation = await Conversation.findById(conversationId)
+    .select('type title clubId')
+    .lean<IConversation>()
+    .exec();
+
+  if (!conversation) {
+    return null;
+  }
+
+  const participants = await ConversationParticipant.aggregate<IUserSummary>([
+    {
+      $match: {
+        conversationId,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        userId: 1,
+      },
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'userId',
+        foreignField: '_id',
+        as: 'user',
+      },
+    },
+    {
+      $unwind: '$user',
+    },
+    {
+      $project: {
+        _id: '$user._id',
+        firstName: '$user.firstName',
+        lastName: '$user.lastName',
+      },
+    },
+    {
+      $sort: {
+        firstName: 1,
+        lastName: 1,
+      },
+    },
+  ]);
+
+  let displayName = conversation.title ?? '';
+  if (conversation.type === ConversationType.DIRECT) {
+    const otherUser = participants.find(
+      (p) => p._id.toString() !== requestingUserId.toString()
+    )!;
+    displayName = `${otherUser.firstName} ${otherUser.lastName}`;
+  }
+
+  return {
+    _id: conversation._id,
+    type: conversation.type,
+    title: conversation.title,
+    clubId: conversation.clubId,
+    displayName,
+    participants,
+  };
+}
+
