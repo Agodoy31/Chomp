@@ -7,7 +7,7 @@ export const getClubs = async (req: Request, res: Response) => {
       category ?: string
     }
     const filter: clubFilter = {status: "APPROVED"};
-    if (req.query.category && typeof req.query.category === 'string') filter.category = req.query.category as string;
+    if (req.query.category && typeof req.query.category === 'string') filter.category = req.query.category;
   
     const clubs = await Club.find(filter)
       .select('-proposerId -__v -status')
