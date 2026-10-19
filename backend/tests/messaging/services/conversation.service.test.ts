@@ -15,6 +15,7 @@ import {
   createDirectConversation,
   createGroupConversation,
   getConversationById,
+  getConversationDetails,
   getConversationDocumentById,
   getConversationParticipants,
   isUserParticipant,
@@ -1110,6 +1111,168 @@ describe('addParticipantsToConversation service', () => {
     const added = await addParticipantsToConversation(group._id, []);
 
     expect(added).toEqual([]);
+  });
+});
+
+describe('getConversationDetails service', () => {
+  it('returns direct conversation details with other participant full name as display name and sorted participants', async () => {
+    const user1 = await createTestUser({ firstName: 'Bob', lastName: 'Builder' });
+    const user2 = await createTestUser({ firstName: 'Alice', lastName: 'Smith' });
+
+    const directResult = await createDirectConversation(user1._id, user2._id);
+    const conversationId = directResult.conversation._id;
+
+    const detailsForUser1 = await getConversationDetails(conversationId, user1._id);
+    expect(detailsForUser1).not.toBeNull();
+    expect(detailsForUser1?._id.toString()).toBe(conversationId.toString());
+    expect(detailsForUser1?.type).toBe(ConversationType.DIRECT);
+    expect(detailsForUser1?.displayName).toBe('Alice Smith');
+
+    const detailsForUser2 = await getConversationDetails(conversationId, user2._id);
+    expect(detailsForUser2).not.toBeNull();
+    expect(detailsForUser2?._id.toString()).toBe(conversationId.toString());
+    expect(detailsForUser2?.type).toBe(ConversationType.DIRECT);
+    expect(detailsForUser2?.displayName).toBe('Bob Builder');
+
+    expect(detailsForUser1?.participants).toHaveLength(2);
+    expect(detailsForUser1?.participants[0]._id.toString()).toBe(user2._id.toString());
+    expect(detailsForUser1?.participants[0].firstName).toBe('Alice');
+    expect(detailsForUser1?.participants[0].lastName).toBe('Smith');
+    expect(detailsForUser1?.participants[1]._id.toString()).toBe(user1._id.toString());
+    expect(detailsForUser1?.participants[1].firstName).toBe('Bob');
+    expect(detailsForUser1?.participants[1].lastName).toBe('Builder');
+  });
+
+  it('returns group conversation details with group title as display name and sorted participants', async () => {
+    const user1 = await createTestUser({ firstName: 'Charlie', lastName: 'Delta' });
+    const user2 = await createTestUser({ firstName: 'Alice', lastName: 'Zeta' });
+    const user3 = await createTestUser({ firstName: 'Bob', lastName: 'Alpha' });
+    const groupTitle = 'Algorithms Study Group';
+
+    const group = await createGroupConversation(user1._id, [user2._id, user3._id], groupTitle);
+
+    const details = await getConversationDetails(group._id, user1._id);
+    expect(details).not.toBeNull();
+    expect(details?._id.toString()).toBe(group._id.toString());
+    expect(details?.type).toBe(ConversationType.GROUP);
+    expect(details?.title).toBe(groupTitle);
+    expect(details?.displayName).toBe(groupTitle);
+
+    expect(details?.participants).toHaveLength(3);
+    expect(details?.participants[0].firstName).toBe('Alice');
+    expect(details?.participants[0].lastName).toBe('Zeta');
+    expect(details?.participants[1].firstName).toBe('Bob');
+    expect(details?.participants[1].lastName).toBe('Alpha');
+    expect(details?.participants[2].firstName).toBe('Charlie');
+    expect(details?.participants[2].lastName).toBe('Delta');
+  });
+
+  it('returns channel conversation details with channel title as display name and sorted participants', async () => {
+    const proposer = await createTestUser({ firstName: 'Peter', lastName: 'Proposer' });
+    const user1 = await createTestUser({ firstName: 'Brenda', lastName: 'Beta' });
+    const user2 = await createTestUser({ firstName: 'Arthur', lastName: 'Archer' });
+    const club = await createTestClub(proposer._id);
+    const channelTitle = 'announcements';
+
+    const channel = await createChannel(club._id, channelTitle, [user1._id, user2._id]);
+
+    const details = await getConversationDetails(channel._id, user1._id);
+    expect(details).not.toBeNull();
+    expect(details?._id.toString()).toBe(channel._id.toString());
+    expect(details?.type).toBe(ConversationType.CHANNEL);
+    expect(details?.title).toBe(channelTitle);
+    expect(details?.displayName).toBe(channelTitle);
+    expect(details?.clubId?.toString()).toBe(club._id.toString());
+
+    expect(details?.participants).toHaveLength(2);
+    expect(details?.participants[0].firstName).toBe('Arthur');
+    expect(details?.participants[0].lastName).toBe('Archer');
+    expect(details?.participants[1].firstName).toBe('Brenda');
+    expect(details?.participants[1].lastName).toBe('Beta');
+  });
+
+  it('returns null when requesting user is not a participant in the conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const nonParticipant = await createTestUser();
+
+    const group = await createGroupConversation(user1._id, [user2._id], 'Private Study');
+
+    const result = await getConversationDetails(group._id, nonParticipant._id);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when conversation does not exist', async () => {
+    const user1 = await createTestUser();
+    const nonExistentId = new Types.ObjectId();
+
+    const result = await getConversationDetails(nonExistentId, user1._id);
+    expect(result).toBeNull();
+  });
+
+  it('throws validation error when conversationId is invalid or missing', async () => {
+    const user1 = await createTestUser();
+
+    await expect(
+      getConversationDetails(null as unknown as Types.ObjectId, user1._id)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationDetails(undefined as unknown as Types.ObjectId, user1._id)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationDetails('invalid-id' as unknown as Types.ObjectId, user1._id)
+    ).rejects.toThrow('Valid conversationId is required');
+  });
+
+  it('throws validation error when requestingUserId is invalid or missing', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const direct = await createDirectConversation(user1._id, user2._id);
+    const conversationId = direct.conversation._id;
+
+    await expect(
+      getConversationDetails(conversationId, null as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      getConversationDetails(conversationId, undefined as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      getConversationDetails(conversationId, 'invalid-id' as unknown as Types.ObjectId)
+    ).rejects.toThrow('Valid requestingUserId is required');
+  });
+
+  it('returns plain objects without timestamps or Mongoose document methods', async () => {
+    const user1 = await createTestUser({ firstName: 'First', lastName: 'User' });
+    const user2 = await createTestUser({ firstName: 'Second', lastName: 'User' });
+
+    const direct = await createDirectConversation(user1._id, user2._id);
+    const conversationId = direct.conversation._id;
+
+    const details = await getConversationDetails(conversationId, user1._id);
+    expect(details).not.toBeNull();
+
+    expect((details as any).save).toBeUndefined();
+    expect((details as any).toObject).toBeUndefined();
+    expect((details as any).createdAt).toBeUndefined();
+    expect((details as any).updatedAt).toBeUndefined();
+
+    expect(details?.participants).toHaveLength(2);
+    for (const participant of details!.participants) {
+      expect(participant._id).toBeDefined();
+      expect(participant.firstName).toBeDefined();
+      expect(participant.lastName).toBeDefined();
+      expect((participant as any).save).toBeUndefined();
+      expect((participant as any).toObject).toBeUndefined();
+      expect((participant as any).createdAt).toBeUndefined();
+      expect((participant as any).updatedAt).toBeUndefined();
+      expect((participant as any).joinedAt).toBeUndefined();
+      const keys = Object.keys(participant).sort();
+      expect(keys).toEqual(['_id', 'firstName', 'lastName']);
+    }
   });
 });
 
