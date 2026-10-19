@@ -538,3 +538,47 @@ export async function getConversationDetails(
   };
 }
 
+export async function updateConversationTitle(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId,
+  newTitle: string
+): Promise<IConversation> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  if (typeof newTitle !== 'string' || newTitle.trim().length === 0) {
+    throw new Error('Valid conversation title is required');
+  }
+
+  const isParticipant = await isUserParticipant(conversationId, requestingUserId);
+  if (!isParticipant) {
+    throw new Error('User is not a participant in this conversation');
+  }
+
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) {
+    throw new Error('Conversation not found');
+  }
+
+  if (conversation.type === ConversationType.DIRECT) {
+    throw new Error('Cannot update title of a direct conversation');
+  }
+
+  conversation.title = newTitle.trim();
+
+  try {
+    await conversation.save();
+    return conversation.toObject<IConversation>();
+  } catch (error: any) {
+    if (error && error.code === 11000) {
+      throw new Error('A channel with this title already exists in the club', { cause: error });
+    }
+    throw error;
+  }
+}
+
