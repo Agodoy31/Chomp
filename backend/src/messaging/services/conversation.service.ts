@@ -582,3 +582,64 @@ export async function updateConversationTitle(
   }
 }
 
+export async function removeParticipantFromConversation(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId,
+  targetUserId: Types.ObjectId
+): Promise<boolean> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  if (!targetUserId || !mongoose.isObjectIdOrHexString(targetUserId)) {
+    throw new Error('Valid targetUserId is required');
+  }
+
+  const conversation = await Conversation.findById(conversationId)
+    .select('type')
+    .lean();
+  if (!conversation) {
+    throw new Error('Conversation not found');
+  }
+
+  if (conversation.type === ConversationType.DIRECT) {
+    throw new Error('Cannot remove participants from a direct conversation');
+  }
+
+  const isRequesterParticipant = await isUserParticipant(conversationId, requestingUserId);
+  if (!isRequesterParticipant) {
+    throw new Error('User is not a participant in this conversation');
+  }
+
+  const isTargetParticipant = await isUserParticipant(conversationId, targetUserId);
+  if (!isTargetParticipant) {
+    throw new Error('Target user is not a participant in this conversation');
+  }
+
+  await ConversationParticipant.deleteOne({
+    conversationId,
+    userId: targetUserId,
+  }).exec();
+
+  return true;
+}
+
+export async function leaveConversation(
+  conversationId: Types.ObjectId,
+  userId: Types.ObjectId
+): Promise<boolean> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
+    throw new Error('Valid userId is required');
+  }
+
+  return removeParticipantFromConversation(conversationId, userId, userId);
+}
+
