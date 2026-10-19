@@ -19,6 +19,7 @@ import {
   getConversationDocumentById,
   getConversationParticipants,
   isUserParticipant,
+  updateConversationTitle,
   validateUsersExist,
 } from '../../../src/messaging/services/conversation.service';
 
@@ -1273,6 +1274,101 @@ describe('getConversationDetails service', () => {
       const keys = Object.keys(participant).sort();
       expect(keys).toEqual(['_id', 'firstName', 'lastName']);
     }
+  });
+});
+
+describe('updateConversationTitle service', () => {
+  it('updates group conversation title when requested by a participant', async () => {
+    const user1 = await createTestUser({
+      firstName: 'Marston',
+      lastName: 'Dweller',
+      email: 'basement.coder@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Newell',
+      lastName: 'Nightowl',
+      email: 'newell3am@ufl.edu',
+    });
+
+    const group = await createGroupConversation(user1._id, [user2._id], 'Marston Basement Study Group');
+    const updated = await updateConversationTitle(group._id, user1._id, 'Turlington Plaza Frisbee');
+
+    expect(updated.title).toBe('Turlington Plaza Frisbee');
+    const fromDb = await Conversation.findById(group._id).lean();
+    expect(fromDb?.title).toBe('Turlington Plaza Frisbee');
+  });
+
+  it('trims whitespace from new conversation title', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+
+    const group = await createGroupConversation(user1._id, [user2._id], 'Marston Basement Study Group');
+    const updated = await updateConversationTitle(group._id, user1._id, '   Trimmed Title   ');
+
+    expect(updated.title).toBe('Trimmed Title');
+  });
+
+  it('updates channel title when requested by a channel participant', async () => {
+    const proposer = await createTestUser();
+    const user1 = await createTestUser();
+    const club = await createTestClub(proposer._id);
+    const channel = await createChannel(club._id, 'announcements', [user1._id]);
+
+    const updated = await updateConversationTitle(channel._id, user1._id, 'general');
+
+    expect(updated.title).toBe('general');
+    const fromDb = await Conversation.findById(channel._id).lean();
+    expect(fromDb?.title).toBe('general');
+  });
+
+  it('rejects updating title of a direct conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const direct = await createDirectConversation(user1._id, user2._id);
+
+    await expect(
+      updateConversationTitle(direct.conversation._id, user1._id, 'New Title')
+    ).rejects.toThrow('Cannot update title of a direct conversation');
+  });
+
+  it('rejects when requesting user is not a participant in the conversation', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const nonParticipant = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+
+    const group = await createGroupConversation(user1._id, [user2._id], 'Marston Basement Study Group');
+
+    await expect(
+      updateConversationTitle(group._id, nonParticipant._id, 'Hacked Title')
+    ).rejects.toThrow('User is not a participant in this conversation');
+  });
+
+  it('throws validation error on invalid parameters or duplicate channel title', async () => {
+    const user1 = await createTestUser();
+    const proposer = await createTestUser();
+    const club = await createTestClub(proposer._id);
+    const channel1 = await createChannel(club._id, 'announcements', [user1._id]);
+    await createChannel(club._id, 'general', [user1._id]);
+
+    await expect(
+      updateConversationTitle(null as unknown as Types.ObjectId, user1._id, 'New Title')
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      updateConversationTitle(channel1._id, null as unknown as Types.ObjectId, 'New Title')
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      updateConversationTitle(channel1._id, user1._id, '   ')
+    ).rejects.toThrow('Valid conversation title is required');
+
+    await expect(
+      updateConversationTitle(channel1._id, user1._id, 'general')
+    ).rejects.toThrow('A channel with this title already exists in the club');
   });
 });
 
