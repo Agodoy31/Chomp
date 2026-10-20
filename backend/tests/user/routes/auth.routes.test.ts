@@ -44,9 +44,12 @@ describe("Auth Routes Testing /api/auth/login", () => {
         expect(res.body.user.bio).toBe("This user doesn't have a bio yet!");
         expect(res.body.user.firstName).toBe("Albert");
         expect(res.body.user.lastName).toBe("Gator");
+        expect(res.body.user.hashedPassword).toBeUndefined();
+        expect(res.body.hashedPassword).toBeUndefined();
         expect(res.body.createdAt).toBeUndefined();
         expect(res.body.updatedAt).toBeUndefined();
-        expect(res.body.authToken).toBeDefined(); // TODO:: Make a Check here for auth token
+        expect(res.headers["set-cookie"]).toBeDefined();
+        expect(res.headers["set-cookie"]?.[0]).toContain("chomp.sid");
     });
 
     test("Missing Email", async () => {
@@ -141,6 +144,8 @@ describe("Auth Routes Testing /api/auth/register", () => {
         expect(res.body.user.bio).toBe("This user doesn't have a bio yet!")
         expect(res.body.user.firstName).toBe("Albert");
         expect(res.body.user.lastName).toBe("Gator");
+        expect(res.body.user.hashedPassword).toBeUndefined();
+        expect(res.body.hashedPassword).toBeUndefined();
         expect(res.body.createdAt).toBeUndefined();
         expect(res.body.updatedAt).toBeUndefined();
         expect(res.body.authToken).toBeDefined(); // TODO:: Make a Check here for auth token

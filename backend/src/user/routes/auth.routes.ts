@@ -35,7 +35,23 @@ router.post("/login", async (req: Request, res: Response) => {
             });
         }
 
-        return res.setMaxListeners(200).json({
+        await new Promise<void>((resolve, reject) => {
+            req.session.regenerate((err: unknown) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        req.session.userId = String(user._id);
+
+        await new Promise<void>((resolve, reject) => {
+            req.session.save((err: unknown) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        return res.status(200).json({
             message: "Login Success",
             user: {
                 id: user._id,
@@ -44,9 +60,8 @@ router.post("/login", async (req: Request, res: Response) => {
                 lastName: user.lastName,
                 bio: user.bio,
                 isAdmin: user.isAdmin
-            },
-            authToken: "temp-token" // TODO:: change how tokens work properly
-        })
+            }
+        });
     }catch (error){
         console.error("Login error:", error);
         return res.status(500).json({
