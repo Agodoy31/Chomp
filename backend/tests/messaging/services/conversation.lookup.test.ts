@@ -469,4 +469,17 @@ describe('getConversationDetails service', () => {
       expect(keys).toEqual(['_id', 'firstName', 'lastName']);
     }
   });
+
+  it('returns conversation details when conversationId is passed as a hex string', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+
+    const direct = await createDirectConversation(user1._id, user2._id);
+    const hexStringId = direct.conversation._id.toString() as unknown as Types.ObjectId;
+
+    const details = await getConversationDetails(hexStringId, user1._id);
+    expect(details).not.toBeNull();
+    expect(details?.participants).toHaveLength(2);
+  });
 });
+
