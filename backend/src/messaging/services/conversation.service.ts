@@ -482,10 +482,12 @@ export async function getConversationDetails(
     return null;
   }
 
+  const conversationObjectId = new Types.ObjectId(conversationId);
+
   const participants = await ConversationParticipant.aggregate<IUserSummary>([
     {
       $match: {
-        conversationId,
+        conversationId: conversationObjectId,
       },
     },
     {
