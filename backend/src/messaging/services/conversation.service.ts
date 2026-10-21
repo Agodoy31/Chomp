@@ -200,10 +200,27 @@ export async function createGroupConversation(
 export async function addParticipantsToConversation(
   conversationId: Types.ObjectId,
   userIds: Types.ObjectId[],
+  requestingUserIdOrSession?: Types.ObjectId | ClientSession,
   session?: ClientSession
 ): Promise<IConversationParticipant[]> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new Error('Valid conversationId is required');
+  }
+
+  let _requestingUserId: Types.ObjectId | undefined;
+  let activeSession: ClientSession | undefined = session;
+
+  if (requestingUserIdOrSession) {
+    if (
+      typeof requestingUserIdOrSession === 'object' &&
+      'startTransaction' in requestingUserIdOrSession
+    ) {
+      activeSession = requestingUserIdOrSession;
+    } else if (mongoose.isObjectIdOrHexString(requestingUserIdOrSession)) {
+      _requestingUserId = new Types.ObjectId(requestingUserIdOrSession);
+    } else {
+      throw new Error('Valid requestingUserId is required');
+    }
   }
 
   if (!Array.isArray(userIds)) {
@@ -219,8 +236,8 @@ export async function addParticipantsToConversation(
   const conversationQuery = Conversation.findById(conversationId)
     .select('type')
     .lean();
-  if (session) {
-    conversationQuery.session(session);
+  if (activeSession) {
+    conversationQuery.session(activeSession);
   }
   const conversation = await conversationQuery.exec();
 
@@ -248,8 +265,8 @@ export async function addParticipantsToConversation(
   })
     .select('userId')
     .lean();
-  if (session) {
-    existingQuery.session(session);
+  if (activeSession) {
+    existingQuery.session(activeSession);
   }
   const existing = await existingQuery.exec();
 
@@ -269,8 +286,10 @@ export async function addParticipantsToConversation(
 
   const created = await ConversationParticipant.create(
     docs,
-    session ? { session, ordered: true } : { ordered: true }
+    activeSession ? { session: activeSession, ordered: true } : { ordered: true }
   );
+
+  // System message hook for when requestingUserId adds users to the conversation
 
   return created.map((doc) => doc.toObject<IConversationParticipant>());
 }
@@ -613,6 +632,7 @@ export async function removeParticipantFromConversation(
     throw new Error('Cannot remove participants from a direct conversation');
   }
 
+  // Pending fix: requester membership checks belong upstream to allow admin or club level participant removals
   const isRequesterParticipant = await isUserParticipant(conversationId, requestingUserId);
   if (!isRequesterParticipant) {
     throw new Error('User is not a participant in this conversation');
