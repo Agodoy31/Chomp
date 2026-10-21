@@ -8,6 +8,7 @@ import {
   ConversationType,
   IConversation,
   IConversationDetails,
+  IConversationFeedItem,
   IUserSummary,
 } from '../interfaces/conversation.interfaces';
 import { IConversationParticipant } from '../interfaces/conversationParticipant.interfaces';
@@ -643,5 +644,215 @@ export async function leaveConversation(
   }
 
   return removeParticipantFromConversation(conversationId, userId, userId);
+}
+
+export async function getUserConversations(
+  userId: Types.ObjectId
+): Promise<IConversationFeedItem[]> {
+  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
+    throw new Error('Valid userId is required');
+  }
+
+  const userObjectId = new Types.ObjectId(userId);
+
+  return ConversationParticipant.aggregate<IConversationFeedItem>([
+    {
+      $match: {
+        userId: userObjectId,
+      },
+    },
+    {
+      $lookup: {
+        from: 'conversations',
+        localField: 'conversationId',
+        foreignField: '_id',
+        as: 'conversation',
+      },
+    },
+    {
+      $unwind: '$conversation',
+    },
+    {
+      $lookup: {
+        from: 'messages',
+        let: { convId: '$conversationId' },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $eq: ['$conversationId', '$$convId'],
+              },
+            },
+          },
+          {
+            $sort: {
+              createdAt: -1,
+            },
+          },
+          {
+            $limit: 1,
+          },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'senderId',
+              foreignField: '_id',
+              as: 'sender',
+            },
+          },
+          {
+            $unwind: {
+              path: '$sender',
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              text: {
+                $cond: [
+                  {
+                    $ne: [{ $ifNull: ['$removedAt', null] }, null],
+                  },
+                  'This message was deleted',
+                  '$text',
+                ],
+              },
+              senderName: {
+                $trim: {
+                  input: {
+                    $concat: [
+                      { $ifNull: ['$sender.firstName', ''] },
+                      ' ',
+                      { $ifNull: ['$sender.lastName', ''] },
+                    ],
+                  },
+                },
+              },
+              createdAt: 1,
+            },
+          },
+        ],
+        as: 'latestMessageArray',
+      },
+    },
+    {
+      $addFields: {
+        latestMessage: {
+          $arrayElemAt: ['$latestMessageArray', 0],
+        },
+      },
+    },
+    {
+      $match: {
+        latestMessage: {
+          $ne: null,
+        },
+      },
+    },
+    {
+      $lookup: {
+        from: ConversationParticipant.collection.name,
+        let: { convId: '$conversationId', currentUserId: userObjectId },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  {
+                    $eq: ['$conversationId', '$$convId'],
+                  },
+                  {
+                    $ne: ['$userId', '$$currentUserId'],
+                  },
+                ],
+              },
+            },
+          },
+          {
+            $limit: 1,
+          },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'userId',
+              foreignField: '_id',
+              as: 'otherUser',
+            },
+          },
+          {
+            $unwind: {
+              path: '$otherUser',
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              fullName: {
+                $trim: {
+                  input: {
+                    $concat: [
+                      { $ifNull: ['$otherUser.firstName', ''] },
+                      ' ',
+                      { $ifNull: ['$otherUser.lastName', ''] },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        ],
+        as: 'otherParticipantArray',
+      },
+    },
+    {
+      $addFields: {
+        otherParticipant: {
+          $arrayElemAt: ['$otherParticipantArray', 0],
+        },
+      },
+    },
+    {
+      $project: {
+        _id: '$conversation._id',
+        type: '$conversation.type',
+        title: '$conversation.title',
+        clubId: '$conversation.clubId',
+        displayName: {
+          $cond: [
+            {
+              $eq: ['$conversation.type', ConversationType.DIRECT],
+            },
+            {
+              $cond: [
+                {
+                  $ne: [{ $ifNull: ['$otherParticipant.fullName', ''] }, ''],
+                },
+                '$otherParticipant.fullName',
+                'Direct Conversation',
+              ],
+            },
+            {
+              $cond: [
+                {
+                  $ne: [{ $ifNull: ['$conversation.title', ''] }, ''],
+                },
+                '$conversation.title',
+                'Group Conversation',
+              ],
+            },
+          ],
+        },
+        lastActivityAt: '$latestMessage.createdAt',
+        lastMessage: '$latestMessage',
+      },
+    },
+    {
+      $sort: {
+        lastActivityAt: -1,
+      },
+    },
+  ]).exec();
 }
 
