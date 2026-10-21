@@ -743,6 +743,7 @@ export async function getUserConversations(
         },
       },
     },
+    // Empty group chats disappear until system messages are implemented in the messaging schema
     {
       $match: {
         latestMessage: {
