@@ -3,6 +3,7 @@ import mongoose, { Types } from 'mongoose';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
+import { Message } from '../../../src/messaging/models/Message';
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
 import { User } from '../../../src/user/models/User';
 import { Club } from '../../../src/clubs/model/clubModel';
@@ -20,6 +21,7 @@ beforeAll(async () => {
     Club.init(),
     Conversation.init(),
     ConversationParticipant.init(),
+    Message.init(),
     User.init(),
   ]);
 }, 60000);
@@ -280,6 +282,37 @@ describe('createGroupConversation service', () => {
 
     expect(creatorRecord?.permission).toBe('MODERATE');
     expect(invitedRecord?.permission).toBe('WRITE');
+  });
+
+  it('inserts an initial system message recording group creation with creator full name', async () => {
+    const creator = await createTestUser({
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+      email: 'dwuerffel@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
+    });
+
+    const result = await createGroupConversation(
+      creator._id,
+      [member._id],
+      'Gator Corner Soft Serve Repair Crew'
+    );
+
+    const systemMessages = await Message.find({
+      conversationId: result._id,
+    })
+      .lean()
+      .exec();
+
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].senderId.toString()).toBe(creator._id.toString());
+    expect(systemMessages[0].text).toBe('Danny Wuerffel created the group');
+    expect(systemMessages[0].isSystem).toBe(true);
+    expect(systemMessages[0].isAnnouncement).toBe(false);
   });
 
   it('trims leading and trailing whitespace from group title', async () => {

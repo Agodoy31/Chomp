@@ -4,6 +4,7 @@
 import mongoose, { ClientSession, HydratedDocument, Types } from 'mongoose';
 import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
+import { Message } from '../models/Message';
 import {
   ConversationType,
   IConversation,
@@ -160,7 +161,12 @@ export async function createGroupConversation(
       ? title.trim()
       : DEFAULT_GROUP_CONVERSATION_TITLE;
 
-  // Wrap both writes in a transaction so if participant creation fails, the conversation is rolled back instead of left orphaned
+  const creator = await User.findById(creatorId)
+    .select('firstName lastName')
+    .lean<IUserSummary>()
+    .exec();
+  const creatorName = creator ? `${creator.firstName} ${creator.lastName}`.trim() : 'Someone';
+
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
@@ -174,7 +180,6 @@ export async function createGroupConversation(
       { session }
     );
 
-    // Build membership records linking each user to this chat so we can batch insert them in one database call
     const participantDocs = uniqueParticipants.map((userId) => {
       return {
         conversationId: conversation._id,
@@ -190,6 +195,19 @@ export async function createGroupConversation(
       session,
       ordered: true,
     });
+
+    await Message.create(
+      [
+        {
+          conversationId: conversation._id,
+          senderId: creatorId,
+          text: `${creatorName} created the group`,
+          isAnnouncement: false,
+          isSystem: true,
+        },
+      ],
+      { session }
+    );
 
     await session.commitTransaction();
 
