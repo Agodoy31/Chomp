@@ -11,7 +11,10 @@ import {
   IConversationFeedItem,
   IUserSummary,
 } from '../interfaces/conversation.interfaces';
-import { IConversationParticipant } from '../interfaces/conversationParticipant.interfaces';
+import {
+  IConversationParticipant,
+  ParticipantPermission,
+} from '../interfaces/conversationParticipant.interfaces';
 import { User } from '../../user/models/User';
 import { Club } from '../../clubs/model/clubModel';
 
@@ -176,6 +179,10 @@ export async function createGroupConversation(
       return {
         conversationId: conversation._id,
         userId,
+        permission:
+          userId.toString() === creatorId.toString()
+            ? ParticipantPermission.MODERATE
+            : ParticipantPermission.WRITE,
       };
     });
 
