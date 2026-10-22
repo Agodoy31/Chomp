@@ -247,6 +247,41 @@ describe('createGroupConversation service', () => {
     expect(participantUserIds).toContain(user3._id.toString());
   });
 
+  it('assigns moderate permission to group creator and write permission to invited participants', async () => {
+    const creator = await createTestUser({
+      firstName: 'Alberta',
+      lastName: 'Gator',
+      email: 'alberta@ufl.edu',
+    });
+    const invitedUser = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'FoodCourter',
+      email: 'subway_line_eternal@ufl.edu',
+    });
+
+    const result = await createGroupConversation(
+      creator._id,
+      [invitedUser._id],
+      'Gator Corner Soft Serve Repair Crew'
+    );
+
+    const participants = await ConversationParticipant.find({
+      conversationId: result._id,
+    })
+      .lean()
+      .exec();
+
+    const creatorRecord = participants.find((p) => {
+      return p.userId.toString() === creator._id.toString();
+    });
+    const invitedRecord = participants.find((p) => {
+      return p.userId.toString() === invitedUser._id.toString();
+    });
+
+    expect(creatorRecord?.permission).toBe('MODERATE');
+    expect(invitedRecord?.permission).toBe('WRITE');
+  });
+
   it('trims leading and trailing whitespace from group title', async () => {
     const creator = await createTestUser();
     const user2 = await createTestUser();
