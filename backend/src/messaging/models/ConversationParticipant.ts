@@ -1,8 +1,12 @@
 // See Issue #68: https://github.com/Agodoy31/Chomp/issues/68
 import { Schema, model } from 'mongoose';
-import { IConversationParticipant } from '../interfaces/conversationParticipant.interfaces';
+import {
+  IConversationParticipant,
+  ParticipantPermission,
+} from '../interfaces/conversationParticipant.interfaces';
 
 export type { IConversationParticipant } from '../interfaces/conversationParticipant.interfaces';
+export { ParticipantPermission } from '../interfaces/conversationParticipant.interfaces';
 
 const conversationParticipantSchema = new Schema<IConversationParticipant>(
   {
@@ -15,6 +19,12 @@ const conversationParticipantSchema = new Schema<IConversationParticipant>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'userId is required'],
+    },
+    permission: {
+      type: String,
+      enum: Object.values(ParticipantPermission),
+      required: [true, 'permission is required'],
+      default: ParticipantPermission.WRITE,
     },
   },
   {

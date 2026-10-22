@@ -35,6 +35,11 @@ const messageSchema = new Schema<IMessage>(
       required: true,
       default: false,
     },
+    isSystem: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
     removedAt: {
       type: Date,
       default: undefined,
