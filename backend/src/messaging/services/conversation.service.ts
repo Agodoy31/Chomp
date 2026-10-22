@@ -877,3 +877,27 @@ export async function getUserConversations(
   ]).exec();
 }
 
+export async function getClubChannels(
+  clubId: Types.ObjectId
+): Promise<IConversation[]> {
+  if (!clubId || !mongoose.isObjectIdOrHexString(clubId)) {
+    throw new Error('Valid clubId is required');
+  }
+
+  const clubObjectId = new Types.ObjectId(clubId);
+  const clubExists = await Club.exists({ _id: clubObjectId });
+  if (!clubExists) {
+    throw new Error('Club does not exist');
+  }
+
+  return Conversation.find({
+    clubId: clubObjectId,
+    type: ConversationType.CHANNEL,
+  })
+    .collation({ locale: 'en', strength: 2 })
+    .sort({ title: 1 })
+    .lean<IConversation[]>()
+    .exec();
+}
+
+
