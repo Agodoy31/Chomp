@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
+import { Message } from '../../../src/messaging/models/Message';
 import { User } from '../../../src/user/models/User';
 import { Club } from '../../../src/clubs/model/clubModel';
 import {
@@ -24,6 +25,7 @@ beforeAll(async () => {
     Club.init(),
     Conversation.init(),
     ConversationParticipant.init(),
+    Message.init(),
     User.init(),
   ]);
 }, 60000);
@@ -89,6 +91,79 @@ describe('addParticipantsToConversation service', () => {
       conversationId: group._id,
     }).lean().exec();
     expect(allInDb).toHaveLength(3);
+  });
+
+  it('inserts a system message with single user name when one participant is added', async () => {
+    const creator = await createTestUser({
+      firstName: 'Southwest',
+      lastName: 'Squatter',
+      email: 'bench_waitlist@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Krishna',
+      lastName: 'Regular',
+      email: 'lunch_line@ufl.edu',
+    });
+    const group = await createGroupConversation(creator._id, [user2._id], 'Lake Alice Turtle Watchers');
+
+    const newUser = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'FoodCourter',
+      email: 'subway_line_eternal@ufl.edu',
+    });
+
+    await addParticipantsToConversation(group._id, [newUser._id], creator._id);
+
+    const systemMessages = await Message.find({
+      conversationId: group._id,
+      text: /added/,
+    })
+      .lean()
+      .exec();
+
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].senderId.toString()).toBe(creator._id.toString());
+    expect(systemMessages[0].text).toBe('Southwest Squatter added Reitz FoodCourter');
+    expect(systemMessages[0].isSystem).toBe(true);
+  });
+
+  it('inserts a system message with participant count when multiple participants are added', async () => {
+    const creator = await createTestUser({
+      firstName: 'Southwest',
+      lastName: 'Squatter',
+      email: 'bench_waitlist@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Krishna',
+      lastName: 'Regular',
+      email: 'lunch_line@ufl.edu',
+    });
+    const group = await createGroupConversation(creator._id, [user2._id], 'Lake Alice Turtle Watchers');
+
+    const newUser1 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'FoodCourter',
+      email: 'subway_line_eternal@ufl.edu',
+    });
+    const newUser2 = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+
+    await addParticipantsToConversation(group._id, [newUser1._id, newUser2._id], creator._id);
+
+    const systemMessages = await Message.find({
+      conversationId: group._id,
+      text: /added/,
+    })
+      .lean()
+      .exec();
+
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].senderId.toString()).toBe(creator._id.toString());
+    expect(systemMessages[0].text).toBe('Southwest Squatter added 2 people');
+    expect(systemMessages[0].isSystem).toBe(true);
   });
 
   it('throws error when attempting to add participants to a direct conversation', async () => {
