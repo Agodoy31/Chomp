@@ -319,6 +319,37 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     expect(isUser3StillParticipant).toBe(true);
   });
 
+  it('throws error when non moderator attempts to remove another participant', async () => {
+    const creator = await createTestUser({
+      firstName: 'Alberta',
+      lastName: 'Gator',
+      email: 'alberta@ufl.edu',
+    });
+    const regularMember = await createTestUser({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+    const targetMember = await createTestUser({
+      firstName: 'Turlington',
+      lastName: 'Tabler',
+      email: 'flyer.dodger@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      creator._id,
+      [regularMember._id, targetMember._id],
+      'Turlington Plaza Frisbee'
+    );
+
+    await expect(
+      removeParticipantFromConversation(group._id, regularMember._id, targetMember._id)
+    ).rejects.toThrow('Only moderators can remove other participants');
+
+    const isTargetStillParticipant = await isUserParticipant(group._id, targetMember._id);
+    expect(isTargetStillParticipant).toBe(true);
+  });
+
   it('removes requesting user when calling leaveConversation', async () => {
     const user1 = await createTestUser({
       firstName: 'Dennis',

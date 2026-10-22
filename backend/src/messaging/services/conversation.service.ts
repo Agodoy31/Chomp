@@ -639,10 +639,20 @@ export async function removeParticipantFromConversation(
     throw new Error('Cannot remove participants from a direct conversation');
   }
 
-  // Pending fix: requester membership checks belong upstream to allow admin or club level participant removals
-  const isRequesterParticipant = await isUserParticipant(conversationId, requestingUserId);
-  if (!isRequesterParticipant) {
+  const requesterParticipant = await ConversationParticipant.findOne({
+    conversationId,
+    userId: requestingUserId,
+  })
+    .select('permission')
+    .lean();
+
+  if (!requesterParticipant) {
     throw new Error('User is not a participant in this conversation');
+  }
+
+  const isSelf = requestingUserId.toString() === targetUserId.toString();
+  if (!isSelf && requesterParticipant.permission !== ParticipantPermission.MODERATE) {
+    throw new Error('Only moderators can remove other participants');
   }
 
   const isTargetParticipant = await isUserParticipant(conversationId, targetUserId);
