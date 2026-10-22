@@ -7,6 +7,8 @@ import { ConversationParticipant } from '../models/ConversationParticipant';
 import {
   ConversationType,
   IConversation,
+  IConversationDetails,
+  IUserSummary,
 } from '../interfaces/conversation.interfaces';
 import { IConversationParticipant } from '../interfaces/conversationParticipant.interfaces';
 import { User } from '../../user/models/User';
@@ -453,3 +455,193 @@ export async function getConversationParticipants(
     .lean<IConversationParticipant[]>()
     .exec();
 }
+
+export async function getConversationDetails(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId
+): Promise<IConversationDetails | null> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  const isParticipant = await isUserParticipant(conversationId, requestingUserId);
+  if (!isParticipant) {
+    return null;
+  }
+
+  const conversation = await Conversation.findById(conversationId)
+    .select('type title clubId')
+    .lean<IConversation>()
+    .exec();
+
+  if (!conversation) {
+    return null;
+  }
+
+  const conversationObjectId = new Types.ObjectId(conversationId);
+
+  const participants = await ConversationParticipant.aggregate<IUserSummary>([
+    {
+      $match: {
+        conversationId: conversationObjectId,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        userId: 1,
+      },
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'userId',
+        foreignField: '_id',
+        as: 'user',
+      },
+    },
+    {
+      $unwind: '$user',
+    },
+    {
+      $project: {
+        _id: '$user._id',
+        firstName: '$user.firstName',
+        lastName: '$user.lastName',
+      },
+    },
+    {
+      $sort: {
+        firstName: 1,
+        lastName: 1,
+      },
+    },
+  ]);
+
+  let displayName = conversation.title ?? '';
+  if (conversation.type === ConversationType.DIRECT) {
+    const otherUser = participants.find(
+      (p) => p._id.toString() !== requestingUserId.toString()
+    )!;
+    displayName = `${otherUser.firstName} ${otherUser.lastName}`;
+  }
+
+  return {
+    _id: conversation._id,
+    type: conversation.type,
+    title: conversation.title,
+    clubId: conversation.clubId,
+    displayName,
+    participants,
+  };
+}
+
+export async function updateConversationTitle(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId,
+  newTitle: string
+): Promise<IConversation> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  if (typeof newTitle !== 'string' || newTitle.trim().length === 0) {
+    throw new Error('Valid conversation title is required');
+  }
+
+  const isParticipant = await isUserParticipant(conversationId, requestingUserId);
+  if (!isParticipant) {
+    throw new Error('User is not a participant in this conversation');
+  }
+
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) {
+    throw new Error('Conversation not found');
+  }
+
+  if (conversation.type === ConversationType.DIRECT) {
+    throw new Error('Cannot update title of a direct conversation');
+  }
+
+  conversation.title = newTitle.trim();
+
+  try {
+    await conversation.save();
+    return conversation.toObject<IConversation>();
+  } catch (error: any) {
+    if (error && error.code === 11000) {
+      throw new Error('A channel with this title already exists in the club', { cause: error });
+    }
+    throw error;
+  }
+}
+
+export async function removeParticipantFromConversation(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId,
+  targetUserId: Types.ObjectId
+): Promise<boolean> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  if (!targetUserId || !mongoose.isObjectIdOrHexString(targetUserId)) {
+    throw new Error('Valid targetUserId is required');
+  }
+
+  const conversation = await Conversation.findById(conversationId)
+    .select('type')
+    .lean();
+  if (!conversation) {
+    throw new Error('Conversation not found');
+  }
+
+  if (conversation.type === ConversationType.DIRECT) {
+    throw new Error('Cannot remove participants from a direct conversation');
+  }
+
+  const isRequesterParticipant = await isUserParticipant(conversationId, requestingUserId);
+  if (!isRequesterParticipant) {
+    throw new Error('User is not a participant in this conversation');
+  }
+
+  const isTargetParticipant = await isUserParticipant(conversationId, targetUserId);
+  if (!isTargetParticipant) {
+    throw new Error('Target user is not a participant in this conversation');
+  }
+
+  await ConversationParticipant.deleteOne({
+    conversationId,
+    userId: targetUserId,
+  }).exec();
+
+  return true;
+}
+
+export async function leaveConversation(
+  conversationId: Types.ObjectId,
+  userId: Types.ObjectId
+): Promise<boolean> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
+    throw new Error('Valid userId is required');
+  }
+
+  return removeParticipantFromConversation(conversationId, userId, userId);
+}
+
