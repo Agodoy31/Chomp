@@ -7,6 +7,7 @@ export interface IMessage {
   senderId: Types.ObjectId;
   text: string;
   isAnnouncement: boolean;
+  isSystem: boolean;
   removedAt?: Date;
   removedBy?: Types.ObjectId;
   createdAt: Date;
