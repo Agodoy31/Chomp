@@ -147,19 +147,29 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(await Membership.countDocuments({ userId, clubId: club._id })).toBe(1);
   });
 
-  it.each([
-    ['PENDING', 'A request to join this club is already pending'],
-    ['REJECTED', 'A previous request to join this club was rejected'],
-  ] as const)('returns 409 when the existing membership is %s', async (status, message) => {
-    const club = await createClub();
-    const userId = new mongoose.Types.ObjectId();
-    await Membership.create({ userId, clubId: club._id, status });
+  it('returns 409 when a join request is already pending', async () => {
+  const club = await createClub();
+  const userId = new mongoose.Types.ObjectId();
+  await Membership.create({ userId, clubId: club._id, status: 'PENDING' });
 
-    const res = await request(asUser(userId.toHexString())).post(`/api/clubs/${club._id.toString()}/join`);
+  const res = await request(asUser(userId.toHexString())).post(`/api/clubs/${club._id.toString()}/join`);
 
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('ERR_ALREADY_MEMBER');
-    expect(res.body.message).toBe(message);
-    expect(await Membership.countDocuments({ userId, clubId: club._id })).toBe(1);
-  });
+  expect(res.status).toBe(409);
+  expect(res.body.code).toBe('ERR_MEMBERSHIP_PENDING');
+  expect(res.body.message).toBe('A request to join this club is already pending');
+  expect(await Membership.countDocuments({ userId, clubId: club._id })).toBe(1);
+});
+
+it('returns 403 when a previous join request was rejected', async () => {
+  const club = await createClub();
+  const userId = new mongoose.Types.ObjectId();
+  await Membership.create({ userId, clubId: club._id, status: 'REJECTED' });
+
+  const res = await request(asUser(userId.toHexString())).post(`/api/clubs/${club._id.toString()}/join`);
+
+  expect(res.status).toBe(403);
+  expect(res.body.code).toBe('ERR_MEMBERSHIP_REJECTED');
+  expect(res.body.message).toBe('Rejected members cannot rejoin this club');
+  expect(await Membership.countDocuments({ userId, clubId: club._id })).toBe(1);
+});
 });

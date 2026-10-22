@@ -1,5 +1,5 @@
 import { InferSchemaType, Schema, model } from 'mongoose';
-
+import { CLUB_CATEGORIES, CLUB_STATUSES } from '../interfaces/clubs.interface';
 const meetingSchema = new Schema(
   {
     day: { type: String, trim: true },
@@ -15,7 +15,7 @@ const clubSchema = new Schema(
     description: { type: String, required: true, trim: true, maxlength: 1000},
     category: { 
       type: String, 
-      enum: ['ACADEMIC', 'CULTURAL', 'SPORTS', 'OTHER'] as const,
+      enum: CLUB_CATEGORIES,
       default: 'OTHER',
       required: true,
     },
@@ -23,7 +23,7 @@ const clubSchema = new Schema(
     proposerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: {
       type: String,
-      enum: ['PENDING', 'APPROVED', 'REJECTED'] as const,
+      enum: CLUB_STATUSES,
       default: 'PENDING',
       required: true,
     },

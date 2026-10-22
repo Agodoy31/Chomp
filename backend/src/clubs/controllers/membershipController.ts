@@ -1,80 +1,63 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import mongoose, { type HydratedDocument } from 'mongoose';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
+import { type MembershipStatus, type ClubStatus, type RequestWithSession, type ClientError } from '../interfaces/clubs.interface';
+import { 
+  sendError, isDuplicateKey, authenticationRequired } from '../errors';
 
 type MembershipRecord = HydratedDocument<MembershipShape>;
 
-type RequestWithSession = Request<{ clubId: string }> & {
-  session?: {
-    userId?: string;
-  };
-};
-
-type ClientError = {
-  status: number;
-  code: string;
-  message: string;
-};
-
 type ActivationResult = { membership: MembershipRecord } | { error: ClientError };
 
-function isDuplicateKey(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
-}
-
-function sendError(res: Response, error: ClientError): void {
-  res.status(error.status).json({ code: error.code, message: error.message });
-}
-
-function clubNotFound(): ClientError {
-  return { status: 404, code: 'ERR_CLUB_NOT_FOUND', message: 'Club not found' };
-}
-
-function rejectionForClub(status: string): ClientError {
+function rejectionForClub(status: Exclude<ClubStatus, 'APPROVED'>): ClientError {
   if (status === 'PENDING') {
-    return {
-      status: 403,
-      code: 'ERR_CLUB_NOT_APPROVED',
-      message: 'This club is pending approval and cannot be joined yet',
+    return { 
+      status: 403, 
+      code: 'ERR_CLUB_NOT_APPROVED', 
+      message: 'This club is pending approval and cannot be joined yet' 
     };
   }
   if (status === 'REJECTED') {
-    return {
-      status: 403,
-      code: 'ERR_CLUB_NOT_APPROVED',
-      message: 'This club was rejected and cannot be joined',
+    return { 
+      status: 403, 
+      code: 'ERR_CLUB_NOT_APPROVED', 
+      message: 'This club was rejected and cannot be joined' 
     };
   }
-  return { status: 403, code: 'ERR_CLUB_NOT_APPROVED', message: 'Club is not approved' };
+  return { 
+    status: 403, 
+    code: 'ERR_CLUB_NOT_APPROVED', 
+    message: 'This club is pending approval and cannot be joined yet' 
+  };
 }
 
-function rejectionForMembership(status: string): ClientError {
+function rejectionForMembership(status: Exclude<MembershipStatus, 'INACTIVE'>): ClientError {
   if (status === 'REMOVED') {
-    return {
-      status: 403,
-      code: 'ERR_MEMBER_REMOVED',
-      message: 'Removed members cannot rejoin this club',
+    return { 
+      status: 403, 
+      code: 'ERR_MEMBER_REMOVED', 
+      message: 'Removed members cannot rejoin this club' 
     };
   }
   if (status === 'PENDING') {
-    return {
-      status: 409,
-      code: 'ERR_ALREADY_MEMBER',
-      message: 'A request to join this club is already pending',
+    return { 
+      status: 409, 
+      code: 'ERR_MEMBERSHIP_PENDING', 
+      message: 'A request to join this club is already pending' 
     };
   }
   if (status === 'REJECTED') {
-    return {
-      status: 409,
-      code: 'ERR_ALREADY_MEMBER',
-      message: 'A previous request to join this club was rejected',
+    return { 
+      status: 403, 
+      code: 'ERR_MEMBERSHIP_REJECTED', 
+      message: 'Rejected members cannot rejoin this club' 
     };
   }
-  return {
-    status: 409,
-    code: 'ERR_ALREADY_MEMBER',
-    message: 'Already an active member of this club',
+  return { 
+    status: 409, 
+    code: 'ERR_ALREADY_MEMBER', 
+    message: 'Already an active member of this club' 
   };
 }
 
@@ -101,23 +84,28 @@ async function activateMembership(userId: string, clubId: string): Promise<Activ
 export const joinClub = async (req: RequestWithSession, res: Response): Promise<void> => {
   const userId = req.session?.userId;
   if (!userId) {
-    res.status(401).json({
-      code: 'ERR_AUTHENTICATION_REQUIRED',
-      message: 'Authentication required',
-    });
+    sendError(res, authenticationRequired()); //Will be replaced when user auth is implemented
     return;
   }
 
   const clubId = req.params.clubId;
 
   if (!mongoose.isValidObjectId(clubId)) {
-    sendError(res, clubNotFound());
+    sendError(res, { 
+      status: 404, 
+      code: 'ERR_CLUB_NOT_FOUND', 
+      message: 'Club not found' 
+    });
     return;
   }
 
   const club = await Club.findById(clubId);
   if (!club) {
-    sendError(res, clubNotFound());
+    sendError(res, { 
+      status: 404, 
+      code: 'ERR_CLUB_NOT_FOUND', 
+      message: 'Club not found' 
+    });
     return;
   }
   if (club.status !== 'APPROVED') {
@@ -138,11 +126,7 @@ export const joinClub = async (req: RequestWithSession, res: Response): Promise<
     }
 
     const raced = await Membership.findOne({ userId, clubId });
-    if (raced?.status === 'INACTIVE') {
-      res.status(201).json(await reactivate(raced));
-      return;
-    }
-
-    sendError(res, rejectionForMembership(raced?.status ?? 'ACTIVE'));
+    if (!raced) throw error;
+    sendError(res, rejectionForMembership(raced.status as Exclude<MembershipStatus, 'INACTIVE'>));
   }
 };
