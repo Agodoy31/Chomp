@@ -718,6 +718,38 @@ export async function removeParticipantFromConversation(
     userId: targetUserId,
   }).exec();
 
+  const requester = await User.findById(requestingUserId)
+    .select('firstName lastName')
+    .lean<IUserSummary>()
+    .exec();
+  const requesterName = requester
+    ? `${requester.firstName} ${requester.lastName}`.trim()
+    : 'Someone';
+
+  let text: string;
+  if (isSelf) {
+    text = `${requesterName} left the group`;
+  } else {
+    const targetUser = await User.findById(targetUserId)
+      .select('firstName lastName')
+      .lean<IUserSummary>()
+      .exec();
+    const targetName = targetUser
+      ? `${targetUser.firstName} ${targetUser.lastName}`.trim()
+      : 'someone';
+    text = `${requesterName} removed ${targetName}`;
+  }
+
+  await Message.create([
+    {
+      conversationId,
+      senderId: requestingUserId,
+      text,
+      isAnnouncement: false,
+      isSystem: true,
+    },
+  ]);
+
   return true;
 }
 
