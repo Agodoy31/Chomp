@@ -314,7 +314,42 @@ export async function addParticipantsToConversation(
     activeSession ? { session: activeSession, ordered: true } : { ordered: true }
   );
 
-  // System message hook for when requestingUserId adds users to the conversation
+  if (_requestingUserId) {
+    const requester = await User.findById(_requestingUserId)
+      .select('firstName lastName')
+      .lean<IUserSummary>()
+      .exec();
+    const requesterName = requester
+      ? `${requester.firstName} ${requester.lastName}`.trim()
+      : 'Someone';
+
+    let text: string;
+    if (usersToAdd.length === 1) {
+      const addedUser = await User.findById(usersToAdd[0])
+        .select('firstName lastName')
+        .lean<IUserSummary>()
+        .exec();
+      const addedUserName = addedUser
+        ? `${addedUser.firstName} ${addedUser.lastName}`.trim()
+        : 'someone';
+      text = `${requesterName} added ${addedUserName}`;
+    } else {
+      text = `${requesterName} added ${usersToAdd.length} people`;
+    }
+
+    await Message.create(
+      [
+        {
+          conversationId,
+          senderId: _requestingUserId,
+          text,
+          isAnnouncement: false,
+          isSystem: true,
+        },
+      ],
+      activeSession ? { session: activeSession } : undefined
+    );
+  }
 
   return created.map((doc) => doc.toObject<IConversationParticipant>());
 }
