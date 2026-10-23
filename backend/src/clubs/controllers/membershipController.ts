@@ -126,7 +126,7 @@ export const joinClub = async (req: RequestWithSession, res: Response): Promise<
     }
 
     const raced = await Membership.findOne({ userId, clubId });
-    if (!raced) throw error;
-    sendError(res, rejectionForMembership(raced.status as Exclude<MembershipStatus, 'INACTIVE'>));
+    if (!raced || raced.status === 'INACTIVE') throw error;
+    sendError(res, rejectionForMembership(raced.status));
   }
 };
