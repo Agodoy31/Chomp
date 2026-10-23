@@ -425,6 +425,72 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     expect(isTargetStillParticipant).toBe(true);
   });
 
+  it('inserts a system message when a moderator removes a participant', async () => {
+    const moderator = await createTestUser({
+      firstName: 'Southwest',
+      lastName: 'Squatter',
+      email: 'bench_waitlist@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'Turlington',
+      lastName: 'Tabler',
+      email: 'flyer.dodger@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      moderator._id,
+      [member._id],
+      'Southwest Rec Bench Press Waitlist'
+    );
+
+    await removeParticipantFromConversation(group._id, moderator._id, member._id);
+
+    const systemMessages = await Message.find({
+      conversationId: group._id,
+      text: /removed/,
+    })
+      .lean()
+      .exec();
+
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].senderId.toString()).toBe(moderator._id.toString());
+    expect(systemMessages[0].text).toBe('Southwest Squatter removed Turlington Tabler');
+    expect(systemMessages[0].isSystem).toBe(true);
+  });
+
+  it('inserts a system message when a participant leaves the conversation', async () => {
+    const creator = await createTestUser({
+      firstName: 'Southwest',
+      lastName: 'Squatter',
+      email: 'bench_waitlist@ufl.edu',
+    });
+    const leaver = await createTestUser({
+      firstName: 'Century',
+      lastName: 'Tower',
+      email: 'carillon@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      creator._id,
+      [leaver._id],
+      'Southwest Rec Bench Press Waitlist'
+    );
+
+    await leaveConversation(group._id, leaver._id);
+
+    const systemMessages = await Message.find({
+      conversationId: group._id,
+      text: /left the group/,
+    })
+      .lean()
+      .exec();
+
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].senderId.toString()).toBe(leaver._id.toString());
+    expect(systemMessages[0].text).toBe('Century Tower left the group');
+    expect(systemMessages[0].isSystem).toBe(true);
+  });
+
   it('removes requesting user when calling leaveConversation', async () => {
     const user1 = await createTestUser({
       firstName: 'Dennis',
