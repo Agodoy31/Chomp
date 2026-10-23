@@ -1,21 +1,24 @@
 import 'dotenv/config';
+import { once } from 'events';
 import session from 'express-session';
 import { MongoStore } from 'connect-mongo';
+import mongoose from 'mongoose';
 
-const isTest = process.env.NODE_ENV === 'test';
-const mongoUrl = process.env.MONGO_URI;
 const secret = process.env.SESSION_SECRET;
 
-if (!secret || !mongoUrl) {
-  throw new Error('MONGO_URI and SESSION_SECRET are required');
+if (!secret) {
+  throw new Error('SESSION_SECRET is required');
 }
 
-const store = isTest
-  ? new session.MemoryStore() // we have to use this connection durring tests
-  : MongoStore.create({
-      mongoUrl,
-      collectionName: 'sessions',
-    });
+const clientPromise =
+  mongoose.connection.readyState === 1
+    ? Promise.resolve(mongoose.connection.getClient())
+    : once(mongoose.connection, 'connected').then(() => mongoose.connection.getClient());
+
+const store = MongoStore.create({
+  clientPromise,
+  collectionName: 'sessions',
+});
 
 export const sessionMiddleware = session({
   name: 'chomp.sid',

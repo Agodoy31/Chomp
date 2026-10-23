@@ -5,12 +5,20 @@ import { clearTestDb, closeTestDb, connectTestDb } from "../../helpers/db";
 import { User } from "../../../src/user/models/User";
 import { hashPassword } from "../../../src/user/utils/passwordHashing";
 
-describe("Auth Routes Testing /api/auth/login", () => {
-    beforeAll(async () => {
-        await connectTestDb();
-        await User.init();
-    }, 60000);
+beforeAll(async () => {
+    await connectTestDb();
+    await User.init();
+}, 60000);
 
+afterEach(async () => {
+    await clearTestDb();
+});
+
+afterAll(async () => {
+    await closeTestDb();
+});
+
+describe("Auth Routes Testing /api/auth/login", () => {
     beforeEach(async ()=> {
         await User.create({
             email: "albert@ufl.edu",
@@ -19,15 +27,6 @@ describe("Auth Routes Testing /api/auth/login", () => {
             lastName: "Gator",
         });
     });
-    afterEach(async () => {
-        await clearTestDb();
-    });
-
-    afterAll(async () => {
-        await closeTestDb();
-    });
-
-
     test("Happy Path", async () => {
         const res = await request(app)
         .post("/api/auth/login")
@@ -37,7 +36,7 @@ describe("Auth Routes Testing /api/auth/login", () => {
         });
 
         expect(res.status).toBe(200);
-        expect(res.body.message).toBe("Login Success");
+        expect(res.body.message).toBe("SUCCESS_LOGIN");
         expect(res.body.user.id).toBeDefined();
         expect(res.body.user.email).toBe("albert@ufl.edu");
         expect(res.body.user.isAdmin).toBe(false);
@@ -60,7 +59,7 @@ describe("Auth Routes Testing /api/auth/login", () => {
         });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe("Email is required to login");
+        expect(res.body.message).toBe("ERR_EMAIL_REQUIRED");
     });
 
     test("Missing Password", async () => {
@@ -71,7 +70,7 @@ describe("Auth Routes Testing /api/auth/login", () => {
         });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe("Password is required to login");
+        expect(res.body.message).toBe("ERR_PASSWORD_REQUIRED");
     });
 
     test("No User", async () => {
@@ -83,7 +82,7 @@ describe("Auth Routes Testing /api/auth/login", () => {
         });
 
         expect(res.status).toBe(401);
-        expect(res.body.message).toBe("Invalid email or password");
+        expect(res.body.message).toBe("ERR_LOGIN_INVALID");
     });
 
     test("Incorrect Password", async () => {
@@ -95,7 +94,7 @@ describe("Auth Routes Testing /api/auth/login", () => {
         });
 
         expect(res.status).toBe(401);
-        expect(res.body.message).toBe("Invalid email or password");
+        expect(res.body.message).toBe("ERR_LOGIN_INVALID");
     });
 
     test("Case-Insensitive Login", async () => {
@@ -112,20 +111,6 @@ describe("Auth Routes Testing /api/auth/login", () => {
 });
 
 describe("Auth Routes Testing /api/auth/register", () => {
-    beforeAll(async () => {
-        await connectTestDb();
-        await User.init();
-    }, 60000);
-
-    afterEach(async () => {
-        await clearTestDb();
-    });
-
-    afterAll(async () => {
-        await closeTestDb();
-    });
-
-
     test("Happy Path", async () => {
         const res = await request(app)
         .post("/api/auth/register")
@@ -137,7 +122,7 @@ describe("Auth Routes Testing /api/auth/register", () => {
         });
 
         expect(res.status).toBe(201);
-        expect(res.body.message).toBe("New user registered");
+        expect(res.body.message).toBe("SUCCESS_REGISTER");
         expect(res.body.user.id).toBeDefined();
         expect(res.body.user.email).toBe("albert@ufl.edu");
         expect(res.body.user.isAdmin).toBe(false);
@@ -148,7 +133,8 @@ describe("Auth Routes Testing /api/auth/register", () => {
         expect(res.body.hashedPassword).toBeUndefined();
         expect(res.body.createdAt).toBeUndefined();
         expect(res.body.updatedAt).toBeUndefined();
-        expect(res.body.authToken).toBeDefined(); // TODO:: Make a Check here for auth token
+        expect(res.headers["set-cookie"]).toBeDefined();
+        expect(res.headers["set-cookie"]?.[0]).toContain("chomp.sid");
     });
 
     test("Missing Email", async () => {
@@ -161,7 +147,7 @@ describe("Auth Routes Testing /api/auth/register", () => {
         });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe("Email is required");
+        expect(res.body.message).toBe("ERR_EMAIL_REQUIRED");
     });
 
     test("Missing Password", async () => {
@@ -174,7 +160,7 @@ describe("Auth Routes Testing /api/auth/register", () => {
         });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe("Password is required");
+        expect(res.body.message).toBe("ERR_PASSWORD_REQUIRED");
     });
     test("Missing First Name", async () => {
         const res = await request(app)
@@ -186,7 +172,7 @@ describe("Auth Routes Testing /api/auth/register", () => {
         });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe("First name is required");
+        expect(res.body.message).toBe("ERR_FIRST_NAME_REQUIRED");
     });
     test("Missing Last Name", async () => {
         const res = await request(app)
@@ -198,7 +184,7 @@ describe("Auth Routes Testing /api/auth/register", () => {
         });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe("Last name is required");
+        expect(res.body.message).toBe("ERR_LAST_NAME_REQUIRED");
     });
 
     test("User Already Exists", async () => {
@@ -219,7 +205,7 @@ describe("Auth Routes Testing /api/auth/register", () => {
         });
 
         expect(res.status).toBe(409);
-        expect(res.body.message).toBe("There already exists a user with this email");
+        expect(res.body.message).toBe("ERR_EMAIL_TAKEN");
     });
 
     test("Reject Non-UFL Email", async () => {
