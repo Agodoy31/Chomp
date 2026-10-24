@@ -1,5 +1,6 @@
 // See Issue #51: https://github.com/Agodoy31/Chomp/issues/51
 import { Types } from 'mongoose';
+import { ParticipantPermission } from './conversationParticipant.interfaces';
 
 export enum ConversationType {
   DIRECT = 'DIRECT',
@@ -23,13 +24,19 @@ export interface IUserSummary {
   lastName: string;
 }
 
+export interface IConversationParticipantSummary {
+  _id: Types.ObjectId;
+  userId: IUserSummary;
+  permission: ParticipantPermission;
+}
+
 export interface IConversationDetails {
   _id: Types.ObjectId;
   type: ConversationType;
   title?: string;
   clubId?: Types.ObjectId;
   displayName: string;
-  participants: IUserSummary[];
+  participants: IConversationParticipantSummary[];
 }
 
 export interface IConversationFeedItem {
