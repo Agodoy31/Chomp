@@ -14,11 +14,7 @@ export interface ClubFilter {
   category?: ClubCategory | { $in: ClubCategory[] };
 }
 
-export interface RequestWithSession extends Request<{ clubId: string }> {
-  session?: {
-    userId?: string;
-  };
-};
+export interface RequestWithSession extends Request<{ clubId: string }> {}
 
 export interface ClientError {
   status: number;
