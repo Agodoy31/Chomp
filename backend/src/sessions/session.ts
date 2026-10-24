@@ -26,11 +26,12 @@ export const sessionMiddleware = session({
   store,
   resave: false,
   saveUninitialized: false,
+  rolling: true,
   cookie: {
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 1000 * 12, // 12 hours before the session token expires
+    maxAge: 1000 * 60 * 60 * 72,
   },
 });
