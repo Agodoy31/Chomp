@@ -4,6 +4,7 @@ import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
+import { ParticipantPermission } from '../../../src/messaging/interfaces/conversationParticipant.interfaces';
 import { User } from '../../../src/user/models/User';
 import { Club } from '../../../src/clubs/model/clubModel';
 import {
@@ -283,8 +284,8 @@ describe('getConversationParticipants service', () => {
 
 describe('getConversationDetails service', () => {
   it('returns direct conversation details with other participant full name as display name and sorted participants', async () => {
-    const user1 = await createTestUser({ firstName: 'Bob', lastName: 'Builder' });
-    const user2 = await createTestUser({ firstName: 'Alice', lastName: 'Smith' });
+    const user1 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Broward', lastName: 'Freshman', email: 'broward.dining@ufl.edu' });
 
     const directResult = await createDirectConversation(user1._id, user2._id);
     const conversationId = directResult.conversation._id;
@@ -293,28 +294,31 @@ describe('getConversationDetails service', () => {
     expect(detailsForUser1).not.toBeNull();
     expect(detailsForUser1?._id.toString()).toBe(conversationId.toString());
     expect(detailsForUser1?.type).toBe(ConversationType.DIRECT);
-    expect(detailsForUser1?.displayName).toBe('Alice Smith');
+    expect(detailsForUser1?.displayName).toBe('Broward Freshman');
 
     const detailsForUser2 = await getConversationDetails(conversationId, user2._id);
     expect(detailsForUser2).not.toBeNull();
     expect(detailsForUser2?._id.toString()).toBe(conversationId.toString());
     expect(detailsForUser2?.type).toBe(ConversationType.DIRECT);
-    expect(detailsForUser2?.displayName).toBe('Bob Builder');
+    expect(detailsForUser2?.displayName).toBe('Tim Tebow');
 
     expect(detailsForUser1?.participants).toHaveLength(2);
-    expect(detailsForUser1?.participants[0]._id.toString()).toBe(user2._id.toString());
-    expect(detailsForUser1?.participants[0].firstName).toBe('Alice');
-    expect(detailsForUser1?.participants[0].lastName).toBe('Smith');
-    expect(detailsForUser1?.participants[1]._id.toString()).toBe(user1._id.toString());
-    expect(detailsForUser1?.participants[1].firstName).toBe('Bob');
-    expect(detailsForUser1?.participants[1].lastName).toBe('Builder');
+    expect(detailsForUser1?.participants[0].userId._id.toString()).toBe(user2._id.toString());
+    expect(detailsForUser1?.participants[0].userId.firstName).toBe('Broward');
+    expect(detailsForUser1?.participants[0].userId.lastName).toBe('Freshman');
+    expect(detailsForUser1?.participants[0].permission).toBe(ParticipantPermission.WRITE);
+
+    expect(detailsForUser1?.participants[1].userId._id.toString()).toBe(user1._id.toString());
+    expect(detailsForUser1?.participants[1].userId.firstName).toBe('Tim');
+    expect(detailsForUser1?.participants[1].userId.lastName).toBe('Tebow');
+    expect(detailsForUser1?.participants[1].permission).toBe(ParticipantPermission.WRITE);
   });
 
   it('returns group conversation details with group title as display name and sorted participants', async () => {
-    const user1 = await createTestUser({ firstName: 'Charlie', lastName: 'Delta' });
-    const user2 = await createTestUser({ firstName: 'Alice', lastName: 'Zeta' });
-    const user3 = await createTestUser({ firstName: 'Bob', lastName: 'Alpha' });
-    const groupTitle = 'Algorithms Study Group';
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Broward', lastName: 'Freshman', email: 'broward.dining@ufl.edu' });
+    const user3 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+    const groupTitle = 'Norman Hall Coffee Club';
 
     const group = await createGroupConversation(user1._id, [user2._id, user3._id], groupTitle);
 
@@ -326,24 +330,29 @@ describe('getConversationDetails service', () => {
     expect(details?.displayName).toBe(groupTitle);
 
     expect(details?.participants).toHaveLength(3);
-    expect(details?.participants[0].firstName).toBe('Alice');
-    expect(details?.participants[0].lastName).toBe('Zeta');
-    expect(details?.participants[1].firstName).toBe('Bob');
-    expect(details?.participants[1].lastName).toBe('Alpha');
-    expect(details?.participants[2].firstName).toBe('Charlie');
-    expect(details?.participants[2].lastName).toBe('Delta');
+    expect(details?.participants[0].userId.firstName).toBe('Broward');
+    expect(details?.participants[0].userId.lastName).toBe('Freshman');
+    expect(details?.participants[0].permission).toBe(ParticipantPermission.WRITE);
+
+    expect(details?.participants[1].userId.firstName).toBe('Southwest');
+    expect(details?.participants[1].userId.lastName).toBe('Squatter');
+    expect(details?.participants[1].permission).toBe(ParticipantPermission.MODERATE);
+
+    expect(details?.participants[2].userId.firstName).toBe('Tim');
+    expect(details?.participants[2].userId.lastName).toBe('Tebow');
+    expect(details?.participants[2].permission).toBe(ParticipantPermission.WRITE);
   });
 
   it('returns channel conversation details with channel title as display name and sorted participants', async () => {
-    const proposer = await createTestUser({ firstName: 'Peter', lastName: 'Proposer' });
-    const user1 = await createTestUser({ firstName: 'Brenda', lastName: 'Beta' });
-    const user2 = await createTestUser({ firstName: 'Arthur', lastName: 'Archer' });
-    const club = await createTestClub(proposer._id);
+    const clubCreator = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const member1 = await createTestUser({ firstName: 'Broward', lastName: 'Freshman', email: 'broward.dining@ufl.edu' });
+    const member2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+    const club = await createTestClub(clubCreator._id);
     const channelTitle = 'announcements';
 
-    const channel = await createChannel(club._id, channelTitle, [user1._id, user2._id]);
+    const channel = await createChannel(club._id, channelTitle, [member1._id, member2._id]);
 
-    const details = await getConversationDetails(channel._id, user1._id);
+    const details = await getConversationDetails(channel._id, member1._id);
     expect(details).not.toBeNull();
     expect(details?._id.toString()).toBe(channel._id.toString());
     expect(details?.type).toBe(ConversationType.CHANNEL);
@@ -352,10 +361,13 @@ describe('getConversationDetails service', () => {
     expect(details?.clubId?.toString()).toBe(club._id.toString());
 
     expect(details?.participants).toHaveLength(2);
-    expect(details?.participants[0].firstName).toBe('Arthur');
-    expect(details?.participants[0].lastName).toBe('Archer');
-    expect(details?.participants[1].firstName).toBe('Brenda');
-    expect(details?.participants[1].lastName).toBe('Beta');
+    expect(details?.participants[0].userId.firstName).toBe('Broward');
+    expect(details?.participants[0].userId.lastName).toBe('Freshman');
+    expect(details?.participants[0].permission).toBe(ParticipantPermission.WRITE);
+
+    expect(details?.participants[1].userId.firstName).toBe('Tim');
+    expect(details?.participants[1].userId.lastName).toBe('Tebow');
+    expect(details?.participants[1].permission).toBe(ParticipantPermission.WRITE);
   });
 
   it('returns null when requesting user is not a participant in the conversation', async () => {
@@ -363,7 +375,7 @@ describe('getConversationDetails service', () => {
     const user2 = await createTestUser();
     const nonParticipant = await createTestUser();
 
-    const group = await createGroupConversation(user1._id, [user2._id], 'Private Study');
+    const group = await createGroupConversation(user1._id, [user2._id], 'Newell Hall Late Night Debuggers');
 
     const result = await getConversationDetails(group._id, nonParticipant._id);
     expect(result).toBeNull();
@@ -413,8 +425,8 @@ describe('getConversationDetails service', () => {
   });
 
   it('returns plain objects without timestamps or Mongoose document methods', async () => {
-    const user1 = await createTestUser({ firstName: 'First', lastName: 'User' });
-    const user2 = await createTestUser({ firstName: 'Second', lastName: 'User' });
+    const user1 = await createTestUser({ firstName: 'Broward', lastName: 'Freshman' });
+    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow' });
 
     const direct = await createDirectConversation(user1._id, user2._id);
     const conversationId = direct.conversation._id;
@@ -430,15 +442,19 @@ describe('getConversationDetails service', () => {
     expect(details?.participants).toHaveLength(2);
     for (const participant of details!.participants) {
       expect(participant._id).toBeDefined();
-      expect(participant.firstName).toBeDefined();
-      expect(participant.lastName).toBeDefined();
+      expect(participant.permission).toBe(ParticipantPermission.WRITE);
+      expect(participant.userId._id).toBeDefined();
+      expect(participant.userId.firstName).toBeDefined();
+      expect(participant.userId.lastName).toBeDefined();
       expect((participant as any).save).toBeUndefined();
       expect((participant as any).toObject).toBeUndefined();
       expect((participant as any).createdAt).toBeUndefined();
       expect((participant as any).updatedAt).toBeUndefined();
       expect((participant as any).joinedAt).toBeUndefined();
-      const keys = Object.keys(participant).sort();
-      expect(keys).toEqual(['_id', 'firstName', 'lastName']);
+      const participantKeys = Object.keys(participant).sort();
+      expect(participantKeys).toEqual(['_id', 'permission', 'userId']);
+      const userKeys = Object.keys(participant.userId).sort();
+      expect(userKeys).toEqual(['_id', 'firstName', 'lastName']);
     }
   });
 
