@@ -16,7 +16,10 @@ import {
   leaveConversation,
   removeParticipantFromConversation,
   updateConversationTitle,
+  updateParticipantPermission,
+  updateParticipantPermissions,
 } from '../../../src/messaging/services/conversation.service';
+import { ParticipantPermission } from '../../../src/messaging/interfaces/conversationParticipant.interfaces';
 import { createTestUser, createTestClub } from './conversationTestUtils';
 
 beforeAll(async () => {
@@ -616,5 +619,273 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     ).rejects.toThrow('Valid userId is required');
   });
 });
+
+describe('updateParticipantPermissions service', () => {
+  it('promotes member to moderator with transition system message', async () => {
+    const moderator = await createTestUser({
+      firstName: 'Dennis',
+      lastName: 'Heckler',
+      email: 'turlington_screamer@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      moderator._id,
+      [member._id],
+      'Broward Dining Raw Chicken Investigators'
+    );
+
+    const updated = await updateParticipantPermission(
+      group._id,
+      moderator._id,
+      member._id,
+      ParticipantPermission.MODERATE
+    );
+
+    expect(updated.permission).toBe(ParticipantPermission.MODERATE);
+
+    const systemMessages = await Message.find({
+      conversationId: group._id,
+      isSystem: true,
+      text: /moderator/,
+    })
+      .lean()
+      .exec();
+
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].text).toBe('Dennis Heckler made Broward Freshman a moderator');
+  });
+
+  it('demotes moderator and updates permissions with transition system messages', async () => {
+    const creator = await createTestUser({
+      firstName: 'Dennis',
+      lastName: 'Heckler',
+      email: 'turlington_screamer@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      creator._id,
+      [member._id],
+      'Broward Dining Raw Chicken Investigators'
+    );
+
+    await updateParticipantPermission(
+      group._id,
+      creator._id,
+      member._id,
+      ParticipantPermission.MODERATE
+    );
+
+    const demoted = await updateParticipantPermission(
+      group._id,
+      creator._id,
+      member._id,
+      ParticipantPermission.WRITE
+    );
+    expect(demoted.permission).toBe(ParticipantPermission.WRITE);
+
+    const restricted = await updateParticipantPermission(
+      group._id,
+      creator._id,
+      member._id,
+      ParticipantPermission.READ
+    );
+    expect(restricted.permission).toBe(ParticipantPermission.READ);
+
+    const restored = await updateParticipantPermission(
+      group._id,
+      creator._id,
+      member._id,
+      ParticipantPermission.WRITE
+    );
+    expect(restored.permission).toBe(ParticipantPermission.WRITE);
+
+    const systemMessages = await Message.find({
+      conversationId: group._id,
+      isSystem: true,
+    })
+      .lean()
+      .exec();
+
+    const texts = systemMessages.map((m) => m.text);
+    expect(texts).toContain('Dennis Heckler removed Broward Freshman as a moderator');
+    expect(texts).toContain('Dennis Heckler set Broward Freshman to read only');
+    expect(texts).toContain('Dennis Heckler allowed Broward Freshman to send messages');
+  });
+
+  it('updates multiple permissions in bulk and suppresses system messages', async () => {
+    const moderator = await createTestUser({
+      firstName: 'Dennis',
+      lastName: 'Heckler',
+      email: 'turlington_screamer@ufl.edu',
+    });
+    const member1 = await createTestUser({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+    const member2 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+
+    const group = await createGroupConversation(
+      moderator._id,
+      [member1._id, member2._id],
+      'Broward Dining Raw Chicken Investigators'
+    );
+
+    const updatedList = await updateParticipantPermissions(
+      group._id,
+      moderator._id,
+      [
+        [member1._id, ParticipantPermission.MODERATE],
+        [member2._id, ParticipantPermission.READ],
+      ]
+    );
+
+    expect(updatedList).toHaveLength(2);
+    expect(updatedList[0].permission).toBe(ParticipantPermission.MODERATE);
+    expect(updatedList[1].permission).toBe(ParticipantPermission.READ);
+
+    const systemMessages = await Message.find({
+      conversationId: group._id,
+      isSystem: true,
+      text: /moderator|read only|messages/,
+    })
+      .lean()
+      .exec();
+
+    expect(systemMessages).toHaveLength(0);
+  });
+
+  it('updates channel permissions silently and rejects unauthorized requests', async () => {
+    const moderator = await createTestUser({
+      firstName: 'Dennis',
+      lastName: 'Heckler',
+      email: 'turlington_screamer@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+    const club = await createTestClub(moderator._id, {
+      name: 'Krishna Lunch Line Appreciators',
+    });
+
+    const channel = await createChannel(club._id, 'lunch-discussions', [moderator._id, member._id]);
+
+    await ConversationParticipant.updateOne(
+      { conversationId: channel._id, userId: moderator._id },
+      { permission: ParticipantPermission.MODERATE }
+    );
+
+    const updated = await updateParticipantPermission(
+      channel._id,
+      moderator._id,
+      member._id,
+      ParticipantPermission.READ
+    );
+
+    expect(updated.permission).toBe(ParticipantPermission.READ);
+
+    const channelMessages = await Message.find({
+      conversationId: channel._id,
+    })
+      .lean()
+      .exec();
+    expect(channelMessages).toHaveLength(0);
+
+    await expect(
+      updateParticipantPermission(
+        channel._id,
+        member._id,
+        moderator._id,
+        ParticipantPermission.WRITE
+      )
+    ).rejects.toThrow('Only moderators can update participant permissions');
+  });
+
+  it('validates inputs and rejects direct conversations', async () => {
+    const user1 = await createTestUser();
+    const user2 = await createTestUser();
+    const nonMember = await createTestUser();
+    const outsider = await createTestUser();
+
+    const group = await createGroupConversation(
+      user1._id,
+      [user2._id],
+      'Broward Dining Raw Chicken Investigators'
+    );
+    const direct = await createDirectConversation(user1._id, user2._id);
+    const fakeId = new Types.ObjectId();
+
+    await expect(
+      updateParticipantPermission(
+        direct.conversation._id,
+        user1._id,
+        user2._id,
+        ParticipantPermission.MODERATE
+      )
+    ).rejects.toThrow('Cannot update permissions in a direct conversation');
+
+    await expect(
+      updateParticipantPermission(
+        group._id,
+        nonMember._id,
+        user2._id,
+        ParticipantPermission.MODERATE
+      )
+    ).rejects.toThrow('User is not a participant in this conversation');
+
+    await expect(
+      updateParticipantPermission(
+        group._id,
+        user1._id,
+        outsider._id,
+        ParticipantPermission.MODERATE
+      )
+    ).rejects.toThrow('Target user is not a participant in this conversation');
+
+    await expect(
+      updateParticipantPermission(
+        null as unknown as Types.ObjectId,
+        user1._id,
+        user2._id,
+        ParticipantPermission.MODERATE
+      )
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      updateParticipantPermission(
+        group._id,
+        null as unknown as Types.ObjectId,
+        user2._id,
+        ParticipantPermission.MODERATE
+      )
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      updateParticipantPermission(
+        fakeId,
+        user1._id,
+        user2._id,
+        ParticipantPermission.MODERATE
+      )
+    ).rejects.toThrow('Conversation not found');
+  });
+});
+
 
 
