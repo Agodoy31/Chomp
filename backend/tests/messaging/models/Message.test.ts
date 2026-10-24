@@ -232,4 +232,87 @@ describe('Message Model', () => {
       expect(messages[1]._id.toString()).toBe(olderId.toString());
     });
   });
+
+  describe('Client ID and deduplication index', () => {
+    it('persists a message with client ID', async () => {
+      const conversationId = new Types.ObjectId();
+      const senderId = new Types.ObjectId();
+      const clientHandle = 'client-msg-12345';
+
+      const message = await Message.create({
+        conversationId,
+        senderId,
+        text: 'Message with client handle',
+        clientId: clientHandle,
+      });
+
+      expect(message.clientId).toBe(clientHandle);
+    });
+
+    it('rejects duplicate client ID within the same conversation', async () => {
+      const conversationId = new Types.ObjectId();
+      const senderId = new Types.ObjectId();
+      const clientHandle = 'client-msg-12345';
+
+      await Message.create({
+        conversationId,
+        senderId,
+        text: 'Initial delivery',
+        clientId: clientHandle,
+      });
+
+      await expect(
+        Message.create({
+          conversationId,
+          senderId,
+          text: 'Network retry with identical client ID',
+          clientId: clientHandle,
+        })
+      ).rejects.toThrow();
+    });
+
+    it('allows identical client ID across different conversations', async () => {
+      const conversationId1 = new Types.ObjectId();
+      const conversationId2 = new Types.ObjectId();
+      const senderId = new Types.ObjectId();
+      const sharedClientHandle = 'client-msg-12345';
+
+      const first = await Message.create({
+        conversationId: conversationId1,
+        senderId,
+        text: 'Message in first chat',
+        clientId: sharedClientHandle,
+      });
+
+      const second = await Message.create({
+        conversationId: conversationId2,
+        senderId,
+        text: 'Message in second chat',
+        clientId: sharedClientHandle,
+      });
+
+      expect(first.clientId).toBe(sharedClientHandle);
+      expect(second.clientId).toBe(sharedClientHandle);
+    });
+
+    it('allows multiple messages without client ID in the same conversation', async () => {
+      const conversationId = new Types.ObjectId();
+      const senderId = new Types.ObjectId();
+
+      const first = await Message.create({
+        conversationId,
+        senderId,
+        text: 'First message without client ID',
+      });
+
+      const second = await Message.create({
+        conversationId,
+        senderId,
+        text: 'Second message without client ID',
+      });
+
+      expect(first._id).toBeDefined();
+      expect(second._id).toBeDefined();
+    });
+  });
 });

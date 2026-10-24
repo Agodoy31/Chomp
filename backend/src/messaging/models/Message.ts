@@ -1,4 +1,3 @@
-// See Issue #50: https://github.com/Agodoy31/Chomp/issues/50
 import { Schema, model } from 'mongoose';
 import { IMessage } from '../interfaces/message.interfaces';
 
@@ -15,6 +14,10 @@ const messageSchema = new Schema<IMessage>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'senderId is required'],
+    },
+    clientId: {
+      type: String,
+      default: undefined,
     },
     text: {
       type: String,
@@ -55,8 +58,15 @@ const messageSchema = new Schema<IMessage>(
   }
 );
 
-// Compound index supports efficient descending message history pagination
 messageSchema.index({ conversationId: 1, createdAt: -1, _id: -1 });
+
+messageSchema.index(
+  { conversationId: 1, clientId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { clientId: { $type: 'string' } },
+  }
+);
 
 export const Message = model<IMessage>(
   'Message',
