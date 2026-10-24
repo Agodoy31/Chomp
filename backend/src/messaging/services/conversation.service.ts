@@ -991,6 +991,7 @@ export async function getUserConversations(
           {
             $sort: {
               createdAt: -1,
+              _id: -1,
             },
           },
           {

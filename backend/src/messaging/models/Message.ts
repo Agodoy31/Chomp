@@ -56,7 +56,7 @@ const messageSchema = new Schema<IMessage>(
 );
 
 // Compound index supports efficient descending message history pagination
-messageSchema.index({ conversationId: 1, createdAt: -1 });
+messageSchema.index({ conversationId: 1, createdAt: -1, _id: -1 });
 
 export const Message = model<IMessage>(
   'Message',

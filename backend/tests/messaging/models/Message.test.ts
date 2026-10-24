@@ -198,5 +198,38 @@ describe('Message Model', () => {
       expect(results[0].conversationId.toString()).toBe(conversationId1.toString());
       expect(results[0].text).toBe('Message in room 1');
     });
+
+    it('uses id as secondary tiebreaker for messages with identical timestamps', async () => {
+      const conversationId = new Types.ObjectId();
+      const senderId = new Types.ObjectId();
+      const identicalTime = new Date('2026-01-01T10:00:00.000Z');
+
+      const olderId = new Types.ObjectId('650000000000000000000001');
+      const newerId = new Types.ObjectId('650000000000000000000002');
+
+      await Message.create({
+        _id: olderId,
+        conversationId,
+        senderId,
+        text: 'Older tie message',
+        createdAt: identicalTime,
+      });
+
+      await Message.create({
+        _id: newerId,
+        conversationId,
+        senderId,
+        text: 'Newer tie message',
+        createdAt: identicalTime,
+      });
+
+      const messages = await Message.find({ conversationId })
+        .sort({ createdAt: -1, _id: -1 })
+        .lean();
+
+      expect(messages).toHaveLength(2);
+      expect(messages[0]._id.toString()).toBe(newerId.toString());
+      expect(messages[1]._id.toString()).toBe(olderId.toString());
+    });
   });
 });
