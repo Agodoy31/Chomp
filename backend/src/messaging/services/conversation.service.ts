@@ -8,6 +8,7 @@ import {
   ConversationType,
   IConversation,
   IConversationDetails,
+  IConversationFeedItem,
   IUserSummary,
 } from '../interfaces/conversation.interfaces';
 import { IConversationParticipant } from '../interfaces/conversationParticipant.interfaces';
@@ -199,10 +200,27 @@ export async function createGroupConversation(
 export async function addParticipantsToConversation(
   conversationId: Types.ObjectId,
   userIds: Types.ObjectId[],
+  requestingUserIdOrSession?: Types.ObjectId | ClientSession,
   session?: ClientSession
 ): Promise<IConversationParticipant[]> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new Error('Valid conversationId is required');
+  }
+
+  let _requestingUserId: Types.ObjectId | undefined;
+  let activeSession: ClientSession | undefined = session;
+
+  if (requestingUserIdOrSession) {
+    if (
+      typeof requestingUserIdOrSession === 'object' &&
+      'startTransaction' in requestingUserIdOrSession
+    ) {
+      activeSession = requestingUserIdOrSession;
+    } else if (mongoose.isObjectIdOrHexString(requestingUserIdOrSession)) {
+      _requestingUserId = new Types.ObjectId(requestingUserIdOrSession);
+    } else {
+      throw new Error('Valid requestingUserId is required');
+    }
   }
 
   if (!Array.isArray(userIds)) {
@@ -218,8 +236,8 @@ export async function addParticipantsToConversation(
   const conversationQuery = Conversation.findById(conversationId)
     .select('type')
     .lean();
-  if (session) {
-    conversationQuery.session(session);
+  if (activeSession) {
+    conversationQuery.session(activeSession);
   }
   const conversation = await conversationQuery.exec();
 
@@ -247,8 +265,8 @@ export async function addParticipantsToConversation(
   })
     .select('userId')
     .lean();
-  if (session) {
-    existingQuery.session(session);
+  if (activeSession) {
+    existingQuery.session(activeSession);
   }
   const existing = await existingQuery.exec();
 
@@ -268,8 +286,10 @@ export async function addParticipantsToConversation(
 
   const created = await ConversationParticipant.create(
     docs,
-    session ? { session, ordered: true } : { ordered: true }
+    activeSession ? { session: activeSession, ordered: true } : { ordered: true }
   );
+
+  // System message hook for when requestingUserId adds users to the conversation
 
   return created.map((doc) => doc.toObject<IConversationParticipant>());
 }
@@ -612,6 +632,7 @@ export async function removeParticipantFromConversation(
     throw new Error('Cannot remove participants from a direct conversation');
   }
 
+  // Pending fix: requester membership checks belong upstream to allow admin or club level participant removals
   const isRequesterParticipant = await isUserParticipant(conversationId, requestingUserId);
   if (!isRequesterParticipant) {
     throw new Error('User is not a participant in this conversation');
@@ -644,4 +665,239 @@ export async function leaveConversation(
 
   return removeParticipantFromConversation(conversationId, userId, userId);
 }
+
+export async function getUserConversations(
+  userId: Types.ObjectId
+): Promise<IConversationFeedItem[]> {
+  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
+    throw new Error('Valid userId is required');
+  }
+
+  const userObjectId = new Types.ObjectId(userId);
+
+  return ConversationParticipant.aggregate<IConversationFeedItem>([
+    {
+      $match: {
+        userId: userObjectId,
+      },
+    },
+    {
+      $lookup: {
+        from: 'conversations',
+        localField: 'conversationId',
+        foreignField: '_id',
+        as: 'conversation',
+      },
+    },
+    {
+      $unwind: '$conversation',
+    },
+    {
+      $lookup: {
+        from: 'messages',
+        let: { convId: '$conversationId' },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $eq: ['$conversationId', '$$convId'],
+              },
+            },
+          },
+          {
+            $sort: {
+              createdAt: -1,
+            },
+          },
+          {
+            $limit: 1,
+          },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'senderId',
+              foreignField: '_id',
+              as: 'sender',
+            },
+          },
+          {
+            $unwind: {
+              path: '$sender',
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              text: {
+                $cond: [
+                  {
+                    $ne: [{ $ifNull: ['$removedAt', null] }, null],
+                  },
+                  'This message was deleted',
+                  '$text',
+                ],
+              },
+              senderName: {
+                $trim: {
+                  input: {
+                    $concat: [
+                      { $ifNull: ['$sender.firstName', ''] },
+                      ' ',
+                      { $ifNull: ['$sender.lastName', ''] },
+                    ],
+                  },
+                },
+              },
+              createdAt: 1,
+            },
+          },
+        ],
+        as: 'latestMessageArray',
+      },
+    },
+    {
+      $addFields: {
+        latestMessage: {
+          $arrayElemAt: ['$latestMessageArray', 0],
+        },
+      },
+    },
+    // Empty group chats disappear until system messages are implemented in the messaging schema
+    {
+      $match: {
+        latestMessage: {
+          $ne: null,
+        },
+      },
+    },
+    {
+      $lookup: {
+        from: ConversationParticipant.collection.name,
+        let: { convId: '$conversationId', currentUserId: userObjectId },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  {
+                    $eq: ['$conversationId', '$$convId'],
+                  },
+                  {
+                    $ne: ['$userId', '$$currentUserId'],
+                  },
+                ],
+              },
+            },
+          },
+          {
+            $limit: 1,
+          },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'userId',
+              foreignField: '_id',
+              as: 'otherUser',
+            },
+          },
+          {
+            $unwind: {
+              path: '$otherUser',
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              fullName: {
+                $trim: {
+                  input: {
+                    $concat: [
+                      { $ifNull: ['$otherUser.firstName', ''] },
+                      ' ',
+                      { $ifNull: ['$otherUser.lastName', ''] },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        ],
+        as: 'otherParticipantArray',
+      },
+    },
+    {
+      $addFields: {
+        otherParticipant: {
+          $arrayElemAt: ['$otherParticipantArray', 0],
+        },
+      },
+    },
+    {
+      $project: {
+        _id: '$conversation._id',
+        type: '$conversation.type',
+        title: '$conversation.title',
+        clubId: '$conversation.clubId',
+        displayName: {
+          $cond: [
+            {
+              $eq: ['$conversation.type', ConversationType.DIRECT],
+            },
+            {
+              $cond: [
+                {
+                  $ne: [{ $ifNull: ['$otherParticipant.fullName', ''] }, ''],
+                },
+                '$otherParticipant.fullName',
+                'Direct Conversation',
+              ],
+            },
+            {
+              $cond: [
+                {
+                  $ne: [{ $ifNull: ['$conversation.title', ''] }, ''],
+                },
+                '$conversation.title',
+                'Group Conversation',
+              ],
+            },
+          ],
+        },
+        lastActivityAt: '$latestMessage.createdAt',
+        lastMessage: '$latestMessage',
+      },
+    },
+    {
+      $sort: {
+        lastActivityAt: -1,
+      },
+    },
+  ]).exec();
+}
+
+export async function getClubChannels(
+  clubId: Types.ObjectId
+): Promise<IConversation[]> {
+  if (!clubId || !mongoose.isObjectIdOrHexString(clubId)) {
+    throw new Error('Valid clubId is required');
+  }
+
+  const clubObjectId = new Types.ObjectId(clubId);
+  const clubExists = await Club.exists({ _id: clubObjectId });
+  if (!clubExists) {
+    throw new Error('Club does not exist');
+  }
+
+  return Conversation.find({
+    clubId: clubObjectId,
+    type: ConversationType.CHANNEL,
+  })
+    .collation({ locale: 'en', strength: 2 })
+    .sort({ title: 1 })
+    .lean<IConversation[]>()
+    .exec();
+}
+
 

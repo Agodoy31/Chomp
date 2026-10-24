@@ -32,3 +32,17 @@ export interface IConversationDetails {
   participants: IUserSummary[];
 }
 
+export interface IConversationFeedItem {
+  _id: Types.ObjectId;
+  type: ConversationType;
+  title?: string;
+  clubId?: Types.ObjectId;
+  displayName: string;
+  lastActivityAt: Date;
+  lastMessage?: {
+    text: string;
+    senderName: string;
+    createdAt?: Date;
+  };
+}
+

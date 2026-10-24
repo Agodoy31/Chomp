@@ -10,6 +10,7 @@ import {
   createChannel,
   createDirectConversation,
   createGroupConversation,
+  getClubChannels,
   getConversationById,
   getConversationDetails,
   getConversationDocumentById,
@@ -453,4 +454,67 @@ describe('getConversationDetails service', () => {
     expect(details?.participants).toHaveLength(2);
   });
 });
+
+describe('getClubChannels service', () => {
+  it('returns all channels for a club sorted alphabetically by title', async () => {
+    const user = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+    const club = await createTestClub(user._id, {
+      name: 'Swamp Launch Rocketry',
+    });
+
+    await createChannel(club._id, 'telemetry', [user._id]);
+    await createChannel(club._id, 'Avionics', [user._id]);
+    await createChannel(club._id, 'propulsion', [user._id]);
+    await createChannel(club._id, 'Zebra', [user._id]);
+    await createChannel(club._id, 'rhino', [user._id]);
+
+    const channels = await getClubChannels(club._id);
+
+    expect(channels).toHaveLength(5);
+    expect(channels.map((c) => c.title)).toEqual([
+      'Avionics',
+      'propulsion',
+      'rhino',
+      'telemetry',
+      'Zebra',
+    ]);
+    for (const channel of channels) {
+      expect(channel.type).toBe(ConversationType.CHANNEL);
+      expect(channel.clubId?.toString()).toBe(club._id.toString());
+      expect((channel as any).save).toBeUndefined();
+    }
+  });
+
+  it('returns an empty array when a club has no channels', async () => {
+    const user = await createTestUser({
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+      email: 'dwuerffel@ufl.edu',
+    });
+    const club = await createTestClub(user._id, {
+      name: 'Chomp Streetwear Collective',
+    });
+
+    const channels = await getClubChannels(club._id);
+
+    expect(channels).toEqual([]);
+  });
+
+  it('throws an error when club does not exist', async () => {
+    const nonExistentClubId = new Types.ObjectId();
+    await expect(getClubChannels(nonExistentClubId)).rejects.toThrow('Club does not exist');
+  });
+
+  it('throws a validation error when clubId is missing or invalid', async () => {
+    const invalidId = 'invalid-id' as unknown as Types.ObjectId;
+    await expect(getClubChannels(undefined as unknown as Types.ObjectId)).rejects.toThrow('Valid clubId is required');
+    await expect(getClubChannels(null as unknown as Types.ObjectId)).rejects.toThrow('Valid clubId is required');
+    await expect(getClubChannels(invalidId)).rejects.toThrow('Valid clubId is required');
+  });
+});
+
 
