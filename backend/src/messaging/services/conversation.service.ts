@@ -10,6 +10,7 @@ import {
   IConversation,
   IConversationDetails,
   IConversationFeedItem,
+  IConversationParticipantSummary,
   IUserSummary,
 } from '../interfaces/conversation.interfaces';
 import {
@@ -564,7 +565,7 @@ export async function getConversationDetails(
 
   const conversationObjectId = new Types.ObjectId(conversationId);
 
-  const participants = await ConversationParticipant.aggregate<IUserSummary>([
+  const participants = await ConversationParticipant.aggregate<IConversationParticipantSummary>([
     {
       $match: {
         conversationId: conversationObjectId,
@@ -572,8 +573,9 @@ export async function getConversationDetails(
     },
     {
       $project: {
-        _id: 0,
+        _id: 1,
         userId: 1,
+        permission: 1,
       },
     },
     {
@@ -589,25 +591,29 @@ export async function getConversationDetails(
     },
     {
       $project: {
-        _id: '$user._id',
-        firstName: '$user.firstName',
-        lastName: '$user.lastName',
+        _id: 1,
+        permission: 1,
+        userId: {
+          _id: '$user._id',
+          firstName: '$user.firstName',
+          lastName: '$user.lastName',
+        },
       },
     },
     {
       $sort: {
-        firstName: 1,
-        lastName: 1,
+        'userId.firstName': 1,
+        'userId.lastName': 1,
       },
     },
   ]);
 
   let displayName = conversation.title ?? '';
   if (conversation.type === ConversationType.DIRECT) {
-    const otherUser = participants.find(
-      (p) => p._id.toString() !== requestingUserId.toString()
+    const otherParticipant = participants.find(
+      (p) => p.userId._id.toString() !== requestingUserId.toString()
     )!;
-    displayName = `${otherUser.firstName} ${otherUser.lastName}`;
+    displayName = `${otherParticipant.userId.firstName} ${otherParticipant.userId.lastName}`;
   }
 
   return {
