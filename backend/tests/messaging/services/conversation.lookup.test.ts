@@ -467,13 +467,21 @@ describe('getClubChannels service', () => {
     });
 
     await createChannel(club._id, 'telemetry', [user._id]);
-    await createChannel(club._id, 'avionics', [user._id]);
+    await createChannel(club._id, 'Avionics', [user._id]);
     await createChannel(club._id, 'propulsion', [user._id]);
+    await createChannel(club._id, 'Zebra', [user._id]);
+    await createChannel(club._id, 'rhino', [user._id]);
 
     const channels = await getClubChannels(club._id);
 
-    expect(channels).toHaveLength(3);
-    expect(channels.map((c) => c.title)).toEqual(['avionics', 'propulsion', 'telemetry']);
+    expect(channels).toHaveLength(5);
+    expect(channels.map((c) => c.title)).toEqual([
+      'Avionics',
+      'propulsion',
+      'rhino',
+      'telemetry',
+      'Zebra',
+    ]);
     for (const channel of channels) {
       expect(channel.type).toBe(ConversationType.CHANNEL);
       expect(channel.clubId?.toString()).toBe(club._id.toString());
