@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
+import { Message } from '../../../src/messaging/models/Message';
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
 import { ParticipantPermission } from '../../../src/messaging/interfaces/conversationParticipant.interfaces';
 import { User } from '../../../src/user/models/User';
@@ -27,6 +28,7 @@ beforeAll(async () => {
     Club.init(),
     Conversation.init(),
     ConversationParticipant.init(),
+    Message.init(),
     User.init(),
   ]);
 }, 60000);
