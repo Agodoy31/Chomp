@@ -6,6 +6,21 @@ import { Conversation, ConversationType } from '../../../src/messaging/models/Co
 import { ConversationParticipant, ParticipantPermission } from '../../../src/messaging/models/ConversationParticipant';
 import { sendMessage, getMessages, deleteMessage } from '../../../src/messaging/services/message.service';
 
+const ufFixtures = {
+  lakeAliceBasker: {
+    name: 'LakeAlice Basker',
+    email: 'turtle_watcher@ufl.edu',
+  },
+  timTebow: {
+    name: 'Tim Tebow',
+    email: 'ttebow15@ufl.edu',
+  },
+  albertGator: {
+    name: 'Albert Gator',
+    email: 'albert@ufl.edu',
+  },
+};
+
 beforeAll(async () => {
   await connectTestDb();
   await Conversation.init();
@@ -22,11 +37,10 @@ afterAll(async () => {
 });
 
 describe('sendMessage service', () => {
-
   it('creates and returns plain message object when sender has write permission', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'French Fries Monument Preservation Society',
+      title: 'Turlington Plaza Frisbee',
     });
     const senderId = new Types.ObjectId();
     await ConversationParticipant.create({
@@ -38,12 +52,14 @@ describe('sendMessage service', () => {
     const result = await sendMessage(
       conversation._id,
       senderId,
-      'Meeting at Century Tower'
+      `Meeting at Century Tower with ${ufFixtures.lakeAliceBasker.name} at ${ufFixtures.lakeAliceBasker.email}`
     );
 
     expect(result.conversationId.toString()).toBe(conversation._id.toString());
     expect(result.senderId.toString()).toBe(senderId.toString());
-    expect(result.text).toBe('Meeting at Century Tower');
+    expect(result.text).toBe(
+      `Meeting at Century Tower with ${ufFixtures.lakeAliceBasker.name} at ${ufFixtures.lakeAliceBasker.email}`
+    );
     expect(result.isAnnouncement).toBe(false);
     expect(result.isSystem).toBe(false);
     expect((result as Record<string, unknown>).save).toBeUndefined();
@@ -53,7 +69,7 @@ describe('sendMessage service', () => {
   it('returns existing message without duplicate error when duplicate client id is sent', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Chomp Streetwear Collective',
+      title: 'Gator Corner Soft Serve Repair Crew',
     });
     const senderId = new Types.ObjectId();
     await ConversationParticipant.create({
@@ -66,7 +82,7 @@ describe('sendMessage service', () => {
     const firstCall = await sendMessage(
       conversation._id,
       senderId,
-      'First submission text',
+      `First submission from ${ufFixtures.timTebow.name} at ${ufFixtures.timTebow.email}`,
       clientId
     );
     const secondCall = await sendMessage(
@@ -77,7 +93,13 @@ describe('sendMessage service', () => {
     );
 
     expect(secondCall._id.toString()).toBe(firstCall._id.toString());
-    expect(secondCall.text).toBe('First submission text');
+    expect(secondCall.text).toBe(
+      `First submission from ${ufFixtures.timTebow.name} at ${ufFixtures.timTebow.email}`
+    );
+    expect((firstCall as Record<string, unknown>).save).toBeUndefined();
+    expect((firstCall as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect((secondCall as Record<string, unknown>).save).toBeUndefined();
+    expect((secondCall as Record<string, unknown>).$isDefault).toBeUndefined();
     const messageCount = await Message.countDocuments({
       conversationId: conversation._id,
     });
@@ -101,13 +123,17 @@ describe('sendMessage service', () => {
     const message = await sendMessage(
       conversation._id,
       moderatorId,
-      'General body meeting this Wednesday at Turlington',
+      `General body meeting announced by ${ufFixtures.albertGator.name} at ${ufFixtures.albertGator.email}`,
       undefined,
       true
     );
 
     expect(message.isAnnouncement).toBe(true);
-    expect(message.text).toBe('General body meeting this Wednesday at Turlington');
+    expect(message.text).toBe(
+      `General body meeting announced by ${ufFixtures.albertGator.name} at ${ufFixtures.albertGator.email}`
+    );
+    expect((message as Record<string, unknown>).save).toBeUndefined();
+    expect((message as Record<string, unknown>).$isDefault).toBeUndefined();
 
     const persisted = await Message.findById(message._id).lean().exec();
     expect(persisted).not.toBeNull();
@@ -120,7 +146,7 @@ describe('sendMessage service', () => {
   it('rejects announcements in non channel conversations or from non moderators', async () => {
     const groupConversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Dennis Heckler Fan Club',
+      title: 'Turlington Plaza Frisbee',
     });
     const groupModeratorId = new Types.ObjectId();
     await ConversationParticipant.create({
@@ -133,7 +159,7 @@ describe('sendMessage service', () => {
       sendMessage(
         groupConversation._id,
         groupModeratorId,
-        'Announcement in group conversation',
+        `Announcement in group conversation by ${ufFixtures.albertGator.name}`,
         undefined,
         true
       )
@@ -155,7 +181,7 @@ describe('sendMessage service', () => {
       sendMessage(
         channelConversation._id,
         standardMemberId,
-        'Member announcement in channel',
+        `Member announcement in channel by ${ufFixtures.timTebow.name}`,
         undefined,
         true
       )
@@ -165,7 +191,7 @@ describe('sendMessage service', () => {
   it('rejects message sending when user is not participant or has read only permission', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Albert Gator Discussion Circle',
+      title: 'Turlington Plaza Frisbee',
     });
     const nonParticipantId = new Types.ObjectId();
 
@@ -173,7 +199,7 @@ describe('sendMessage service', () => {
       sendMessage(
         conversation._id,
         nonParticipantId,
-        'Message from outsider'
+        `Message from outsider by ${ufFixtures.timTebow.name}`
       )
     ).rejects.toThrow('Sender is not a participant in this conversation');
 
@@ -188,7 +214,7 @@ describe('sendMessage service', () => {
       sendMessage(
         conversation._id,
         readOnlyUserId,
-        'Message from read only user'
+        `Message from read only user by ${ufFixtures.lakeAliceBasker.name}`
       )
     ).rejects.toThrow('Sender has read-only permission in this conversation');
   });
@@ -233,10 +259,10 @@ describe('sendMessage service', () => {
 });
 
 describe('getMessages service', () => {
-  it('returns messages in chronological descending order matching index', async () => {
+  it('returns messages in chronological descending order matching index as lean plain objects', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Chicken Tender Thursday Enthusiasts',
+      title: 'Turlington Plaza Frisbee',
     });
     const participantId = new Types.ObjectId();
     await ConversationParticipant.create({
@@ -248,19 +274,19 @@ describe('getMessages service', () => {
     const msg1 = await Message.create({
       conversationId: conversation._id,
       senderId: participantId,
-      text: 'First tender update',
+      text: `First frisbee throw by ${ufFixtures.lakeAliceBasker.name}`,
       createdAt: new Date('2026-01-01T10:00:00.000Z'),
     });
     const msg2 = await Message.create({
       conversationId: conversation._id,
       senderId: participantId,
-      text: 'Second tender update',
+      text: `Second frisbee throw by ${ufFixtures.timTebow.name}`,
       createdAt: new Date('2026-01-01T11:00:00.000Z'),
     });
     const msg3 = await Message.create({
       conversationId: conversation._id,
       senderId: participantId,
-      text: 'Third tender update',
+      text: `Third frisbee throw by ${ufFixtures.albertGator.name}`,
       createdAt: new Date('2026-01-01T12:00:00.000Z'),
     });
 
@@ -268,17 +294,23 @@ describe('getMessages service', () => {
 
     expect(messages).toHaveLength(3);
     expect(messages[0]._id.toString()).toBe(msg3._id.toString());
-    expect(messages[0].text).toBe('Third tender update');
+    expect(messages[0].text).toBe(`Third frisbee throw by ${ufFixtures.albertGator.name}`);
     expect(messages[1]._id.toString()).toBe(msg2._id.toString());
-    expect(messages[1].text).toBe('Second tender update');
+    expect(messages[1].text).toBe(`Second frisbee throw by ${ufFixtures.timTebow.name}`);
     expect(messages[2]._id.toString()).toBe(msg1._id.toString());
-    expect(messages[2].text).toBe('First tender update');
+    expect(messages[2].text).toBe(`First frisbee throw by ${ufFixtures.lakeAliceBasker.name}`);
+
+    for (const message of messages) {
+      const plain = message as Record<string, unknown>;
+      expect(plain.save).toBeUndefined();
+      expect(plain.$isDefault).toBeUndefined();
+    }
   });
 
   it('respects limit argument when limit is provided', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Newell Hall Late Night Debuggers',
+      title: 'Gator Corner Soft Serve Repair Crew',
     });
     const participantId = new Types.ObjectId();
     await ConversationParticipant.create({
@@ -290,25 +322,25 @@ describe('getMessages service', () => {
     await Message.create({
       conversationId: conversation._id,
       senderId: participantId,
-      text: 'Message one',
+      text: `${ufFixtures.lakeAliceBasker.name} frisbee throw one`,
       createdAt: new Date('2026-02-01T01:00:00.000Z'),
     });
     await Message.create({
       conversationId: conversation._id,
       senderId: participantId,
-      text: 'Message two',
+      text: `${ufFixtures.timTebow.name} frisbee throw two`,
       createdAt: new Date('2026-02-01T02:00:00.000Z'),
     });
     const msg3 = await Message.create({
       conversationId: conversation._id,
       senderId: participantId,
-      text: 'Message three',
+      text: `${ufFixtures.albertGator.name} frisbee throw three`,
       createdAt: new Date('2026-02-01T03:00:00.000Z'),
     });
     const msg4 = await Message.create({
       conversationId: conversation._id,
       senderId: participantId,
-      text: 'Message four',
+      text: `${ufFixtures.lakeAliceBasker.name} frisbee throw four`,
       createdAt: new Date('2026-02-01T04:00:00.000Z'),
     });
 
@@ -316,54 +348,21 @@ describe('getMessages service', () => {
 
     expect(messages).toHaveLength(2);
     expect(messages[0]._id.toString()).toBe(msg4._id.toString());
-    expect(messages[0].text).toBe('Message four');
+    expect(messages[0].text).toBe(`${ufFixtures.lakeAliceBasker.name} frisbee throw four`);
     expect(messages[1]._id.toString()).toBe(msg3._id.toString());
-    expect(messages[1].text).toBe('Message three');
-  });
+    expect(messages[1].text).toBe(`${ufFixtures.albertGator.name} frisbee throw three`);
 
-  it('returns entire conversation history when limit is omitted', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Plaza of the Americas Hammock Sleepers',
-    });
-    const participantId = new Types.ObjectId();
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: participantId,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    await Message.create({
-      conversationId: conversation._id,
-      senderId: participantId,
-      text: 'Finding trees near Library West',
-      createdAt: new Date('2026-03-01T12:00:00.000Z'),
-    });
-    await Message.create({
-      conversationId: conversation._id,
-      senderId: participantId,
-      text: 'Found a quiet spot',
-      createdAt: new Date('2026-03-01T12:05:00.000Z'),
-    });
-    await Message.create({
-      conversationId: conversation._id,
-      senderId: participantId,
-      text: 'Waking up for class',
-      createdAt: new Date('2026-03-01T12:50:00.000Z'),
-    });
-
-    const messages = await getMessages(conversation._id, participantId, undefined);
-
-    expect(messages).toHaveLength(3);
-    expect(messages[0].text).toBe('Waking up for class');
-    expect(messages[1].text).toBe('Found a quiet spot');
-    expect(messages[2].text).toBe('Finding trees near Library West');
+    for (const message of messages) {
+      const plain = message as Record<string, unknown>;
+      expect(plain.save).toBeUndefined();
+      expect(plain.$isDefault).toBeUndefined();
+    }
   });
 
   it('rejects message fetching when requesting user is not a participant', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Swamp Launch Rocketry',
+      title: 'Turlington Plaza Frisbee',
     });
     const memberId = new Types.ObjectId();
     await ConversationParticipant.create({
@@ -398,36 +397,10 @@ describe('getMessages service', () => {
       getMessages(validId, 'not-a-valid-id')
     ).rejects.toThrow('Valid requestingUserId is required');
   });
-
-  it('returns plain message objects without mongoose document methods', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'French Fries Monument Preservation Society',
-    });
-    const participantId = new Types.ObjectId();
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: participantId,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    await Message.create({
-      conversationId: conversation._id,
-      senderId: participantId,
-      text: 'Documenting the monument sculpture',
-    });
-
-    const messages = await getMessages(conversation._id, participantId);
-
-    expect(messages).toHaveLength(1);
-    const firstResult = messages[0] as Record<string, unknown>;
-    expect(firstResult.save).toBeUndefined();
-    expect(firstResult.$isDefault).toBeUndefined();
-  });
 });
 
 describe('deleteMessage service', () => {
-  it('allows message author to soft delete their own message', async () => {
+  it('allows author soft deletion and supports hex string identifiers', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Gator Corner Soft Serve Repair Crew',
@@ -439,59 +412,55 @@ describe('deleteMessage service', () => {
       permission: ParticipantPermission.WRITE,
     });
 
-    const message = await Message.create({
+    const objectIdMessage = await Message.create({
       conversationId: conversation._id,
       senderId: authorId,
-      text: 'Ice cream machine is operational again',
+      text: `Soft serve machine is operational again reported by ${ufFixtures.timTebow.name}`,
       isSystem: false,
     });
 
-    const result = await deleteMessage(message._id, authorId);
+    const objectIdResult = await deleteMessage(objectIdMessage._id, authorId);
 
-    expect(result._id.toString()).toBe(message._id.toString());
-    expect(result.removedAt).toBeDefined();
-    expect(result.removedBy?.toString()).toBe(authorId.toString());
-    expect((result as Record<string, unknown>).save).toBeUndefined();
+    expect(objectIdResult._id.toString()).toBe(objectIdMessage._id.toString());
+    expect(objectIdResult.removedAt).toBeDefined();
+    expect(objectIdResult.removedBy?.toString()).toBe(authorId.toString());
+    expect((objectIdResult as Record<string, unknown>).save).toBeUndefined();
+    expect((objectIdResult as Record<string, unknown>).$isDefault).toBeUndefined();
 
-    const persisted = await Message.findById(message._id).lean().exec();
-    expect(persisted?.removedAt).toBeDefined();
-    expect(persisted?.removedBy?.toString()).toBe(authorId.toString());
+    const objectIdPersisted = await Message.findById(objectIdMessage._id).lean().exec();
+    expect(objectIdPersisted?.removedAt).toBeDefined();
+    expect(objectIdPersisted?.removedBy?.toString()).toBe(authorId.toString());
+
+    const hexMessage = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: `Secondary soft serve check logged by ${ufFixtures.lakeAliceBasker.name}`,
+      isSystem: false,
+    });
+
+    const hexResult = await deleteMessage(
+      hexMessage._id.toHexString(),
+      authorId.toHexString()
+    );
+
+    expect(hexResult._id.toString()).toBe(hexMessage._id.toString());
+    expect(hexResult.removedAt).toBeDefined();
+    expect(hexResult.removedBy?.toString()).toBe(authorId.toString());
+    expect((hexResult as Record<string, unknown>).save).toBeUndefined();
+    expect((hexResult as Record<string, unknown>).$isDefault).toBeUndefined();
+
+    const hexPersisted = await Message.findById(hexMessage._id).lean().exec();
+    expect(hexPersisted?.removedAt).toBeDefined();
+    expect(hexPersisted?.removedBy?.toString()).toBe(authorId.toString());
   });
 
   it('preserves original removedAt timestamp on repeated deletion calls', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Chicken Tender Thursday Enthusiasts',
-    });
-    const authorId = new Types.ObjectId();
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: authorId,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const message = await Message.create({
-      conversationId: conversation._id,
-      senderId: authorId,
-      text: 'Original tender announcement',
-      isSystem: false,
-    });
-
-    const firstResult = await deleteMessage(message._id, authorId);
-    const initialTimestamp = firstResult.removedAt;
-
-    const secondResult = await deleteMessage(message._id, authorId);
-    expect(secondResult.removedAt).toEqual(initialTimestamp);
-  });
-
-  it('allows conversation moderator to soft delete another member message', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Chicken Tender Thursday Enthusiasts',
+      title: 'Turlington Plaza Frisbee',
     });
     const authorId = new Types.ObjectId();
     const moderatorId = new Types.ObjectId();
-
     await ConversationParticipant.create({
       conversationId: conversation._id,
       userId: authorId,
@@ -506,72 +475,107 @@ describe('deleteMessage service', () => {
     const message = await Message.create({
       conversationId: conversation._id,
       senderId: authorId,
-      text: 'Out of stock at the food court',
+      text: `Original frisbee schedule posted by ${ufFixtures.lakeAliceBasker.name}`,
       isSystem: false,
     });
 
-    const result = await deleteMessage(message._id, moderatorId);
+    const firstResult = await deleteMessage(message._id, authorId);
+    const initialTimestamp = firstResult.removedAt;
+    expect(initialTimestamp).toBeDefined();
 
-    expect(result._id.toString()).toBe(message._id.toString());
-    expect(result.removedAt).toBeDefined();
-    expect(result.removedBy?.toString()).toBe(moderatorId.toString());
+    const secondResult = await deleteMessage(message._id, authorId);
+    expect(secondResult.removedAt).toEqual(initialTimestamp);
+    expect(secondResult.removedBy?.toString()).toBe(authorId.toString());
+
+    const moderatorResult = await deleteMessage(message._id, moderatorId);
+    expect(moderatorResult.removedAt).toEqual(initialTimestamp);
+    expect(moderatorResult.removedBy?.toString()).toBe(authorId.toString());
+
+    expect((firstResult as Record<string, unknown>).save).toBeUndefined();
+    expect((firstResult as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect((secondResult as Record<string, unknown>).save).toBeUndefined();
+    expect((secondResult as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect((moderatorResult as Record<string, unknown>).save).toBeUndefined();
+    expect((moderatorResult as Record<string, unknown>).$isDefault).toBeUndefined();
+
+    const persisted = await Message.findById(message._id).lean().exec();
+    expect(persisted?.removedAt).toEqual(initialTimestamp);
+    expect(persisted?.removedBy?.toString()).toBe(authorId.toString());
   });
 
-  it('rejects deletion when requesting user is a non moderator participant', async () => {
-    const conversation = await Conversation.create({
+  it('allows channel or group moderator to soft delete another member message', async () => {
+    const groupConversation = await Conversation.create({
       type: ConversationType.GROUP,
-      title: 'Gator Corner Soft Serve Repair Crew',
+      title: 'Turlington Plaza Frisbee',
     });
-    const authorId = new Types.ObjectId();
-    const standardMemberId = new Types.ObjectId();
+    const groupAuthorId = new Types.ObjectId();
+    const groupModeratorId = new Types.ObjectId();
 
     await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: authorId,
+      conversationId: groupConversation._id,
+      userId: groupAuthorId,
       permission: ParticipantPermission.WRITE,
     });
     await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: standardMemberId,
-      permission: ParticipantPermission.WRITE,
+      conversationId: groupConversation._id,
+      userId: groupModeratorId,
+      permission: ParticipantPermission.MODERATE,
     });
 
-    const message = await Message.create({
-      conversationId: conversation._id,
-      senderId: authorId,
-      text: 'Routine maintenance schedule update',
+    const groupMessage = await Message.create({
+      conversationId: groupConversation._id,
+      senderId: groupAuthorId,
+      text: `Out of discs at the field observed by ${ufFixtures.albertGator.name}`,
       isSystem: false,
     });
 
-    await expect(
-      deleteMessage(message._id, standardMemberId)
-    ).rejects.toThrow('User is not authorized to delete this message');
-  });
+    const groupResult = await deleteMessage(groupMessage._id, groupModeratorId);
+    expect(groupResult._id.toString()).toBe(groupMessage._id.toString());
+    expect(groupResult.removedAt).toBeDefined();
+    expect(groupResult.removedBy?.toString()).toBe(groupModeratorId.toString());
+    expect((groupResult as Record<string, unknown>).save).toBeUndefined();
+    expect((groupResult as Record<string, unknown>).$isDefault).toBeUndefined();
 
-  it('rejects deletion when requesting user is not a conversation participant', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Gator Corner Soft Serve Repair Crew',
+    const groupPersisted = await Message.findById(groupMessage._id).lean().exec();
+    expect(groupPersisted?.removedAt).toBeDefined();
+    expect(groupPersisted?.removedBy?.toString()).toBe(groupModeratorId.toString());
+
+    const channelConversation = await Conversation.create({
+      type: ConversationType.CHANNEL,
+      title: 'announcements',
+      clubId: new Types.ObjectId(),
     });
-    const authorId = new Types.ObjectId();
-    const outsiderId = new Types.ObjectId();
+    const channelAuthorId = new Types.ObjectId();
+    const channelModeratorId = new Types.ObjectId();
 
     await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: authorId,
+      conversationId: channelConversation._id,
+      userId: channelAuthorId,
       permission: ParticipantPermission.WRITE,
     });
+    await ConversationParticipant.create({
+      conversationId: channelConversation._id,
+      userId: channelModeratorId,
+      permission: ParticipantPermission.MODERATE,
+    });
 
-    const message = await Message.create({
-      conversationId: conversation._id,
-      senderId: authorId,
-      text: 'Private crew chatter',
+    const channelMessage = await Message.create({
+      conversationId: channelConversation._id,
+      senderId: channelAuthorId,
+      text: `Channel discussion posted by ${ufFixtures.timTebow.name}`,
       isSystem: false,
     });
 
-    await expect(
-      deleteMessage(message._id, outsiderId)
-    ).rejects.toThrow('User is not authorized to delete this message');
+    const channelResult = await deleteMessage(channelMessage._id, channelModeratorId);
+    expect(channelResult._id.toString()).toBe(channelMessage._id.toString());
+    expect(channelResult.removedAt).toBeDefined();
+    expect(channelResult.removedBy?.toString()).toBe(channelModeratorId.toString());
+    expect((channelResult as Record<string, unknown>).save).toBeUndefined();
+    expect((channelResult as Record<string, unknown>).$isDefault).toBeUndefined();
+
+    const channelPersisted = await Message.findById(channelMessage._id).lean().exec();
+    expect(channelPersisted?.removedAt).toBeDefined();
+    expect(channelPersisted?.removedBy?.toString()).toBe(channelModeratorId.toString());
   });
 
   it('rejects deletion of system messages', async () => {
@@ -596,7 +600,7 @@ describe('deleteMessage service', () => {
     const systemMessage = await Message.create({
       conversationId: conversation._id,
       senderId: authorId,
-      text: 'User joined conversation',
+      text: `${ufFixtures.albertGator.name} joined conversation`,
       isSystem: true,
     });
 
@@ -607,14 +611,104 @@ describe('deleteMessage service', () => {
     await expect(
       deleteMessage(systemMessage._id, moderatorId)
     ).rejects.toThrow('System messages cannot be deleted');
+
+    const persisted = await Message.findById(systemMessage._id).lean().exec();
+    expect(persisted?.removedAt).toBeUndefined();
+    expect(persisted?.removedBy).toBeUndefined();
   });
 
-  it('rejects invalid input parameters or missing message', async () => {
+  it('rejects unauthorized caller deletion attempts across multiple participant roles and deleted states', async () => {
+    const conversationOne = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Turlington Plaza Frisbee',
+    });
+    const conversationTwo = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Gator Corner Soft Serve Repair Crew',
+    });
+
+    const authorId = new Types.ObjectId();
+    const nonModeratorId = new Types.ObjectId();
+    const readOnlyId = new Types.ObjectId();
+    const outsiderId = new Types.ObjectId();
+    const crossModeratorId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: conversationOne._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversationOne._id,
+      userId: nonModeratorId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversationOne._id,
+      userId: readOnlyId,
+      permission: ParticipantPermission.READ,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversationTwo._id,
+      userId: crossModeratorId,
+      permission: ParticipantPermission.MODERATE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversationOne._id,
+      senderId: authorId,
+      text: `Frisbee practice canceled by ${ufFixtures.lakeAliceBasker.name}`,
+      isSystem: false,
+    });
+
+    await expect(
+      deleteMessage(message._id, nonModeratorId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await expect(
+      deleteMessage(message._id, readOnlyId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await expect(
+      deleteMessage(message._id, outsiderId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await expect(
+      deleteMessage(message._id, crossModeratorId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await deleteMessage(message._id, authorId);
+
+    await expect(
+      deleteMessage(message._id, outsiderId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await expect(
+      deleteMessage(message._id, nonModeratorId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await expect(
+      deleteMessage(message._id, readOnlyId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await expect(
+      deleteMessage(message._id, crossModeratorId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    const persisted = await Message.findById(message._id).lean().exec();
+    expect(persisted?.removedBy?.toString()).toBe(authorId.toString());
+  });
+
+  it('rejects invalid input parameters or missing message identifiers', async () => {
     const validId = new Types.ObjectId();
     const nonExistentMessageId = new Types.ObjectId();
 
     await expect(
       deleteMessage('', validId)
+    ).rejects.toThrow('Valid messageId is required');
+
+    await expect(
+      deleteMessage('   ', validId)
     ).rejects.toThrow('Valid messageId is required');
 
     await expect(
@@ -626,6 +720,10 @@ describe('deleteMessage service', () => {
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
+      deleteMessage(validId, '   ')
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
       deleteMessage(validId, 'invalid-id')
     ).rejects.toThrow('Valid requestingUserId is required');
 
@@ -633,99 +731,4 @@ describe('deleteMessage service', () => {
       deleteMessage(nonExistentMessageId, validId)
     ).rejects.toThrow('Message not found');
   });
-
-  it('allows message deletion when valid hex string identifiers are provided', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Chomp Streetwear Collective',
-    });
-    const authorId = new Types.ObjectId();
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: authorId,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const message = await Message.create({
-      conversationId: conversation._id,
-      senderId: authorId,
-      text: 'Vintage gator jacket dropped',
-      isSystem: false,
-    });
-
-    const result = await deleteMessage(
-      message._id.toHexString(),
-      authorId.toHexString()
-    );
-
-    expect(result._id.toString()).toBe(message._id.toString());
-    expect(result.removedAt).toBeDefined();
-    expect(result.removedBy?.toString()).toBe(authorId.toString());
-  });
-
-  it('rejects cross conversation moderator deletion attempts', async () => {
-    const clubOne = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Gator Lettuce Eating Club',
-    });
-    const clubTwo = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Chomp Streetwear Collective',
-    });
-
-    const authorId = new Types.ObjectId();
-    const clubTwoModeratorId = new Types.ObjectId();
-
-    await ConversationParticipant.create({
-      conversationId: clubOne._id,
-      userId: authorId,
-      permission: ParticipantPermission.WRITE,
-    });
-    await ConversationParticipant.create({
-      conversationId: clubTwo._id,
-      userId: clubTwoModeratorId,
-      permission: ParticipantPermission.MODERATE,
-    });
-
-    const message = await Message.create({
-      conversationId: clubOne._id,
-      senderId: authorId,
-      text: 'Iceberg lettuce round completed',
-      isSystem: false,
-    });
-
-    await expect(
-      deleteMessage(message._id, clubTwoModeratorId)
-    ).rejects.toThrow('User is not authorized to delete this message');
-  });
-
-  it('rejects unauthorized deletion attempts even when message is already deleted', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Chomp Streetwear Collective',
-    });
-    const authorId = new Types.ObjectId();
-    const outsiderId = new Types.ObjectId();
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: authorId,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const message = await Message.create({
-      conversationId: conversation._id,
-      senderId: authorId,
-      text: 'Limited drop sold out',
-      isSystem: false,
-    });
-
-    await deleteMessage(message._id, authorId);
-
-    await expect(
-      deleteMessage(message._id, outsiderId)
-    ).rejects.toThrow('User is not authorized to delete this message');
-  });
 });
-
-
