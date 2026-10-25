@@ -699,6 +699,31 @@ export async function removeParticipantFromConversation(
     throw new Error('Target user is not a participant in this conversation');
   }
 
+  const targetParticipant = isSelf
+    ? requesterParticipant
+    : await ConversationParticipant.findOne({ conversationId, userId: targetUserId })
+        .select('permission')
+        .lean();
+
+  if (
+    conversation.type === ConversationType.GROUP &&
+    targetParticipant?.permission === ParticipantPermission.MODERATE
+  ) {
+    const totalParticipants = await ConversationParticipant.countDocuments({ conversationId });
+    if (totalParticipants > 1) {
+      const remainingModerators = await ConversationParticipant.countDocuments({
+        conversationId,
+        permission: ParticipantPermission.MODERATE,
+        userId: { $ne: targetUserId },
+      });
+      if (remainingModerators === 0) {
+        throw new Error(
+          'Cannot remove the last moderator from a group conversation with remaining participants'
+        );
+      }
+    }
+  }
+
   await ConversationParticipant.deleteOne({
     conversationId,
     userId: targetUserId,
@@ -834,6 +859,33 @@ export async function updateParticipantPermissions(
   const isBulk = normalizedUpdates.length > 1;
   const isGroup = conversation.type === ConversationType.GROUP;
   const updatedParticipants: IConversationParticipant[] = [];
+
+  if (isGroup) {
+    const currentModeratorsQuery = ConversationParticipant.find({
+      conversationId,
+      permission: ParticipantPermission.MODERATE,
+    })
+      .select('userId')
+      .lean();
+    if (session) {
+      currentModeratorsQuery.session(session);
+    }
+    const currentModerators = await currentModeratorsQuery.exec();
+    const moderatorIds = new Set<string>(currentModerators.map((m) => m.userId.toString()));
+
+    for (const [targetUserId, newPermission] of normalizedUpdates) {
+      const targetKey = targetUserId.toString();
+      if (newPermission === ParticipantPermission.MODERATE) {
+        moderatorIds.add(targetKey);
+      } else {
+        moderatorIds.delete(targetKey);
+      }
+    }
+
+    if (moderatorIds.size === 0) {
+      throw new Error('Group conversations must have at least one moderator');
+    }
+  }
 
   for (const [targetUserId, newPermission] of normalizedUpdates) {
     const targetQuery = ConversationParticipant.findOne({
