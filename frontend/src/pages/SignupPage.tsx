@@ -5,6 +5,7 @@ import Button from 'react-bootstrap/Button';
 import { Link, useNavigate } from 'react-router-dom';
 import { isUflEmail, isValidName, MIN_PASSWORD_LENGTH } from '../utils/validation';
 import { Alert } from 'react-bootstrap';
+import FloatingLabel from 'react-bootstrap/FloatingLabel';
 
 
 async function readJson(response: Response) {
@@ -62,13 +63,18 @@ export default function Signup() {
       const data = await readJson(response)
 
       if (!response.ok) {
-        setError(
-           data?.message === 'ERR_EMAIL_TAKEN'
-           ? 'An account with this email already exists.'
-           : 'Something went wrong. Please try again.'
-          )
-        return
-       }
+        const message = data?.message;
+        if (message && !message.startsWith('ERR_')) {
+          setError(message);
+        } 
+        else if (message === 'ERR_EMAIL_TAKEN') {
+          setError('An account with this email already exists.');
+        } 
+        else {
+          setError('Something went wrong. Please try again.');
+        }
+        return;
+      }
 
        //TODO: edit when homepage is complete
        navigate('/clubs')
@@ -93,69 +99,64 @@ export default function Signup() {
       )}
       <Form onSubmit={handleSubmit} noValidate>
         {/* First Name  */}
-        <Form.Group className="mb-3" controlId="firstName">
-          <Form.Label visuallyHidden>First Name</Form.Label>
+        <FloatingLabel controlId="firstName" label="First Name" className="mb-3">
           <Form.Control
             type="text"
             placeholder="First Name"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="rounded-3 py-3 px-3"
+            className="rounded-3"
             style={{
               backgroundColor: '#D9D9D9',
               border: '1px solid #333',
             }}
           />
-        </Form.Group>
+        </FloatingLabel>
 
         {/* Last Name */}
-        <Form.Group className="mb-3" controlId="lastName">
-          <Form.Label visuallyHidden>Last Name</Form.Label>
-
+        <FloatingLabel controlId="lastName" label="Last Name" className="mb-3">
           <Form.Control
             type="text"
             placeholder="Last Name"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="rounded-3 py-3 px-3"
+            className="rounded-3"
             style={{
               backgroundColor: '#D9D9D9',
               border: '1px solid #333',
             }}
           />
-        </Form.Group>
+        </FloatingLabel>
 
         {/* Email */}
-        <Form.Group className="mb-3" controlId="email">
-          <Form.Label visuallyHidden>UFL Email</Form.Label>
+       <FloatingLabel controlId="email" label="UFL email" className="mb-3">
           <Form.Control
             type="email"
             placeholder="UFL email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-3 py-3 px-3"
+            className="rounded-3"
             style={{
               backgroundColor: '#D9D9D9',
               border: '1px solid #333',
             }}
           />
-        </Form.Group>
+        </FloatingLabel>
 
         {/* Password */}
-        <Form.Group className="mb-4" controlId="password">
-          <Form.Label visuallyHidden>Password</Form.Label>
+        <FloatingLabel controlId="password" label="Password" className="mb-4">
           <Form.Control
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-3 py-3 px-3"
+            className="rounded-3"
             style={{
               backgroundColor: '#D9D9D9',
               border: '1px solid #333',
             }}
           />
-        </Form.Group>
+        </FloatingLabel>
 
         {/* Sign Up Button */}
         <div className="d-flex justify-content-center">

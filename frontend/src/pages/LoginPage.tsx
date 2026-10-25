@@ -5,6 +5,7 @@ import Form from 'react-bootstrap/Form';
 import Button from 'react-bootstrap/Button';
 import { Link, useNavigate } from 'react-router-dom'
 import Alert from 'react-bootstrap/Alert';
+import FloatingLabel from 'react-bootstrap/FloatingLabel';
 
 async function readJson(response: Response) {
   try {
@@ -48,9 +49,14 @@ export default function Login() {
       const data = await readJson(response);
 
       if (!response.ok) {
-        if (data?.message === 'ERR_LOGIN_INVALID') {
+        const message = data?.message;
+        if (message && !message.startsWith('ERR_')) {
+          setError(message);
+        } 
+        else if (message === 'ERR_LOGIN_INVALID') {
           setError('Incorrect email or password.');
-        } else {
+        } 
+        else {
           setError('Something went wrong. Please try again.');
         }
         return;
@@ -74,36 +80,34 @@ export default function Login() {
 
       <Form onSubmit={handleSubmit} noValidate>
         {/* Email */}
-        <Form.Group className="mb-3" controlId="email">
-          <Form.Label visuallyHidden>UFL Email</Form.Label>
+        <FloatingLabel controlId="email" label="UFL email" className="mb-3">
           <Form.Control
             type="email"
             placeholder="UFL email"
-            className="rounded-3 py-3 px-3"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="rounded-3"
             style={{
               backgroundColor: '#D9D9D9',
               border: '1px solid #333',
             }}
           />
-        </Form.Group>
+        </FloatingLabel>
 
         {/* Password */}
-        <Form.Group className="mb-4" controlId="password">
-          <Form.Label visuallyHidden>Password</Form.Label>
+        <FloatingLabel controlId="password" label="Password" className="mb-4">
           <Form.Control
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-3 py-3 px-3"
+            className="rounded-3"
             style={{
               backgroundColor: '#D9D9D9',
               border: '1px solid #333',
             }}
           />
-        </Form.Group>
+        </FloatingLabel>
 
         {/* Login Button */}
         <div className="d-flex justify-content-center">
