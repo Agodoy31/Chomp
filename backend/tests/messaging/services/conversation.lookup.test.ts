@@ -41,53 +41,33 @@ afterAll(async () => {
 });
 
 describe('validateUsersExist service', () => {
-  it('returns true when a single user exists', async () => {
-    const user = await createTestUser();
-    const result = await validateUsersExist([user._id]);
-    expect(result).toBe(true);
+  it('returns true when existing users are provided as array or scalar', async () => {
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+
+    const arrayResult = await validateUsersExist([user1._id, user2._id]);
+    const singleInArray = await validateUsersExist([user1._id]);
+    const scalarResult = await validateUsersExist(user1._id);
+
+    expect(arrayResult).toBe(true);
+    expect(singleInArray).toBe(true);
+    expect(scalarResult).toBe(true);
   });
 
-  it('returns true when single user object id is passed directly as scalar', async () => {
-    const user = await createTestUser();
-    const result = await validateUsersExist(user._id);
-    expect(result).toBe(true);
+  it('returns false when missing user ids are provided as array or scalar', async () => {
+    const existingUser = await createTestUser({ firstName: 'GatorCorner', lastName: 'Survivor', email: 'soft_serve_broken@ufl.edu' });
+    const missingId = new Types.ObjectId();
+
+    const missingScalar = await validateUsersExist(missingId);
+    const missingArray = await validateUsersExist([missingId]);
+    const partiallyMissing = await validateUsersExist([existingUser._id, missingId]);
+
+    expect(missingScalar).toBe(false);
+    expect(missingArray).toBe(false);
+    expect(partiallyMissing).toBe(false);
   });
 
-  it('returns true when all multiple users exist', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const user3 = await createTestUser();
-
-    const result = await validateUsersExist([user1._id, user2._id, user3._id]);
-    expect(result).toBe(true);
-  });
-
-  it('returns false when a single user does not exist', async () => {
-    const missingUserId = new Types.ObjectId();
-    const result = await validateUsersExist([missingUserId]);
-    expect(result).toBe(false);
-  });
-
-  it('returns false when single missing user object id is passed directly as scalar', async () => {
-    const missingUserId = new Types.ObjectId();
-    const result = await validateUsersExist(missingUserId);
-    expect(result).toBe(false);
-  });
-
-  it('returns false when one user exists and another does not', async () => {
-    const existingUser = await createTestUser();
-    const missingUserId = new Types.ObjectId();
-
-    const result = await validateUsersExist([existingUser._id, missingUserId]);
-    expect(result).toBe(false);
-  });
-
-  it('returns false when input is an empty array', async () => {
-    const result = await validateUsersExist([]);
-    expect(result).toBe(false);
-  });
-
-  it('does not query database and returns false when input is an empty array', async () => {
+  it('returns false without querying database when input is empty array', async () => {
     const countDocumentsSpy = jest.spyOn(User, 'countDocuments');
     const result = await validateUsersExist([]);
     expect(result).toBe(false);
@@ -97,68 +77,71 @@ describe('validateUsersExist service', () => {
 
 describe('isUserParticipant service', () => {
   it('returns true when user is participant in conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Participant Check Group');
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+    const group = await createGroupConversation(user1._id, [user2._id], 'Turlington Plaza Frisbee');
 
     const isUser1Participant = await isUserParticipant(group._id, user1._id);
     const isUser2Participant = await isUserParticipant(group._id, user2._id);
+    const isHexParticipant = await isUserParticipant(
+      group._id.toString() as unknown as Types.ObjectId,
+      user1._id.toString() as unknown as Types.ObjectId
+    );
 
     expect(isUser1Participant).toBe(true);
     expect(isUser2Participant).toBe(true);
+    expect(isHexParticipant).toBe(true);
   });
 
   it('returns false when user is not participant in conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const outsider = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Participant Check Group');
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+    const outsider = await createTestUser({ firstName: 'GatorCorner', lastName: 'Survivor', email: 'soft_serve_broken@ufl.edu' });
+    const group = await createGroupConversation(user1._id, [user2._id], 'Southwest Rec Bench Press Waitlist');
 
     const isOutsiderParticipant = await isUserParticipant(group._id, outsider._id);
 
     expect(isOutsiderParticipant).toBe(false);
   });
 
-  it('throws error when conversationId is missing or invalid', async () => {
-    const user = await createTestUser();
+  it('throws validation error when parameters are missing or invalid', async () => {
+    const validId = new Types.ObjectId();
 
     await expect(
-      isUserParticipant(null as unknown as Types.ObjectId, user._id)
+      isUserParticipant(null as unknown as Types.ObjectId, null as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      isUserParticipant(undefined as unknown as Types.ObjectId, user._id)
+      isUserParticipant(null as unknown as Types.ObjectId, validId)
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      isUserParticipant('invalid-id' as unknown as Types.ObjectId, user._id)
+      isUserParticipant(undefined as unknown as Types.ObjectId, validId)
     ).rejects.toThrow('Valid conversationId is required');
-  });
-
-  it('throws error when userId is missing or invalid', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Participant Check Group');
 
     await expect(
-      isUserParticipant(group._id, null as unknown as Types.ObjectId)
+      isUserParticipant('invalid-id' as unknown as Types.ObjectId, validId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      isUserParticipant(validId, null as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid userId is required');
 
     await expect(
-      isUserParticipant(group._id, undefined as unknown as Types.ObjectId)
+      isUserParticipant(validId, undefined as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid userId is required');
 
     await expect(
-      isUserParticipant(group._id, 'invalid-id' as unknown as Types.ObjectId)
+      isUserParticipant(validId, 'invalid-id' as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid userId is required');
   });
 });
 
 describe('getConversationParticipants service', () => {
   it('returns all participant records for conversation as plain objects', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Participants Query Group');
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+    const group = await createGroupConversation(user1._id, [user2._id], 'Turlington Plaza Frisbee');
 
     const participants = await getConversationParticipants(group._id);
 
@@ -171,10 +154,13 @@ describe('getConversationParticipants service', () => {
     });
     expect(participantUserIds).toContain(user1._id.toString());
     expect(participantUserIds).toContain(user2._id.toString());
+
+    const participantsFromHex = await getConversationParticipants(group._id.toString() as unknown as Types.ObjectId);
+    expect(participantsFromHex).toHaveLength(2);
   });
 
   it('returns empty array when conversation has no participants', async () => {
-    const creator = await createTestUser();
+    const creator = await createTestUser({ firstName: 'GatorCorner', lastName: 'Survivor', email: 'soft_serve_broken@ufl.edu' });
     const club = await createTestClub(creator._id);
     const channel = await createChannel(club._id, 'empty-participants-channel');
 
@@ -287,9 +273,9 @@ describe('getConversationDetails service', () => {
   });
 
   it('returns null when requesting user is not a participant in the conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const nonParticipant = await createTestUser();
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
+    const nonParticipant = await createTestUser({ firstName: 'GatorCorner', lastName: 'Survivor', email: 'soft_serve_broken@ufl.edu' });
 
     const group = await createGroupConversation(user1._id, [user2._id], 'Newell Hall Late Night Debuggers');
 
@@ -298,57 +284,59 @@ describe('getConversationDetails service', () => {
   });
 
   it('returns null when conversation does not exist', async () => {
-    const user1 = await createTestUser();
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
     const nonExistentId = new Types.ObjectId();
 
     const result = await getConversationDetails(nonExistentId, user1._id);
     expect(result).toBeNull();
   });
 
-  it('throws validation error when conversationId is invalid or missing', async () => {
-    const user1 = await createTestUser();
+  it('throws validation error when parameters are missing or invalid', async () => {
+    const validId = new Types.ObjectId();
 
     await expect(
-      getConversationDetails(null as unknown as Types.ObjectId, user1._id)
+      getConversationDetails(null as unknown as Types.ObjectId, null as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      getConversationDetails(undefined as unknown as Types.ObjectId, user1._id)
+      getConversationDetails(null as unknown as Types.ObjectId, validId)
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      getConversationDetails('invalid-id' as unknown as Types.ObjectId, user1._id)
+      getConversationDetails(undefined as unknown as Types.ObjectId, validId)
     ).rejects.toThrow('Valid conversationId is required');
-  });
-
-  it('throws validation error when requestingUserId is invalid or missing', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const direct = await createDirectConversation(user1._id, user2._id);
-    const conversationId = direct.conversation._id;
 
     await expect(
-      getConversationDetails(conversationId, null as unknown as Types.ObjectId)
+      getConversationDetails('invalid-id' as unknown as Types.ObjectId, validId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getConversationDetails(validId, null as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
-      getConversationDetails(conversationId, undefined as unknown as Types.ObjectId)
+      getConversationDetails(validId, undefined as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
-      getConversationDetails(conversationId, 'invalid-id' as unknown as Types.ObjectId)
+      getConversationDetails(validId, 'invalid-id' as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid requestingUserId is required');
   });
 
-  it('returns plain objects without timestamps or Mongoose document methods', async () => {
-    const user1 = await createTestUser({ firstName: 'Broward', lastName: 'Freshman' });
-    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow' });
+  it('returns plain objects without Mongoose document methods and accepts hex string id', async () => {
+    const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
+    const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
 
     const direct = await createDirectConversation(user1._id, user2._id);
-    const conversationId = direct.conversation._id;
+    const hexStringId = direct.conversation._id.toString() as unknown as Types.ObjectId;
+    const hexUserId = user1._id.toString() as unknown as Types.ObjectId;
 
-    const details = await getConversationDetails(conversationId, user1._id);
+    const details = await getConversationDetails(hexStringId, user1._id);
     expect(details).not.toBeNull();
+
+    const detailsWithHexUser = await getConversationDetails(hexStringId, hexUserId);
+    expect(detailsWithHexUser).not.toBeNull();
+    expect(detailsWithHexUser?.participants).toHaveLength(2);
 
     expect((details as any).save).toBeUndefined();
     expect((details as any).toObject).toBeUndefined();
@@ -372,18 +360,6 @@ describe('getConversationDetails service', () => {
       const userKeys = Object.keys(participant.userId).sort();
       expect(userKeys).toEqual(['_id', 'firstName', 'lastName']);
     }
-  });
-
-  it('returns conversation details when conversationId is passed as a hex string', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-
-    const direct = await createDirectConversation(user1._id, user2._id);
-    const hexStringId = direct.conversation._id.toString() as unknown as Types.ObjectId;
-
-    const details = await getConversationDetails(hexStringId, user1._id);
-    expect(details).not.toBeNull();
-    expect(details?.participants).toHaveLength(2);
   });
 });
 
