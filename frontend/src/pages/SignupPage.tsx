@@ -1,19 +1,105 @@
+import { useState, type SyntheticEvent } from 'react'
 import AuthLayout from '../components/AuthLayout';
 import Form from 'react-bootstrap/Form';
 import Button from 'react-bootstrap/Button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { isUflEmail, isValidName, MIN_PASSWORD_LENGTH } from '../utils/validation';
+import { Alert } from 'react-bootstrap';
+
+
+async function readJson(response: Response) {
+    try {
+        return await response.json()
+    } catch {
+        return null
+    }
+}
 
 export default function Signup() {
+  const navigate = useNavigate()
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setError('')
+    if (!firstName.trim() || !lastName.trim()) {
+            setError('Please enter your first and last name.')
+            return
+        }
+    if (!isValidName(firstName) || !isValidName(lastName)) {
+        setError("Names can only contain letters (and ' or - between words).")
+        return
+    }
+    if (!isUflEmail(email)) {
+        setError('Please use your @ufl.edu email address.')
+        return
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+        setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`)
+        return
+    }
+
+    setSubmitting(true)
+
+    try{
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify ({
+          email: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim()
+        }),
+      })
+
+      const data = await readJson(response)
+
+      if (!response.ok) {
+        setError(
+           data?.message === 'ERR_EMAIL_TAKEN'
+           ? 'An account with this email already exists.'
+           : 'Something went wrong. Please try again.'
+          )
+        return
+       }
+
+       //TODO: edit when homepage is complete
+       navigate('/clubs')
+
+    }
+    catch{
+      setError('Could not reach the server. Please try again.')
+    }
+    finally {
+      setSubmitting(false)
+    }
+
+  }
+ 
+
   return (
     <AuthLayout title="Sign Up">
-      {/*TODO: add in API implementation */}
-      <Form onSubmit={(e) => e.preventDefault()}>
+      {error && (
+        <Alert variant="danger" className="py-2 small">
+          {error}
+        </Alert>
+      )}
+      <Form onSubmit={handleSubmit} noValidate>
         {/* First Name  */}
         <Form.Group className="mb-3" controlId="firstName">
           <Form.Label visuallyHidden>First Name</Form.Label>
           <Form.Control
             type="text"
             placeholder="First Name"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
             className="rounded-3 py-3 px-3"
             style={{
               backgroundColor: '#D9D9D9',
@@ -29,6 +115,8 @@ export default function Signup() {
           <Form.Control
             type="text"
             placeholder="Last Name"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
             className="rounded-3 py-3 px-3"
             style={{
               backgroundColor: '#D9D9D9',
@@ -43,6 +131,8 @@ export default function Signup() {
           <Form.Control
             type="email"
             placeholder="UFL email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="rounded-3 py-3 px-3"
             style={{
               backgroundColor: '#D9D9D9',
@@ -57,6 +147,8 @@ export default function Signup() {
           <Form.Control
             type="password"
             placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             className="rounded-3 py-3 px-3"
             style={{
               backgroundColor: '#D9D9D9',
@@ -69,6 +161,7 @@ export default function Signup() {
         <div className="d-flex justify-content-center">
           <Button
             type="submit"
+            disabled = {submitting}
             className="rounded-3 px-5 py-2 fw-semibold"
             style={{
               backgroundColor: '#F07833',
@@ -76,7 +169,7 @@ export default function Signup() {
               color: '#14246D',
             }}
           >
-            Sign Up
+           {submitting ? 'Creating account... ' : 'Sign Up'}
           </Button>
         </div>
 
