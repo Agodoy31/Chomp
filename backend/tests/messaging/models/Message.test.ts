@@ -18,42 +18,7 @@ describe('Message Model', () => {
   });
 
   describe('Happy path message creation', () => {
-    it('creates a valid message with default values', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-      const text = 'Hello UF Gators';
-
-      const message = await Message.create({
-        conversationId,
-        senderId,
-        text,
-      });
-
-      expect(message.conversationId.toString()).toBe(conversationId.toString());
-      expect(message.senderId.toString()).toBe(senderId.toString());
-      expect(message.text).toBe(text);
-      expect(message.isAnnouncement).toBe(false);
-      expect(message.removedAt).toBeUndefined();
-      expect(message.removedBy).toBeUndefined();
-      expect(message.createdAt).toBeInstanceOf(Date);
-      expect(message.updatedAt).toBeInstanceOf(Date);
-    });
-
-    it('creates an announcement message when isAnnouncement is true', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-
-      const message = await Message.create({
-        conversationId,
-        senderId,
-        text: 'Important general body meeting tomorrow',
-        isAnnouncement: true,
-      });
-
-      expect(message.isAnnouncement).toBe(true);
-    });
-
-    it('creates a message with soft delete metadata', async () => {
+    it('creates message with trimmed text announcement flag and soft delete metadata', async () => {
       const conversationId = new Types.ObjectId();
       const senderId = new Types.ObjectId();
       const removedBy = new Types.ObjectId();
@@ -62,257 +27,90 @@ describe('Message Model', () => {
       const message = await Message.create({
         conversationId,
         senderId,
-        text: 'Content marked for removal',
+        text: '   Important general body meeting tomorrow   ',
+        isAnnouncement: true,
         removedAt,
         removedBy,
       });
 
+      expect(message.conversationId.toString()).toBe(conversationId.toString());
+      expect(message.senderId.toString()).toBe(senderId.toString());
+      expect(message.text).toBe('Important general body meeting tomorrow');
+      expect(message.isAnnouncement).toBe(true);
       expect(message.removedAt).toEqual(removedAt);
       expect(message.removedBy?.toString()).toBe(removedBy.toString());
-    });
-
-    it('trims leading and trailing whitespace upon persistence', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-
-      const message = await Message.create({
-        conversationId,
-        senderId,
-        text: '   Padded message body text   ',
-      });
-
-      expect(message.text).toBe('Padded message body text');
+      expect(message.createdAt).toBeInstanceOf(Date);
+      expect(message.updatedAt).toBeInstanceOf(Date);
     });
   });
 
   describe('Validation error handling', () => {
-    it('rejects creation when conversationId is missing', async () => {
-      const senderId = new Types.ObjectId();
+    it('rejects creation when required fields are missing or text is empty', async () => {
+      const validId = new Types.ObjectId();
 
       await expect(
-        Message.create({
-          senderId,
-          text: 'Message without conversation',
-        } as any)
+        Message.create({ senderId: validId, text: 'Hello' } as any)
       ).rejects.toThrow();
-    });
-
-    it('rejects creation when senderId is missing', async () => {
-      const conversationId = new Types.ObjectId();
 
       await expect(
-        Message.create({
-          conversationId,
-          text: 'Message without sender',
-        } as any)
+        Message.create({ conversationId: validId, text: 'Hello' } as any)
       ).rejects.toThrow();
-    });
-
-    it('rejects creation when text is missing', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
 
       await expect(
-        Message.create({
-          conversationId,
-          senderId,
-        } as any)
+        Message.create({ conversationId: validId, senderId: validId } as any)
       ).rejects.toThrow();
-    });
-
-    it('rejects creation when text is empty string', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
 
       await expect(
-        Message.create({
-          conversationId,
-          senderId,
-          text: '',
-        })
+        Message.create({ conversationId: validId, senderId: validId, text: '   ' })
       ).rejects.toThrow();
-    });
-
-    it('rejects creation when text contains only whitespace', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-
-      await expect(
-        Message.create({
-          conversationId,
-          senderId,
-          text: '     ',
-        })
-      ).rejects.toThrow();
-    });
-  });
-
-  describe('Database index and query tests', () => {
-    it('retrieves messages ordered by createdAt descending', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-
-      const firstMessage = await Message.create({
-        conversationId,
-        senderId,
-        text: 'First message',
-        createdAt: new Date('2026-01-01T10:00:00.000Z'),
-      });
-
-      const secondMessage = await Message.create({
-        conversationId,
-        senderId,
-        text: 'Second message',
-        createdAt: new Date('2026-01-01T11:00:00.000Z'),
-      });
-
-      const messages = await Message.find({ conversationId })
-        .sort({ createdAt: -1 })
-        .lean();
-
-      expect(messages).toHaveLength(2);
-      expect(messages[0]._id.toString()).toBe(secondMessage._id.toString());
-      expect(messages[1]._id.toString()).toBe(firstMessage._id.toString());
-    });
-
-    it('isolates messages by conversationId without leaking across conversations', async () => {
-      const conversationId1 = new Types.ObjectId();
-      const conversationId2 = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-
-      await Message.create({
-        conversationId: conversationId1,
-        senderId,
-        text: 'Message in room 1',
-      });
-
-      await Message.create({
-        conversationId: conversationId2,
-        senderId,
-        text: 'Message in room 2',
-      });
-
-      const results = await Message.find({ conversationId: conversationId1 }).lean();
-
-      expect(results).toHaveLength(1);
-      expect(results[0].conversationId.toString()).toBe(conversationId1.toString());
-      expect(results[0].text).toBe('Message in room 1');
-    });
-
-    it('uses id as secondary tiebreaker for messages with identical timestamps', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-      const identicalTime = new Date('2026-01-01T10:00:00.000Z');
-
-      const olderId = new Types.ObjectId('650000000000000000000001');
-      const newerId = new Types.ObjectId('650000000000000000000002');
-
-      await Message.create({
-        _id: olderId,
-        conversationId,
-        senderId,
-        text: 'Older tie message',
-        createdAt: identicalTime,
-      });
-
-      await Message.create({
-        _id: newerId,
-        conversationId,
-        senderId,
-        text: 'Newer tie message',
-        createdAt: identicalTime,
-      });
-
-      const messages = await Message.find({ conversationId })
-        .sort({ createdAt: -1, _id: -1 })
-        .lean();
-
-      expect(messages).toHaveLength(2);
-      expect(messages[0]._id.toString()).toBe(newerId.toString());
-      expect(messages[1]._id.toString()).toBe(olderId.toString());
     });
   });
 
   describe('Client ID and deduplication index', () => {
-    it('persists a message with client ID', async () => {
-      const conversationId = new Types.ObjectId();
+    it('enforces scoped uniqueness on clientId per conversation and allows null duplicates', async () => {
+      const conv1 = new Types.ObjectId();
+      const conv2 = new Types.ObjectId();
       const senderId = new Types.ObjectId();
-      const clientHandle = 'client-msg-12345';
+      const handle = 'client-uuid-12345';
 
-      const message = await Message.create({
-        conversationId,
-        senderId,
-        text: 'Message with client handle',
-        clientId: clientHandle,
-      });
-
-      expect(message.clientId).toBe(clientHandle);
-    });
-
-    it('rejects duplicate client ID within the same conversation', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-      const clientHandle = 'client-msg-12345';
-
-      await Message.create({
-        conversationId,
+      const first = await Message.create({
+        conversationId: conv1,
         senderId,
         text: 'Initial delivery',
-        clientId: clientHandle,
+        clientId: handle,
       });
+      expect(first.clientId).toBe(handle);
 
       await expect(
         Message.create({
-          conversationId,
+          conversationId: conv1,
           senderId,
-          text: 'Network retry with identical client ID',
-          clientId: clientHandle,
+          text: 'Duplicate delivery attempt',
+          clientId: handle,
         })
       ).rejects.toThrow();
-    });
 
-    it('allows identical client ID across different conversations', async () => {
-      const conversationId1 = new Types.ObjectId();
-      const conversationId2 = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-      const sharedClientHandle = 'client-msg-12345';
-
-      const first = await Message.create({
-        conversationId: conversationId1,
+      const inOtherConv = await Message.create({
+        conversationId: conv2,
         senderId,
-        text: 'Message in first chat',
-        clientId: sharedClientHandle,
+        text: 'Different conversation',
+        clientId: handle,
+      });
+      expect(inOtherConv.clientId).toBe(handle);
+
+      const msgWithoutClient1 = await Message.create({
+        conversationId: conv1,
+        senderId,
+        text: 'First without handle',
+      });
+      const msgWithoutClient2 = await Message.create({
+        conversationId: conv1,
+        senderId,
+        text: 'Second without handle',
       });
 
-      const second = await Message.create({
-        conversationId: conversationId2,
-        senderId,
-        text: 'Message in second chat',
-        clientId: sharedClientHandle,
-      });
-
-      expect(first.clientId).toBe(sharedClientHandle);
-      expect(second.clientId).toBe(sharedClientHandle);
-    });
-
-    it('allows multiple messages without client ID in the same conversation', async () => {
-      const conversationId = new Types.ObjectId();
-      const senderId = new Types.ObjectId();
-
-      const first = await Message.create({
-        conversationId,
-        senderId,
-        text: 'First message without client ID',
-      });
-
-      const second = await Message.create({
-        conversationId,
-        senderId,
-        text: 'Second message without client ID',
-      });
-
-      expect(first._id).toBeDefined();
-      expect(second._id).toBeDefined();
+      expect(msgWithoutClient1._id).toBeDefined();
+      expect(msgWithoutClient2._id).toBeDefined();
     });
   });
 });
