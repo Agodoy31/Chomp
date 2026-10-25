@@ -4,23 +4,24 @@ import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Message } from '../../../src/messaging/models/Message';
 import { Conversation, ConversationType } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant, ParticipantPermission } from '../../../src/messaging/models/ConversationParticipant';
-import { sendMessage } from '../../../src/messaging/services/message.service';
+import { sendMessage, getMessages } from '../../../src/messaging/services/message.service';
+
+beforeAll(async () => {
+  await connectTestDb();
+  await Conversation.init();
+  await ConversationParticipant.init();
+  await Message.init();
+}, 60000);
+
+afterEach(async () => {
+  await clearTestDb();
+});
+
+afterAll(async () => {
+  await closeTestDb();
+});
 
 describe('sendMessage service', () => {
-  beforeAll(async () => {
-    await connectTestDb();
-    await Conversation.init();
-    await ConversationParticipant.init();
-    await Message.init();
-  }, 60000);
-
-  afterEach(async () => {
-    await clearTestDb();
-  });
-
-  afterAll(async () => {
-    await closeTestDb();
-  });
 
   it('creates and returns plain message object when sender has write permission', async () => {
     const conversation = await Conversation.create({
@@ -230,3 +231,198 @@ describe('sendMessage service', () => {
     ).rejects.toThrow('Invalid clientId');
   });
 });
+
+describe('getMessages service', () => {
+  it('returns messages in chronological descending order matching index', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Chicken Tender Thursday Enthusiasts',
+    });
+    const participantId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: participantId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const msg1 = await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'First tender update',
+      createdAt: new Date('2026-01-01T10:00:00.000Z'),
+    });
+    const msg2 = await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Second tender update',
+      createdAt: new Date('2026-01-01T11:00:00.000Z'),
+    });
+    const msg3 = await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Third tender update',
+      createdAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+
+    const messages = await getMessages(conversation._id, participantId);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[0]._id.toString()).toBe(msg3._id.toString());
+    expect(messages[0].text).toBe('Third tender update');
+    expect(messages[1]._id.toString()).toBe(msg2._id.toString());
+    expect(messages[1].text).toBe('Second tender update');
+    expect(messages[2]._id.toString()).toBe(msg1._id.toString());
+    expect(messages[2].text).toBe('First tender update');
+  });
+
+  it('respects limit argument when limit is provided', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Newell Hall Late Night Debuggers',
+    });
+    const participantId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: participantId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Message one',
+      createdAt: new Date('2026-02-01T01:00:00.000Z'),
+    });
+    await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Message two',
+      createdAt: new Date('2026-02-01T02:00:00.000Z'),
+    });
+    const msg3 = await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Message three',
+      createdAt: new Date('2026-02-01T03:00:00.000Z'),
+    });
+    const msg4 = await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Message four',
+      createdAt: new Date('2026-02-01T04:00:00.000Z'),
+    });
+
+    const messages = await getMessages(conversation._id, participantId, 2);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]._id.toString()).toBe(msg4._id.toString());
+    expect(messages[0].text).toBe('Message four');
+    expect(messages[1]._id.toString()).toBe(msg3._id.toString());
+    expect(messages[1].text).toBe('Message three');
+  });
+
+  it('returns entire conversation history when limit is omitted', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Plaza of the Americas Hammock Sleepers',
+    });
+    const participantId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: participantId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Finding trees near Library West',
+      createdAt: new Date('2026-03-01T12:00:00.000Z'),
+    });
+    await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Found a quiet spot',
+      createdAt: new Date('2026-03-01T12:05:00.000Z'),
+    });
+    await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Waking up for class',
+      createdAt: new Date('2026-03-01T12:50:00.000Z'),
+    });
+
+    const messages = await getMessages(conversation._id, participantId, undefined);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[0].text).toBe('Waking up for class');
+    expect(messages[1].text).toBe('Found a quiet spot');
+    expect(messages[2].text).toBe('Finding trees near Library West');
+  });
+
+  it('rejects message fetching when requesting user is not a participant', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Swamp Launch Rocketry',
+    });
+    const memberId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: memberId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const outsiderId = new Types.ObjectId();
+
+    await expect(
+      getMessages(conversation._id, outsiderId)
+    ).rejects.toThrow('User is not a participant in this conversation');
+  });
+
+  it('rejects invalid conversationId or requestingUserId with validation errors', async () => {
+    const validId = new Types.ObjectId();
+
+    await expect(
+      getMessages('', validId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getMessages('not-a-valid-id', validId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      getMessages(validId, '')
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      getMessages(validId, 'not-a-valid-id')
+    ).rejects.toThrow('Valid requestingUserId is required');
+  });
+
+  it('returns plain message objects without mongoose document methods', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'French Fries Monument Preservation Society',
+    });
+    const participantId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: participantId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    await Message.create({
+      conversationId: conversation._id,
+      senderId: participantId,
+      text: 'Documenting the monument sculpture',
+    });
+
+    const messages = await getMessages(conversation._id, participantId);
+
+    expect(messages).toHaveLength(1);
+    const firstResult = messages[0] as Record<string, unknown>;
+    expect(firstResult.save).toBeUndefined();
+    expect(firstResult.$isDefault).toBeUndefined();
+  });
+});
+
