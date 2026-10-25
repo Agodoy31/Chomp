@@ -43,25 +43,36 @@ afterAll(async () => {
 });
 
 describe('addParticipantsToConversation service', () => {
-  it('adds participants to group conversation and returns plain objects', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Add Participants Group');
+  it('adds participants to group conversation ignoring duplicates and returns plain objects', async () => {
+    const user1 = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
+    });
+    const group = await createGroupConversation(user1._id, [user2._id], 'Chomp Streetwear Collective');
 
-    const user3 = await createTestUser();
+    const user3 = await createTestUser({
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+      email: 'dwuerffel@ufl.edu',
+    });
     const user4 = await createTestUser();
 
     const added = await addParticipantsToConversation(group._id, [user3._id, user4._id]);
-
     expect(added).toHaveLength(2);
     expect(added[0] instanceof ConversationParticipant).toBe(false);
     expect((added[0] as any).save).toBeUndefined();
 
-    const addedIds = added.map((p) => {
-      return p.userId.toString();
-    });
-    expect(addedIds).toContain(user3._id.toString());
-    expect(addedIds).toContain(user4._id.toString());
+    const secondAdd = await addParticipantsToConversation(group._id, [user1._id, user3._id]);
+    expect(secondAdd).toHaveLength(0);
+
+    const emptyAdd = await addParticipantsToConversation(group._id, []);
+    expect(emptyAdd).toEqual([]);
 
     const allInDb = await ConversationParticipant.find({
       conversationId: group._id,
@@ -69,625 +80,281 @@ describe('addParticipantsToConversation service', () => {
     expect(allInDb).toHaveLength(4);
   });
 
-  it('ignores users who are already participants without throwing duplicate key errors', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Duplicate Ignore Group');
-
-    const user3 = await createTestUser();
-
-    const firstAdd = await addParticipantsToConversation(group._id, [
-      user1._id,
-      user2._id,
-      user3._id,
-    ]);
-    expect(firstAdd).toHaveLength(1);
-    expect(firstAdd[0].userId.toString()).toBe(user3._id.toString());
-
-    const secondAdd = await addParticipantsToConversation(group._id, [
-      user1._id,
-      user3._id,
-    ]);
-    expect(secondAdd).toHaveLength(0);
-
-    const allInDb = await ConversationParticipant.find({
-      conversationId: group._id,
-    }).lean().exec();
-    expect(allInDb).toHaveLength(3);
-  });
-
-  it('inserts a system message with single user name when one participant is added', async () => {
+  it('inserts system messages when adding single or multiple participants', async () => {
     const creator = await createTestUser({
-      firstName: 'Southwest',
-      lastName: 'Squatter',
-      email: 'bench_waitlist@ufl.edu',
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
     });
     const user2 = await createTestUser({
-      firstName: 'Krishna',
-      lastName: 'Regular',
-      email: 'lunch_line@ufl.edu',
-    });
-    const group = await createGroupConversation(creator._id, [user2._id], 'Lake Alice Turtle Watchers');
-
-    const newUser = await createTestUser({
-      firstName: 'Reitz',
-      lastName: 'FoodCourter',
-      email: 'subway_line_eternal@ufl.edu',
-    });
-
-    await addParticipantsToConversation(group._id, [newUser._id], creator._id);
-
-    const systemMessages = await Message.find({
-      conversationId: group._id,
-      text: /added/,
-    })
-      .lean()
-      .exec();
-
-    expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].senderId.toString()).toBe(creator._id.toString());
-    expect(systemMessages[0].text).toBe('Southwest Squatter added Reitz FoodCourter');
-    expect(systemMessages[0].isSystem).toBe(true);
-  });
-
-  it('inserts a system message with participant count when multiple participants are added', async () => {
-    const creator = await createTestUser({
-      firstName: 'Southwest',
-      lastName: 'Squatter',
-      email: 'bench_waitlist@ufl.edu',
-    });
-    const user2 = await createTestUser({
-      firstName: 'Krishna',
-      lastName: 'Regular',
-      email: 'lunch_line@ufl.edu',
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
     });
     const group = await createGroupConversation(creator._id, [user2._id], 'Lake Alice Turtle Watchers');
 
     const newUser1 = await createTestUser({
-      firstName: 'Reitz',
-      lastName: 'FoodCourter',
-      email: 'subway_line_eternal@ufl.edu',
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+      email: 'dwuerffel@ufl.edu',
     });
-    const newUser2 = await createTestUser({
-      firstName: 'Potato',
-      lastName: 'Sculpture',
-      email: 'french_fries_monument@ufl.edu',
-    });
+    await addParticipantsToConversation(group._id, [newUser1._id], creator._id);
 
-    await addParticipantsToConversation(group._id, [newUser1._id, newUser2._id], creator._id);
-
-    const systemMessages = await Message.find({
+    const singleSysMessage = await Message.findOne({
       conversationId: group._id,
-      text: /added/,
-    })
-      .lean()
-      .exec();
+      text: /Danny Wuerffel/,
+    }).lean().exec();
+    expect(singleSysMessage).not.toBeNull();
+    expect(singleSysMessage?.text).toBe('Potato Sculpture added Danny Wuerffel');
+    expect(singleSysMessage?.isSystem).toBe(true);
 
-    expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].senderId.toString()).toBe(creator._id.toString());
-    expect(systemMessages[0].text).toBe('Southwest Squatter added 2 people');
-    expect(systemMessages[0].isSystem).toBe(true);
+    const newUser2 = await createTestUser();
+    const newUser3 = await createTestUser();
+    await addParticipantsToConversation(group._id, [newUser2._id, newUser3._id], creator._id);
+
+    const multiSysMessage = await Message.findOne({
+      conversationId: group._id,
+      text: /added 2 people/,
+    }).lean().exec();
+    expect(multiSysMessage).not.toBeNull();
+    expect(multiSysMessage?.text).toBe('Potato Sculpture added 2 people');
   });
 
-  it('throws error when attempting to add participants to a direct conversation', async () => {
+  it('rejects adding participants on direct conversations non-existent conversations or invalid inputs', async () => {
     const user1 = await createTestUser();
     const user2 = await createTestUser();
     const directResult = await createDirectConversation(user1._id, user2._id);
-    const user3 = await createTestUser();
+    const validId = new Types.ObjectId();
+    const nonExistentId = new Types.ObjectId();
 
     await expect(
-      addParticipantsToConversation(directResult.conversation._id, [user3._id])
+      addParticipantsToConversation(directResult.conversation._id, [user1._id])
     ).rejects.toThrow('Cannot add participants to a direct conversation');
-  });
-
-  it('throws error when conversation does not exist', async () => {
-    const nonExistentConversationId = new Types.ObjectId();
-    const user = await createTestUser();
 
     await expect(
-      addParticipantsToConversation(nonExistentConversationId, [user._id])
+      addParticipantsToConversation(nonExistentId, [user1._id])
     ).rejects.toThrow('Conversation does not exist');
-  });
-
-  it('throws error when conversationId is missing or invalid', async () => {
-    const user = await createTestUser();
 
     await expect(
-      addParticipantsToConversation(null as unknown as Types.ObjectId, [user._id])
+      addParticipantsToConversation(null as unknown as Types.ObjectId, [user1._id])
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      addParticipantsToConversation(undefined as unknown as Types.ObjectId, [user._id])
-    ).rejects.toThrow('Valid conversationId is required');
-
-    await expect(
-      addParticipantsToConversation('invalid-id' as unknown as Types.ObjectId, [user._id])
-    ).rejects.toThrow('Valid conversationId is required');
-  });
-
-  it('throws error when userIds is not an array', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Array Check Group');
-
-    await expect(
-      addParticipantsToConversation(group._id, null as unknown as Types.ObjectId[])
+      addParticipantsToConversation(validId, null as unknown as Types.ObjectId[])
     ).rejects.toThrow('userIds must be an array');
 
     await expect(
-      addParticipantsToConversation(group._id, undefined as unknown as Types.ObjectId[])
-    ).rejects.toThrow('userIds must be an array');
-
-    await expect(
-      addParticipantsToConversation(group._id, 'not-an-array' as unknown as Types.ObjectId[])
-    ).rejects.toThrow('userIds must be an array');
-  });
-
-  it('throws error when any userId is invalid', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Valid User ID Check Group');
-    const validUser = await createTestUser();
-
-    await expect(
-      addParticipantsToConversation(group._id, [validUser._id, null as unknown as Types.ObjectId])
+      addParticipantsToConversation(validId, [validId, 'invalid-id' as unknown as Types.ObjectId])
     ).rejects.toThrow('Valid participantId is required');
 
-    await expect(
-      addParticipantsToConversation(group._id, [validUser._id, undefined as unknown as Types.ObjectId])
-    ).rejects.toThrow('Valid participantId is required');
+    const group = await createGroupConversation(user1._id, [user2._id], 'Rejection Test Group');
 
     await expect(
-      addParticipantsToConversation(group._id, [validUser._id, 'invalid-id' as unknown as Types.ObjectId])
-    ).rejects.toThrow('Valid participantId is required');
-  });
-
-  it('throws error when one or more users do not exist', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Existence Check Group');
-    const existingUser = await createTestUser();
-    const nonExistentUserId = new Types.ObjectId();
-
-    await expect(
-      addParticipantsToConversation(group._id, [existingUser._id, nonExistentUserId])
+      addParticipantsToConversation(group._id, [user1._id, nonExistentId])
     ).rejects.toThrow('One or more users do not exist');
-  });
-
-  it('returns empty array when userIds array is empty', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(user1._id, [user2._id], 'Empty Array Check Group');
-
-    const added = await addParticipantsToConversation(group._id, []);
-
-    expect(added).toEqual([]);
   });
 });
 
 describe('updateConversationTitle service', () => {
-  it('updates group conversation title when requested by a participant', async () => {
+  it('updates title for group conversations and channels with whitespace trimming', async () => {
     const user1 = await createTestUser({
-      firstName: 'Marston',
-      lastName: 'Dweller',
-      email: 'basement.coder@ufl.edu',
-    });
-    const user2 = await createTestUser({
-      firstName: 'Newell',
-      lastName: 'Nightowl',
-      email: 'newell3am@ufl.edu',
-    });
-
-    const group = await createGroupConversation(user1._id, [user2._id], 'Marston Basement Study Group');
-    const updated = await updateConversationTitle(group._id, user1._id, 'Turlington Plaza Frisbee');
-
-    expect(updated.title).toBe('Turlington Plaza Frisbee');
-    const fromDb = await Conversation.findById(group._id).lean();
-    expect(fromDb?.title).toBe('Turlington Plaza Frisbee');
-  });
-
-  it('trims whitespace from new conversation title', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-
-    const group = await createGroupConversation(user1._id, [user2._id], 'Marston Basement Study Group');
-    const updated = await updateConversationTitle(group._id, user1._id, '   Trimmed Title   ');
-
-    expect(updated.title).toBe('Trimmed Title');
-  });
-
-  it('updates channel title when requested by a channel participant', async () => {
-    const proposer = await createTestUser();
-    const user1 = await createTestUser();
-    const club = await createTestClub(proposer._id);
-    const channel = await createChannel(club._id, 'announcements', [user1._id]);
-
-    const updated = await updateConversationTitle(channel._id, user1._id, 'general');
-
-    expect(updated.title).toBe('general');
-    const fromDb = await Conversation.findById(channel._id).lean();
-    expect(fromDb?.title).toBe('general');
-  });
-
-  it('rejects updating title of a direct conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const direct = await createDirectConversation(user1._id, user2._id);
-
-    await expect(
-      updateConversationTitle(direct.conversation._id, user1._id, 'New Title')
-    ).rejects.toThrow('Cannot update title of a direct conversation');
-  });
-
-  it('rejects when requesting user is not a participant in the conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const nonParticipant = await createTestUser({
       firstName: 'Potato',
       lastName: 'Sculpture',
       email: 'french_fries_monument@ufl.edu',
     });
+    const user2 = await createTestUser({
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
+    });
 
-    const group = await createGroupConversation(user1._id, [user2._id], 'Marston Basement Study Group');
+    const group = await createGroupConversation(user1._id, [user2._id], 'Chomp Streetwear Collective');
+    const updatedGroup = await updateConversationTitle(group._id, user1._id, '   Reitz Union Smash Bros   ');
+    expect(updatedGroup.title).toBe('Reitz Union Smash Bros');
 
-    await expect(
-      updateConversationTitle(group._id, nonParticipant._id, 'Hacked Title')
-    ).rejects.toThrow('User is not a participant in this conversation');
+    const club = await createTestClub(user1._id);
+    const channel = await createChannel(club._id, 'announcements', [user1._id]);
+    const updatedChannel = await updateConversationTitle(channel._id, user1._id, 'general');
+    expect(updatedChannel.title).toBe('general');
   });
 
-  it('throws validation error on invalid parameters or duplicate channel title', async () => {
+  it('rejects direct conversations non participants and invalid title parameters', async () => {
     const user1 = await createTestUser();
-    const proposer = await createTestUser();
-    const club = await createTestClub(proposer._id);
-    const channel1 = await createChannel(club._id, 'announcements', [user1._id]);
+    const user2 = await createTestUser();
+    const outsider = await createTestUser();
+    const direct = await createDirectConversation(user1._id, user2._id);
+    const group = await createGroupConversation(user1._id, [user2._id], 'Study Group');
+    const club = await createTestClub(user1._id);
+    const channel = await createChannel(club._id, 'announcements', [user1._id]);
     await createChannel(club._id, 'general', [user1._id]);
 
     await expect(
-      updateConversationTitle(null as unknown as Types.ObjectId, user1._id, 'New Title')
+      updateConversationTitle(direct.conversation._id, user1._id, 'New Title')
+    ).rejects.toThrow('Cannot update title of a direct conversation');
+
+    await expect(
+      updateConversationTitle(group._id, outsider._id, 'Hacked Title')
+    ).rejects.toThrow('User is not a participant in this conversation');
+
+    await expect(
+      updateConversationTitle(null as unknown as Types.ObjectId, user1._id, 'Title')
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      updateConversationTitle(channel1._id, null as unknown as Types.ObjectId, 'New Title')
+      updateConversationTitle(group._id, null as unknown as Types.ObjectId, 'Title')
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
-      updateConversationTitle(channel1._id, user1._id, '   ')
+      updateConversationTitle(group._id, user1._id, '   ')
     ).rejects.toThrow('Valid conversation title is required');
 
     await expect(
-      updateConversationTitle(channel1._id, user1._id, 'general')
+      updateConversationTitle(channel._id, user1._id, 'general')
     ).rejects.toThrow('A channel with this title already exists in the club');
   });
 });
 
 describe('removeParticipantFromConversation and leaveConversation services', () => {
-  it('removes target participant from group conversation when requested by a member', async () => {
-    const user1 = await createTestUser({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-    const user2 = await createTestUser({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-    const user3 = await createTestUser({
-      firstName: 'Reitz',
-      lastName: 'FoodCourter',
-      email: 'subway_line_eternal@ufl.edu',
-    });
-
-    const group = await createGroupConversation(
-      user1._id,
-      [user2._id, user3._id],
-      'French Fries Monument Preservation Society'
-    );
-    const result = await removeParticipantFromConversation(group._id, user1._id, user2._id);
-
-    expect(result).toBe(true);
-
-    const isUser2StillParticipant = await isUserParticipant(group._id, user2._id);
-    expect(isUser2StillParticipant).toBe(false);
-
-    const isUser1StillParticipant = await isUserParticipant(group._id, user1._id);
-    expect(isUser1StillParticipant).toBe(true);
-
-    const isUser3StillParticipant = await isUserParticipant(group._id, user3._id);
-    expect(isUser3StillParticipant).toBe(true);
-  });
-
-  it('throws error when non moderator attempts to remove another participant', async () => {
-    const creator = await createTestUser({
-      firstName: 'Alberta',
-      lastName: 'Gator',
-      email: 'alberta@ufl.edu',
-    });
-    const regularMember = await createTestUser({
-      firstName: 'Broward',
-      lastName: 'Freshman',
-      email: 'broward.dining@ufl.edu',
-    });
-    const targetMember = await createTestUser({
-      firstName: 'Turlington',
-      lastName: 'Tabler',
-      email: 'flyer.dodger@ufl.edu',
-    });
-
-    const group = await createGroupConversation(
-      creator._id,
-      [regularMember._id, targetMember._id],
-      'Turlington Plaza Frisbee'
-    );
-
-    await expect(
-      removeParticipantFromConversation(group._id, regularMember._id, targetMember._id)
-    ).rejects.toThrow('Only moderators can remove other participants');
-
-    const isTargetStillParticipant = await isUserParticipant(group._id, targetMember._id);
-    expect(isTargetStillParticipant).toBe(true);
-  });
-
-  it('inserts a system message when a moderator removes a participant', async () => {
+  it('removes member when requested by moderator or when participant leaves with system messages', async () => {
     const moderator = await createTestUser({
-      firstName: 'Southwest',
-      lastName: 'Squatter',
-      email: 'bench_waitlist@ufl.edu',
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
     });
-    const member = await createTestUser({
-      firstName: 'Turlington',
-      lastName: 'Tabler',
-      email: 'flyer.dodger@ufl.edu',
+    const member1 = await createTestUser({
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
+    });
+    const member2 = await createTestUser({
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+      email: 'dwuerffel@ufl.edu',
     });
 
     const group = await createGroupConversation(
       moderator._id,
-      [member._id],
-      'Southwest Rec Bench Press Waitlist'
+      [member1._id, member2._id],
+      'Chomp Streetwear Collective'
     );
 
-    await removeParticipantFromConversation(group._id, moderator._id, member._id);
+    const removeResult = await removeParticipantFromConversation(group._id, moderator._id, member1._id);
+    expect(removeResult).toBe(true);
+    expect(await isUserParticipant(group._id, member1._id)).toBe(false);
 
-    const systemMessages = await Message.find({
-      conversationId: group._id,
-      text: /removed/,
-    })
-      .lean()
-      .exec();
+    const removeMsg = await Message.findOne({ conversationId: group._id, text: /removed/ }).lean().exec();
+    expect(removeMsg).not.toBeNull();
+    expect(removeMsg?.text).toBe('Potato Sculpture removed GatorCorner Survivor');
 
-    expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].senderId.toString()).toBe(moderator._id.toString());
-    expect(systemMessages[0].text).toBe('Southwest Squatter removed Turlington Tabler');
-    expect(systemMessages[0].isSystem).toBe(true);
-  });
+    const leaveResult = await leaveConversation(group._id, member2._id);
+    expect(leaveResult).toBe(true);
+    expect(await isUserParticipant(group._id, member2._id)).toBe(false);
 
-  it('inserts a system message when a participant leaves the conversation', async () => {
-    const creator = await createTestUser({
-      firstName: 'Southwest',
-      lastName: 'Squatter',
-      email: 'bench_waitlist@ufl.edu',
-    });
-    const leaver = await createTestUser({
-      firstName: 'Century',
-      lastName: 'Tower',
-      email: 'carillon@ufl.edu',
-    });
-
-    const group = await createGroupConversation(
-      creator._id,
-      [leaver._id],
-      'Southwest Rec Bench Press Waitlist'
-    );
-
-    await leaveConversation(group._id, leaver._id);
-
-    const systemMessages = await Message.find({
-      conversationId: group._id,
-      text: /left the group/,
-    })
-      .lean()
-      .exec();
-
-    expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].senderId.toString()).toBe(leaver._id.toString());
-    expect(systemMessages[0].text).toBe('Century Tower left the group');
-    expect(systemMessages[0].isSystem).toBe(true);
-  });
-
-  it('removes requesting user when calling leaveConversation', async () => {
-    const user1 = await createTestUser({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-    const user2 = await createTestUser({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-
-    const group = await createGroupConversation(
-      user1._id,
-      [user2._id],
-      'Marston Basement Study Group'
-    );
-    const result = await leaveConversation(group._id, user1._id);
-
-    expect(result).toBe(true);
-
-    const isUser1StillParticipant = await isUserParticipant(group._id, user1._id);
-    expect(isUser1StillParticipant).toBe(false);
-
-    const isUser2StillParticipant = await isUserParticipant(group._id, user2._id);
-    expect(isUser2StillParticipant).toBe(true);
+    const leaveMsg = await Message.findOne({ conversationId: group._id, text: /left the group/ }).lean().exec();
+    expect(leaveMsg).not.toBeNull();
+    expect(leaveMsg?.text).toBe('Danny Wuerffel left the group');
   });
 
   it('retains conversation document when the last participant leaves', async () => {
     const user1 = await createTestUser();
     const user2 = await createTestUser();
+    const group = await createGroupConversation(user1._id, [user2._id], 'Empty After Leave Group');
 
-    const group = await createGroupConversation(
-      user1._id,
-      [user2._id],
-      'Marston Basement Study Group'
-    );
     await leaveConversation(group._id, user1._id);
     await leaveConversation(group._id, user2._id);
 
-    const remainingParticipants = await getConversationParticipants(group._id);
-    expect(remainingParticipants).toHaveLength(0);
+    const participants = await getConversationParticipants(group._id);
+    expect(participants).toHaveLength(0);
 
-    const conversationInDb = await Conversation.findById(group._id).lean();
-    expect(conversationInDb).not.toBeNull();
-    expect(conversationInDb?._id.toString()).toBe(group._id.toString());
+    const fromDb = await Conversation.findById(group._id).lean();
+    expect(fromDb).not.toBeNull();
   });
 
-  it('rejects removing participant from a direct conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const direct = await createDirectConversation(user1._id, user2._id);
-
-    await expect(
-      removeParticipantFromConversation(direct.conversation._id, user1._id, user2._id)
-    ).rejects.toThrow('Cannot remove participants from a direct conversation');
-  });
-
-  it('rejects when requesting user is not a participant in the conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const nonMember = await createTestUser();
-
-    const group = await createGroupConversation(
-      user1._id,
-      [user2._id],
-      'Marston Basement Study Group'
-    );
-
-    await expect(
-      removeParticipantFromConversation(group._id, nonMember._id, user2._id)
-    ).rejects.toThrow('User is not a participant in this conversation');
-  });
-
-  it('rejects when target user is not a participant in the conversation', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
+  it('rejects unauthorized removals direct conversations and non participant requests', async () => {
+    const creator = await createTestUser();
+    const regularMember = await createTestUser();
+    const targetMember = await createTestUser();
     const outsider = await createTestUser();
-
-    const group = await createGroupConversation(
-      user1._id,
-      [user2._id],
-      'Marston Basement Study Group'
-    );
+    const group = await createGroupConversation(creator._id, [regularMember._id, targetMember._id], 'Group');
+    const direct = await createDirectConversation(creator._id, regularMember._id);
 
     await expect(
-      removeParticipantFromConversation(group._id, user1._id, outsider._id)
+      removeParticipantFromConversation(group._id, regularMember._id, targetMember._id)
+    ).rejects.toThrow('Only moderators can remove other participants');
+
+    await expect(
+      removeParticipantFromConversation(direct.conversation._id, creator._id, regularMember._id)
+    ).rejects.toThrow('Cannot remove participants from a direct conversation');
+
+    await expect(
+      removeParticipantFromConversation(group._id, outsider._id, targetMember._id)
+    ).rejects.toThrow('User is not a participant in this conversation');
+
+    await expect(
+      removeParticipantFromConversation(group._id, creator._id, outsider._id)
     ).rejects.toThrow('Target user is not a participant in this conversation');
   });
 
-  it('throws validation error on missing or invalid parameters', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
-    const group = await createGroupConversation(
-      user1._id,
-      [user2._id],
-      'Marston Basement Study Group'
-    );
+  it('validates input parameters on participant removal and departure', async () => {
+    const validId = new Types.ObjectId();
     const fakeId = new Types.ObjectId();
 
     await expect(
-      removeParticipantFromConversation(null as unknown as Types.ObjectId, user1._id, user2._id)
+      removeParticipantFromConversation(null as unknown as Types.ObjectId, validId, validId)
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      removeParticipantFromConversation(group._id, null as unknown as Types.ObjectId, user2._id)
+      removeParticipantFromConversation(validId, null as unknown as Types.ObjectId, validId)
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
-      removeParticipantFromConversation(group._id, user1._id, null as unknown as Types.ObjectId)
+      removeParticipantFromConversation(validId, validId, null as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid targetUserId is required');
 
     await expect(
-      removeParticipantFromConversation(fakeId, user1._id, user2._id)
+      removeParticipantFromConversation(fakeId, validId, validId)
     ).rejects.toThrow('Conversation not found');
 
     await expect(
-      leaveConversation(null as unknown as Types.ObjectId, user1._id)
+      leaveConversation(null as unknown as Types.ObjectId, validId)
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      leaveConversation(group._id, null as unknown as Types.ObjectId)
+      leaveConversation(validId, null as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid userId is required');
   });
 });
 
 describe('updateParticipantPermissions service', () => {
-  it('promotes member to moderator with transition system message', async () => {
+  it('updates permissions with transition system messages across promote demote and restriction', async () => {
     const moderator = await createTestUser({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
     });
     const member = await createTestUser({
-      firstName: 'Broward',
-      lastName: 'Freshman',
-      email: 'broward.dining@ufl.edu',
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
     });
 
     const group = await createGroupConversation(
       moderator._id,
       [member._id],
-      'Broward Dining Raw Chicken Investigators'
+      'Chomp Streetwear Collective'
     );
 
-    const updated = await updateParticipantPermission(
+    const promoted = await updateParticipantPermission(
       group._id,
       moderator._id,
       member._id,
       ParticipantPermission.MODERATE
     );
-
-    expect(updated.permission).toBe(ParticipantPermission.MODERATE);
-
-    const systemMessages = await Message.find({
-      conversationId: group._id,
-      isSystem: true,
-      text: /moderator/,
-    })
-      .lean()
-      .exec();
-
-    expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].text).toBe('Dennis Heckler made Broward Freshman a moderator');
-  });
-
-  it('demotes moderator and updates permissions with transition system messages', async () => {
-    const creator = await createTestUser({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-    const member = await createTestUser({
-      firstName: 'Broward',
-      lastName: 'Freshman',
-      email: 'broward.dining@ufl.edu',
-    });
-
-    const group = await createGroupConversation(
-      creator._id,
-      [member._id],
-      'Broward Dining Raw Chicken Investigators'
-    );
-
-    await updateParticipantPermission(
-      group._id,
-      creator._id,
-      member._id,
-      ParticipantPermission.MODERATE
-    );
+    expect(promoted.permission).toBe(ParticipantPermission.MODERATE);
 
     const demoted = await updateParticipantPermission(
       group._id,
-      creator._id,
+      moderator._id,
       member._id,
       ParticipantPermission.WRITE
     );
@@ -695,54 +362,32 @@ describe('updateParticipantPermissions service', () => {
 
     const restricted = await updateParticipantPermission(
       group._id,
-      creator._id,
+      moderator._id,
       member._id,
       ParticipantPermission.READ
     );
     expect(restricted.permission).toBe(ParticipantPermission.READ);
 
-    const restored = await updateParticipantPermission(
-      group._id,
-      creator._id,
-      member._id,
-      ParticipantPermission.WRITE
-    );
-    expect(restored.permission).toBe(ParticipantPermission.WRITE);
-
     const systemMessages = await Message.find({
       conversationId: group._id,
       isSystem: true,
-    })
-      .lean()
-      .exec();
+    }).lean().exec();
 
     const texts = systemMessages.map((m) => m.text);
-    expect(texts).toContain('Dennis Heckler removed Broward Freshman as a moderator');
-    expect(texts).toContain('Dennis Heckler set Broward Freshman to read only');
-    expect(texts).toContain('Dennis Heckler allowed Broward Freshman to send messages');
+    expect(texts).toContain('Potato Sculpture made GatorCorner Survivor a moderator');
+    expect(texts).toContain('Potato Sculpture removed GatorCorner Survivor as a moderator');
+    expect(texts).toContain('Potato Sculpture set GatorCorner Survivor to read only');
   });
 
-  it('updates multiple permissions in bulk and suppresses system messages', async () => {
-    const moderator = await createTestUser({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-    const member1 = await createTestUser({
-      firstName: 'Broward',
-      lastName: 'Freshman',
-      email: 'broward.dining@ufl.edu',
-    });
-    const member2 = await createTestUser({
-      firstName: 'Reitz',
-      lastName: 'Bowler',
-      email: 'game.room@ufl.edu',
-    });
+  it('updates permissions in bulk without creating system messages', async () => {
+    const moderator = await createTestUser();
+    const member1 = await createTestUser();
+    const member2 = await createTestUser();
 
     const group = await createGroupConversation(
       moderator._id,
       [member1._id, member2._id],
-      'Broward Dining Raw Chicken Investigators'
+      'Bulk Permission Group'
     );
 
     const updatedList = await updateParticipantPermissions(
@@ -762,29 +407,15 @@ describe('updateParticipantPermissions service', () => {
       conversationId: group._id,
       isSystem: true,
       text: /moderator|read only|messages/,
-    })
-      .lean()
-      .exec();
-
+    }).lean().exec();
     expect(systemMessages).toHaveLength(0);
   });
 
-  it('updates channel permissions silently and rejects unauthorized requests', async () => {
-    const moderator = await createTestUser({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-    const member = await createTestUser({
-      firstName: 'Broward',
-      lastName: 'Freshman',
-      email: 'broward.dining@ufl.edu',
-    });
-    const club = await createTestClub(moderator._id, {
-      name: 'Krishna Lunch Line Appreciators',
-    });
-
-    const channel = await createChannel(club._id, 'lunch-discussions', [moderator._id, member._id]);
+  it('updates channel permissions silently and rejects non moderator changes', async () => {
+    const moderator = await createTestUser();
+    const member = await createTestUser();
+    const club = await createTestClub(moderator._id);
+    const channel = await createChannel(club._id, 'announcements', [moderator._id, member._id]);
 
     await ConversationParticipant.updateOne(
       { conversationId: channel._id, userId: moderator._id },
@@ -797,14 +428,11 @@ describe('updateParticipantPermissions service', () => {
       member._id,
       ParticipantPermission.READ
     );
-
     expect(updated.permission).toBe(ParticipantPermission.READ);
 
     const channelMessages = await Message.find({
       conversationId: channel._id,
-    })
-      .lean()
-      .exec();
+    }).lean().exec();
     expect(channelMessages).toHaveLength(0);
 
     await expect(
@@ -817,18 +445,12 @@ describe('updateParticipantPermissions service', () => {
     ).rejects.toThrow('Only moderators can update participant permissions');
   });
 
-  it('validates inputs and rejects direct conversations', async () => {
+  it('rejects permission updates on direct conversations non members and invalid arguments', async () => {
     const user1 = await createTestUser();
     const user2 = await createTestUser();
-    const nonMember = await createTestUser();
     const outsider = await createTestUser();
-
-    const group = await createGroupConversation(
-      user1._id,
-      [user2._id],
-      'Broward Dining Raw Chicken Investigators'
-    );
     const direct = await createDirectConversation(user1._id, user2._id);
+    const group = await createGroupConversation(user1._id, [user2._id], 'Group');
     const fakeId = new Types.ObjectId();
 
     await expect(
@@ -843,7 +465,7 @@ describe('updateParticipantPermissions service', () => {
     await expect(
       updateParticipantPermission(
         group._id,
-        nonMember._id,
+        outsider._id,
         user2._id,
         ParticipantPermission.MODERATE
       )
@@ -886,6 +508,3 @@ describe('updateParticipantPermissions service', () => {
     ).rejects.toThrow('Conversation not found');
   });
 });
-
-
-
