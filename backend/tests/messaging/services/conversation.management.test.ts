@@ -260,14 +260,69 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     const user2 = await createTestUser();
     const group = await createGroupConversation(user1._id, [user2._id], 'Empty After Leave Group');
 
-    await leaveConversation(group._id, user1._id);
     await leaveConversation(group._id, user2._id);
+    await leaveConversation(group._id, user1._id);
 
     const participants = await getConversationParticipants(group._id);
     expect(participants).toHaveLength(0);
 
     const fromDb = await Conversation.findById(group._id).lean();
     expect(fromDb).not.toBeNull();
+  });
+
+  it('rejects sole moderator departure when other members remain in group conversation', async () => {
+    const moderator = await createTestUser({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+    const group = await createGroupConversation(
+      moderator._id,
+      [member._id],
+      'Marston Basement Study Group'
+    );
+
+    await expect(
+      leaveConversation(group._id, moderator._id)
+    ).rejects.toThrow(
+      'Cannot remove the last moderator from a group conversation with remaining participants'
+    );
+
+    await expect(
+      removeParticipantFromConversation(group._id, moderator._id, moderator._id)
+    ).rejects.toThrow(
+      'Cannot remove the last moderator from a group conversation with remaining participants'
+    );
+  });
+
+  it('allows sole moderator departure when no other members remain in group conversation', async () => {
+    const creator = await createTestUser({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+    const group = await createGroupConversation(
+      creator._id,
+      [member._id],
+      'Marston Basement Study Group'
+    );
+
+    await leaveConversation(group._id, member._id);
+    const result = await leaveConversation(group._id, creator._id);
+    expect(result).toBe(true);
+
+    const remaining = await getConversationParticipants(group._id);
+    expect(remaining).toHaveLength(0);
   });
 
   it('rejects unauthorized removals direct conversations and non participant requests', async () => {
@@ -507,4 +562,65 @@ describe('updateParticipantPermissions service', () => {
       )
     ).rejects.toThrow('Conversation not found');
   });
+
+  it('rejects demoting sole moderator to write permissions in group conversation', async () => {
+    const moderator = await createTestUser({
+      firstName: 'Newell',
+      lastName: 'Nightowl',
+      email: 'newell3am@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
+    });
+    const group = await createGroupConversation(
+      moderator._id,
+      [member._id],
+      'Turlington Plaza Frisbee'
+    );
+
+    await expect(
+      updateParticipantPermission(
+        group._id,
+        moderator._id,
+        moderator._id,
+        ParticipantPermission.WRITE
+      )
+    ).rejects.toThrow('Group conversations must have at least one moderator');
+  });
+
+  it('permits batch permission update that demotes one moderator while promoting another', async () => {
+    const mod1 = await createTestUser({
+      firstName: 'Newell',
+      lastName: 'Nightowl',
+      email: 'newell3am@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'GatorCorner',
+      lastName: 'Survivor',
+      email: 'soft_serve_broken@ufl.edu',
+    });
+    const group = await createGroupConversation(
+      mod1._id,
+      [member._id],
+      'Turlington Plaza Frisbee'
+    );
+
+    const updatedList = await updateParticipantPermissions(
+      group._id,
+      mod1._id,
+      [
+        [mod1._id, ParticipantPermission.WRITE],
+        [member._id, ParticipantPermission.MODERATE],
+      ]
+    );
+
+    expect(updatedList).toHaveLength(2);
+    const mod1Updated = updatedList.find((p) => p.userId.toString() === mod1._id.toString());
+    const memberUpdated = updatedList.find((p) => p.userId.toString() === member._id.toString());
+    expect(mod1Updated?.permission).toBe(ParticipantPermission.WRITE);
+    expect(memberUpdated?.permission).toBe(ParticipantPermission.MODERATE);
+  });
 });
+
