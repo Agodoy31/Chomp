@@ -136,3 +136,52 @@ export async function getMessages(
 
   return query.lean<IMessage[]>().exec();
 }
+
+export async function deleteMessage(
+  messageId: Types.ObjectId | string,
+  requestingUserId: Types.ObjectId | string
+): Promise<IMessage> {
+  if (!messageId || !mongoose.isObjectIdOrHexString(messageId)) {
+    throw new Error('Valid messageId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  const msgObjectId = new Types.ObjectId(messageId.toString());
+  const userObjectId = new Types.ObjectId(requestingUserId.toString());
+
+  const message = await Message.findById(msgObjectId).exec();
+  if (!message) {
+    throw new Error('Message not found');
+  }
+
+  if (message.isSystem) {
+    throw new Error('System messages cannot be deleted');
+  }
+
+  const isAuthor = message.senderId.toString() === userObjectId.toString();
+  if (!isAuthor) {
+    const participant = await ConversationParticipant.findOne({
+      userId: userObjectId,
+      conversationId: message.conversationId,
+    })
+      .select('permission')
+      .lean()
+      .exec();
+
+    if (!participant || participant.permission !== ParticipantPermission.MODERATE) {
+      throw new Error('User is not authorized to delete this message');
+    }
+  }
+
+  if (!message.removedAt) {
+    message.removedAt = new Date();
+    message.removedBy = userObjectId;
+    await message.save();
+  }
+
+  return message.toObject<IMessage>();
+}
+
