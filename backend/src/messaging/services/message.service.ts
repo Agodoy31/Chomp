@@ -38,17 +38,20 @@ export async function sendMessage(
   const convObjectId = new Types.ObjectId(conversationId.toString());
   const senderObjectId = new Types.ObjectId(senderId.toString());
 
-  const conversation = await Conversation.findById(convObjectId).lean().exec();
+  const [conversation, participant] = await Promise.all([
+    Conversation.findById(convObjectId).select('type').lean().exec(),
+    ConversationParticipant.findOne({
+      userId: senderObjectId,
+      conversationId: convObjectId,
+    })
+      .select('permission')
+      .lean()
+      .exec(),
+  ]);
+
   if (!conversation) {
     throw new Error('Conversation not found');
   }
-
-  const participant = await ConversationParticipant.findOne({
-    conversationId: convObjectId,
-    userId: senderObjectId,
-  })
-    .lean()
-    .exec();
 
   if (!participant) {
     throw new Error('Sender is not a participant in this conversation');
