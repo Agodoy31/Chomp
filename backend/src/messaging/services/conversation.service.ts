@@ -1,7 +1,7 @@
 // See Issue #98: https://github.com/Agodoy31/Chomp/issues/98
 // See Issue #100: https://github.com/Agodoy31/Chomp/issues/100
 // See Issue #107: https://github.com/Agodoy31/Chomp/issues/107
-import mongoose, { ClientSession, HydratedDocument, Types } from 'mongoose';
+import mongoose, { ClientSession, Types } from 'mongoose';
 import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
 import { Message } from '../models/Message';
@@ -477,16 +477,6 @@ export async function getConversationById(
   }
 
   return Conversation.findById(conversationId).lean<IConversation>().exec();
-}
-
-export async function getConversationDocumentById(
-  conversationId: Types.ObjectId
-): Promise<HydratedDocument<IConversation> | null> {
-  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
-  }
-
-  return Conversation.findById(conversationId).exec();
 }
 
 // Validate that all specified user IDs exist in the users collection

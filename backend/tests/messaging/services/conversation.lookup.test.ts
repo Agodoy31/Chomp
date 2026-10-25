@@ -15,7 +15,6 @@ import {
   getClubChannels,
   getConversationById,
   getConversationDetails,
-  getConversationDocumentById,
   getConversationParticipants,
   isUserParticipant,
   validateUsersExist,
@@ -80,48 +79,6 @@ describe('getConversationById service', () => {
 
     await expect(
       getConversationById('invalid-id' as unknown as Types.ObjectId)
-    ).rejects.toThrow('Valid conversationId is required');
-  });
-});
-
-describe('getConversationDocumentById service', () => {
-  it('returns full Mongoose document when valid conversation exists', async () => {
-    const user1 = new Types.ObjectId();
-    const user2 = new Types.ObjectId();
-    const dmPairKey = [user1.toString(), user2.toString()].sort().join(':');
-
-    const created = await Conversation.create({
-      type: ConversationType.DIRECT,
-      dmPairKey,
-    });
-
-    const result = await getConversationDocumentById(created._id);
-
-    expect(result).not.toBeNull();
-    expect(result?._id.toString()).toBe(created._id.toString());
-    expect(result?.type).toBe(ConversationType.DIRECT);
-    expect(result?.dmPairKey).toBe(dmPairKey);
-    expect(result instanceof Conversation).toBe(true);
-    expect(typeof (result as any).save).toBe('function');
-  });
-
-  it('returns null when valid ObjectId is not in database', async () => {
-    const nonExistentId = new Types.ObjectId();
-    const result = await getConversationDocumentById(nonExistentId);
-    expect(result).toBeNull();
-  });
-
-  it('throws error when conversationId is missing or invalid', async () => {
-    await expect(
-      getConversationDocumentById(null as unknown as Types.ObjectId)
-    ).rejects.toThrow('Valid conversationId is required');
-
-    await expect(
-      getConversationDocumentById(undefined as unknown as Types.ObjectId)
-    ).rejects.toThrow('Valid conversationId is required');
-
-    await expect(
-      getConversationDocumentById('invalid-id' as unknown as Types.ObjectId)
     ).rejects.toThrow('Valid conversationId is required');
   });
 });
