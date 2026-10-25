@@ -469,16 +469,6 @@ export async function createChannel(
   }
 }
 
-export async function getConversationById(
-  conversationId: Types.ObjectId
-): Promise<IConversation | null> {
-  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
-  }
-
-  return Conversation.findById(conversationId).lean<IConversation>().exec();
-}
-
 // Validate that all specified user IDs exist in the users collection
 export async function validateUsersExist(
   userIds: Types.ObjectId | Types.ObjectId[]

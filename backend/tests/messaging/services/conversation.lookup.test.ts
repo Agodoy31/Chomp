@@ -13,7 +13,6 @@ import {
   createDirectConversation,
   createGroupConversation,
   getClubChannels,
-  getConversationById,
   getConversationDetails,
   getConversationParticipants,
   isUserParticipant,
@@ -39,48 +38,6 @@ afterEach(async () => {
 
 afterAll(async () => {
   await closeTestDb();
-});
-
-describe('getConversationById service', () => {
-  it('returns conversation plain object when valid conversation exists', async () => {
-    const user1 = new Types.ObjectId();
-    const user2 = new Types.ObjectId();
-    const dmPairKey = [user1.toString(), user2.toString()].sort().join(':');
-
-    const created = await Conversation.create({
-      type: ConversationType.DIRECT,
-      dmPairKey,
-    });
-
-    const result = await getConversationById(created._id);
-
-    expect(result).not.toBeNull();
-    expect(result?._id.toString()).toBe(created._id.toString());
-    expect(result?.type).toBe(ConversationType.DIRECT);
-    expect(result?.dmPairKey).toBe(dmPairKey);
-    expect(result instanceof Conversation).toBe(false);
-    expect((result as any).save).toBeUndefined();
-  });
-
-  it('returns null when valid ObjectId is not in database', async () => {
-    const nonExistentId = new Types.ObjectId();
-    const result = await getConversationById(nonExistentId);
-    expect(result).toBeNull();
-  });
-
-  it('throws error when conversationId is missing or invalid', async () => {
-    await expect(
-      getConversationById(null as unknown as Types.ObjectId)
-    ).rejects.toThrow('Valid conversationId is required');
-
-    await expect(
-      getConversationById(undefined as unknown as Types.ObjectId)
-    ).rejects.toThrow('Valid conversationId is required');
-
-    await expect(
-      getConversationById('invalid-id' as unknown as Types.ObjectId)
-    ).rejects.toThrow('Valid conversationId is required');
-  });
 });
 
 describe('validateUsersExist service', () => {
