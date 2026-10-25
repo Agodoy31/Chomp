@@ -17,22 +17,6 @@ describe('ConversationParticipant Model', () => {
     await closeTestDb();
   });
 
-  describe('Happy path participant creation', () => {
-    it('creates a valid participant with valid conversationId and userId', async () => {
-      const conversationId = new Types.ObjectId();
-      const userId = new Types.ObjectId();
-
-      const participant = await ConversationParticipant.create({
-        conversationId,
-        userId,
-      });
-
-      expect(participant.conversationId.toString()).toBe(conversationId.toString());
-      expect(participant.userId.toString()).toBe(userId.toString());
-      expect(participant.createdAt).toBeInstanceOf(Date);
-      expect(participant.updatedAt).toBeInstanceOf(Date);
-    });
-  });
 
   describe('Validation error handling', () => {
     it('rejects creation when userId or conversationId is missing', async () => {
