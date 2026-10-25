@@ -66,7 +66,7 @@ export async function sendMessage(
       typeof error === 'object' &&
       error !== null &&
       'code' in error &&
-      (error as { code: number }).code === 11000 &&
+      error.code === 11000 &&
       clientId
     ) {
       const existing = await Message.findOne({
