@@ -1,5 +1,6 @@
 import mongoose, { Types } from 'mongoose';
 import { IMessage } from '../interfaces/message.interfaces';
+import { ConversationType } from '../interfaces/conversation.interfaces';
 import { ParticipantPermission } from '../interfaces/conversationParticipant.interfaces';
 import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
@@ -57,8 +58,13 @@ export async function sendMessage(
     throw new Error('Sender has read-only permission in this conversation');
   }
 
-  if (isAnnouncement && participant.permission !== ParticipantPermission.MODERATE) {
-    throw new Error('Only moderators can post announcements');
+  if (isAnnouncement) {
+    if (conversation.type !== ConversationType.CHANNEL) {
+      throw new Error('Announcements are only allowed in club channels');
+    }
+    if (participant.permission !== ParticipantPermission.MODERATE) {
+      throw new Error('Only moderators can post announcements');
+    }
   }
 
   try {
