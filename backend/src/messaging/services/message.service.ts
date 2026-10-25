@@ -5,6 +5,8 @@ import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
 import { Message } from '../models/Message';
 
+const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function sendMessage(
   conversationId: Types.ObjectId | string,
   senderId: Types.ObjectId | string,
@@ -22,6 +24,14 @@ export async function sendMessage(
 
   if (!text || text.trim().length === 0) {
     throw new Error('text cannot be empty');
+  }
+
+  let cleanClientId: string | undefined;
+  if (clientId !== undefined) {
+    cleanClientId = clientId.trim();
+    if (!UUID_V7_REGEX.test(cleanClientId)) {
+      throw new Error('Invalid clientId');
+    }
   }
 
   const convObjectId = new Types.ObjectId(conversationId.toString());
@@ -56,7 +66,7 @@ export async function sendMessage(
       conversationId: convObjectId,
       senderId: senderObjectId,
       text: text.trim(),
-      clientId: clientId ?? undefined,
+      clientId: cleanClientId,
       isAnnouncement,
       isSystem: false,
     });
@@ -67,11 +77,11 @@ export async function sendMessage(
       error !== null &&
       'code' in error &&
       error.code === 11000 &&
-      clientId
+      cleanClientId
     ) {
       const existing = await Message.findOne({
         conversationId: convObjectId,
-        clientId,
+        clientId: cleanClientId,
       })
         .lean<IMessage>()
         .exec();
