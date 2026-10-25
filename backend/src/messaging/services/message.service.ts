@@ -134,7 +134,16 @@ export async function getMessages(
     query.limit(limit);
   }
 
-  return query.lean<IMessage[]>().exec();
+  const messages = await query.lean<IMessage[]>().exec();
+  return messages.map((message) => {
+    if (message.removedAt) {
+      return {
+        ...message,
+        text: 'This message was deleted',
+      };
+    }
+    return message;
+  });
 }
 
 export async function deleteMessage(

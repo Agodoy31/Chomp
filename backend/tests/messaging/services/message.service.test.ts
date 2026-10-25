@@ -397,6 +397,64 @@ describe('getMessages service', () => {
       getMessages(validId, 'not-a-valid-id')
     ).rejects.toThrow('Valid requestingUserId is required');
   });
+
+  it('masks removed message text in history while keeping database text intact', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Bat Houses Sunset Flight Club',
+    });
+    const senderId = new Types.ObjectId();
+    const readerId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: senderId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: readerId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const activeMessage = await Message.create({
+      conversationId: conversation._id,
+      senderId,
+      text: 'Broward Freshman at broward.dining@ufl.edu spotted bats emerging',
+    });
+
+    const rawDeletedText = 'Dennis Heckler at turlington_screamer@ufl.edu shouted across the lawn';
+    const deletedMessage = await Message.create({
+      conversationId: conversation._id,
+      senderId,
+      text: rawDeletedText,
+      removedAt: new Date(),
+      removedBy: senderId,
+    });
+
+    const messages = await getMessages(conversation._id, readerId);
+
+    expect(messages).toHaveLength(2);
+
+    const retrievedDeleted = messages.find(
+      (msg) => msg._id.toString() === deletedMessage._id.toString()
+    );
+    const retrievedActive = messages.find(
+      (msg) => msg._id.toString() === activeMessage._id.toString()
+    );
+
+    expect(retrievedDeleted).toBeDefined();
+    expect(retrievedDeleted?.text).toBe('This message was deleted');
+    expect(retrievedDeleted?.removedAt).toBeDefined();
+    expect(retrievedDeleted?.removedBy?.toString()).toBe(senderId.toString());
+
+    expect(retrievedActive).toBeDefined();
+    expect(retrievedActive?.text).toBe('Broward Freshman at broward.dining@ufl.edu spotted bats emerging');
+    expect(retrievedActive?.removedAt).toBeUndefined();
+
+    const rawDoc = await Message.findById(deletedMessage._id).lean().exec();
+    expect(rawDoc).toBeDefined();
+    expect(rawDoc?.text).toBe(rawDeletedText);
+  });
 });
 
 describe('deleteMessage service', () => {
