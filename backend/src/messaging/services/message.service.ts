@@ -5,6 +5,7 @@ import { ParticipantPermission } from '../interfaces/conversationParticipant.int
 import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
 import { Message } from '../models/Message';
+import { isUserParticipant } from './conversation.service';
 
 const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -101,4 +102,37 @@ export async function sendMessage(
     }
     throw error;
   }
+}
+
+export async function getMessages(
+  conversationId: Types.ObjectId | string,
+  requestingUserId: Types.ObjectId | string,
+  limit?: number
+): Promise<IMessage[]> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+
+  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
+    throw new Error('Valid requestingUserId is required');
+  }
+
+  const convObjectId = new Types.ObjectId(conversationId.toString());
+  const userObjectId = new Types.ObjectId(requestingUserId.toString());
+
+  const isParticipant = await isUserParticipant(convObjectId, userObjectId);
+  if (!isParticipant) {
+    throw new Error('User is not a participant in this conversation');
+  }
+
+  const query = Message.find({ conversationId: convObjectId }).sort({
+    createdAt: -1,
+    _id: -1,
+  });
+
+  if (typeof limit === 'number' && limit > 0) {
+    query.limit(limit);
+  }
+
+  return query.lean<IMessage[]>().exec();
 }
