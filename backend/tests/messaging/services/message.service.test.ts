@@ -4,7 +4,7 @@ import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Message } from '../../../src/messaging/models/Message';
 import { Conversation, ConversationType } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant, ParticipantPermission } from '../../../src/messaging/models/ConversationParticipant';
-import { sendMessage, getMessages } from '../../../src/messaging/services/message.service';
+import { sendMessage, getMessages, deleteMessage } from '../../../src/messaging/services/message.service';
 
 beforeAll(async () => {
   await connectTestDb();
@@ -425,4 +425,307 @@ describe('getMessages service', () => {
     expect(firstResult.$isDefault).toBeUndefined();
   });
 });
+
+describe('deleteMessage service', () => {
+  it('allows message author to soft delete their own message', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Gator Corner Soft Serve Repair Crew',
+    });
+    const authorId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Ice cream machine is operational again',
+      isSystem: false,
+    });
+
+    const result = await deleteMessage(message._id, authorId);
+
+    expect(result._id.toString()).toBe(message._id.toString());
+    expect(result.removedAt).toBeDefined();
+    expect(result.removedBy?.toString()).toBe(authorId.toString());
+    expect((result as Record<string, unknown>).save).toBeUndefined();
+
+    const persisted = await Message.findById(message._id).lean().exec();
+    expect(persisted?.removedAt).toBeDefined();
+    expect(persisted?.removedBy?.toString()).toBe(authorId.toString());
+  });
+
+  it('preserves original removedAt timestamp on repeated deletion calls', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Chicken Tender Thursday Enthusiasts',
+    });
+    const authorId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Original tender announcement',
+      isSystem: false,
+    });
+
+    const firstResult = await deleteMessage(message._id, authorId);
+    const initialTimestamp = firstResult.removedAt;
+
+    const secondResult = await deleteMessage(message._id, authorId);
+    expect(secondResult.removedAt).toEqual(initialTimestamp);
+  });
+
+  it('allows conversation moderator to soft delete another member message', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Chicken Tender Thursday Enthusiasts',
+    });
+    const authorId = new Types.ObjectId();
+    const moderatorId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: moderatorId,
+      permission: ParticipantPermission.MODERATE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Out of stock at the food court',
+      isSystem: false,
+    });
+
+    const result = await deleteMessage(message._id, moderatorId);
+
+    expect(result._id.toString()).toBe(message._id.toString());
+    expect(result.removedAt).toBeDefined();
+    expect(result.removedBy?.toString()).toBe(moderatorId.toString());
+  });
+
+  it('rejects deletion when requesting user is a non moderator participant', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Gator Corner Soft Serve Repair Crew',
+    });
+    const authorId = new Types.ObjectId();
+    const standardMemberId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: standardMemberId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Routine maintenance schedule update',
+      isSystem: false,
+    });
+
+    await expect(
+      deleteMessage(message._id, standardMemberId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+  });
+
+  it('rejects deletion when requesting user is not a conversation participant', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Gator Corner Soft Serve Repair Crew',
+    });
+    const authorId = new Types.ObjectId();
+    const outsiderId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Private crew chatter',
+      isSystem: false,
+    });
+
+    await expect(
+      deleteMessage(message._id, outsiderId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+  });
+
+  it('rejects deletion of system messages', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Gator Corner Soft Serve Repair Crew',
+    });
+    const authorId = new Types.ObjectId();
+    const moderatorId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: moderatorId,
+      permission: ParticipantPermission.MODERATE,
+    });
+
+    const systemMessage = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'User joined conversation',
+      isSystem: true,
+    });
+
+    await expect(
+      deleteMessage(systemMessage._id, authorId)
+    ).rejects.toThrow('System messages cannot be deleted');
+
+    await expect(
+      deleteMessage(systemMessage._id, moderatorId)
+    ).rejects.toThrow('System messages cannot be deleted');
+  });
+
+  it('rejects invalid input parameters or missing message', async () => {
+    const validId = new Types.ObjectId();
+    const nonExistentMessageId = new Types.ObjectId();
+
+    await expect(
+      deleteMessage('', validId)
+    ).rejects.toThrow('Valid messageId is required');
+
+    await expect(
+      deleteMessage('invalid-id', validId)
+    ).rejects.toThrow('Valid messageId is required');
+
+    await expect(
+      deleteMessage(validId, '')
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      deleteMessage(validId, 'invalid-id')
+    ).rejects.toThrow('Valid requestingUserId is required');
+
+    await expect(
+      deleteMessage(nonExistentMessageId, validId)
+    ).rejects.toThrow('Message not found');
+  });
+
+  it('allows message deletion when valid hex string identifiers are provided', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Chomp Streetwear Collective',
+    });
+    const authorId = new Types.ObjectId();
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Vintage gator jacket dropped',
+      isSystem: false,
+    });
+
+    const result = await deleteMessage(
+      message._id.toHexString(),
+      authorId.toHexString()
+    );
+
+    expect(result._id.toString()).toBe(message._id.toString());
+    expect(result.removedAt).toBeDefined();
+    expect(result.removedBy?.toString()).toBe(authorId.toString());
+  });
+
+  it('rejects cross conversation moderator deletion attempts', async () => {
+    const clubOne = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Gator Lettuce Eating Club',
+    });
+    const clubTwo = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Chomp Streetwear Collective',
+    });
+
+    const authorId = new Types.ObjectId();
+    const clubTwoModeratorId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: clubOne._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: clubTwo._id,
+      userId: clubTwoModeratorId,
+      permission: ParticipantPermission.MODERATE,
+    });
+
+    const message = await Message.create({
+      conversationId: clubOne._id,
+      senderId: authorId,
+      text: 'Iceberg lettuce round completed',
+      isSystem: false,
+    });
+
+    await expect(
+      deleteMessage(message._id, clubTwoModeratorId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+  });
+
+  it('rejects unauthorized deletion attempts even when message is already deleted', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Chomp Streetwear Collective',
+    });
+    const authorId = new Types.ObjectId();
+    const outsiderId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Limited drop sold out',
+      isSystem: false,
+    });
+
+    await deleteMessage(message._id, authorId);
+
+    await expect(
+      deleteMessage(message._id, outsiderId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+  });
+});
+
 
