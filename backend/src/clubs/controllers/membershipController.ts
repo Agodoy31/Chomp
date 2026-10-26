@@ -1,8 +1,8 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import mongoose, { type HydratedDocument } from 'mongoose';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
-import { type MembershipStatus, type ClubStatus, type RequestWithSession, type ClientError } from '../interfaces/clubs.interface';
+import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
 import { 
   sendError, isDuplicateKey, authenticationRequired } from '../errors';
 
@@ -81,10 +81,10 @@ async function activateMembership(userId: string, clubId: string): Promise<Activ
   return { error: rejectionForMembership(existing.status) };
 }
 
-export const joinClub = async (req: RequestWithSession, res: Response): Promise<void> => {
+export const joinClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
   const userId = req.session?.userId;
   if (!userId) {
-    sendError(res, authenticationRequired()); //Will be replaced when user auth is implemented
+    sendError(res, authenticationRequired()); 
     return;
   }
 

@@ -3,6 +3,7 @@ import { once } from 'events';
 import session from 'express-session';
 import { MongoStore } from 'connect-mongo';
 import mongoose from 'mongoose';
+import './session.types'; //so that SessionData contains the userID and I don't get poopy type errors
 
 const secret = process.env.SESSION_SECRET;
 

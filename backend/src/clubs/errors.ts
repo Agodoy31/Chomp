@@ -11,3 +11,6 @@ export function isDuplicateKey(error: unknown): boolean {
 export function authenticationRequired(): ClientError {
     return { status: 401, code: 'ERR_AUTHENTICATION_REQUIRED', message: 'Authentication required' };
 }
+export function adminRequired(): ClientError {
+    return { status: 403, code: 'ERR_ADMIN_REQUIRED', message: 'Admin access required' };
+}
