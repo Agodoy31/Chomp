@@ -25,7 +25,6 @@ export interface IUserSummary {
 }
 
 export interface IConversationParticipantSummary {
-  _id: Types.ObjectId;
   userId: IUserSummary;
   permission: ParticipantPermission;
 }
