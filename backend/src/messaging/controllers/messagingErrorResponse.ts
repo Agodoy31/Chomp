@@ -5,6 +5,8 @@ export function sendMessagingError(res: Response, error: unknown): void {
   if (error instanceof MessagingError) {
     switch (error.code) {
       case MessagingErrorCode.INVALID_INPUT:
+      case MessagingErrorCode.MESSAGE_SELF:
+      case MessagingErrorCode.CHANNEL_CREATION_NOT_SUPPORTED:
         res.status(400).json({ code: error.code, message: error.message });
         return;
       case MessagingErrorCode.USER_NOT_FOUND:
