@@ -242,6 +242,10 @@ describe('updateConversationTitle service', () => {
 
     const club = await createTestClub(user1._id);
     const channel = await createChannel(club._id, 'announcements', [user1._id]);
+    await ConversationParticipant.updateOne(
+      { conversationId: channel._id, userId: user1._id },
+      { permission: ParticipantPermission.MODERATE }
+    );
     const updatedChannel = await updateConversationTitle(channel._id, user1._id, 'general');
     expect(updatedChannel.title).toBe('general');
   });
@@ -283,22 +287,20 @@ describe('updateConversationTitle service', () => {
     const club = await createTestClub(creator._id);
     const channel = await createChannel(club._id, 'general', [creator._id, writeMember._id]);
 
-    await updateParticipantPermission(
-      channel._id,
-      creator._id,
-      writeMember._id,
-      ParticipantPermission.WRITE
-    );
     await expect(
       updateConversationTitle(channel._id, writeMember._id, 'new-general')
     ).rejects.toThrow('User does not have permission to update conversation title');
 
-    const updatedByMod = await updateConversationTitle(
+    await ConversationParticipant.updateOne(
+      { conversationId: channel._id, userId: creator._id },
+      { permission: ParticipantPermission.MODERATE }
+    );
+    const updatedChannelByMod = await updateConversationTitle(
       channel._id,
       creator._id,
       'announcements-chat'
     );
-    expect(updatedByMod.title).toBe('announcements-chat');
+    expect(updatedChannelByMod.title).toBe('announcements-chat');
   });
 
   it('rejects direct conversations non participants and invalid title parameters', async () => {
@@ -310,6 +312,10 @@ describe('updateConversationTitle service', () => {
     const club = await createTestClub(user1._id);
     const channel = await createChannel(club._id, 'announcements', [user1._id]);
     await createChannel(club._id, 'general', [user1._id]);
+    await ConversationParticipant.updateOne(
+      { conversationId: channel._id, userId: user1._id },
+      { permission: ParticipantPermission.MODERATE }
+    );
 
     await expect(
       updateConversationTitle(direct.conversation._id, user1._id, 'New Title')

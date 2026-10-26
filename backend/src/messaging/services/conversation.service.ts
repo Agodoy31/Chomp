@@ -648,8 +648,14 @@ export async function updateConversationTitle(
     throw new Error('Valid conversation title is required');
   }
 
-  const isParticipant = await isUserParticipant(conversationId, requestingUserId);
-  if (!isParticipant) {
+  const participant = await ConversationParticipant.findOne({
+    conversationId,
+    userId: requestingUserId,
+  })
+    .select('permission')
+    .lean();
+
+  if (!participant) {
     throw new Error('User is not a participant in this conversation');
   }
 
@@ -660,6 +666,16 @@ export async function updateConversationTitle(
 
   if (conversation.type === ConversationType.DIRECT) {
     throw new Error('Cannot update title of a direct conversation');
+  }
+
+  if (conversation.type === ConversationType.GROUP) {
+    if (participant.permission === ParticipantPermission.READ) {
+      throw new Error('User does not have permission to update conversation title');
+    }
+  } else if (conversation.type === ConversationType.CHANNEL) {
+    if (participant.permission !== ParticipantPermission.MODERATE) {
+      throw new Error('User does not have permission to update conversation title');
+    }
   }
 
   conversation.title = newTitle.trim();
