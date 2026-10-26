@@ -171,7 +171,7 @@ export async function createGroupConversation(
 
   if (uniqueParticipants.length < 2) {
     throw new MessagingError(
-      MessagingErrorCode.INVALID_INPUT,
+      MessagingErrorCode.INSUFFICIENT_PARTICIPANTS,
       'Group conversation requires at least two distinct participants'
     );
   }
@@ -415,20 +415,32 @@ export async function createChannel(
   externalSession?: ClientSession
 ): Promise<IConversation> {
   if (!clubId || !mongoose.isObjectIdOrHexString(clubId)) {
-    throw new Error('Valid clubId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid clubId is required'
+    );
   }
 
   if (typeof title !== 'string' || title.trim().length === 0) {
-    throw new Error('Channel title is required');
+    throw new MessagingError(
+      MessagingErrorCode.TITLE_REQUIRED,
+      'Channel title is required'
+    );
   }
 
   if (!Array.isArray(participantIds)) {
-    throw new Error('participantIds must be an array');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'participantIds must be an array'
+    );
   }
 
   const clubExists = await Club.exists({ _id: clubId });
   if (!clubExists) {
-    throw new Error('Club does not exist');
+    throw new MessagingError(
+      MessagingErrorCode.CLUB_NOT_FOUND,
+      'Club does not exist'
+    );
   }
 
   const trimmedTitle = title.trim();
@@ -458,7 +470,10 @@ export async function createChannel(
       return conversation.toObject<IConversation>();
     } catch (error: any) {
       if (error && error.code === 11000) {
-        throw new Error('A channel with this title already exists in the club', { cause: error });
+        throw new MessagingError(
+          MessagingErrorCode.CHANNEL_TITLE_EXISTS,
+          'A channel with this title already exists in the club'
+        );
       }
       throw error;
     }
@@ -478,7 +493,10 @@ export async function createChannel(
       return conversation.toObject<IConversation>();
     } catch (error: any) {
       if (error && error.code === 11000) {
-        throw new Error('A channel with this title already exists in the club', { cause: error });
+        throw new MessagingError(
+          MessagingErrorCode.CHANNEL_TITLE_EXISTS,
+          'A channel with this title already exists in the club'
+        );
       }
       throw error;
     }
@@ -514,7 +532,10 @@ export async function createChannel(
       await session.abortTransaction();
     }
     if (error && error.code === 11000) {
-      throw new Error('A channel with this title already exists in the club', { cause: error });
+      throw new MessagingError(
+        MessagingErrorCode.CHANNEL_TITLE_EXISTS,
+        'A channel with this title already exists in the club'
+      );
     }
     throw error;
   } finally {
