@@ -1,10 +1,21 @@
 import { Link, useNavigate } from 'react-router-dom';
 import Button from 'react-bootstrap/Button';
+import { useAuth } from '../hooks/useAuth';
 
-export default function Header() {
-  const navigate = useNavigate();
+type HeaderProps ={
+    showAuthButtons?: boolean
+  }
 
-  // TODO: once auth is merged, have log out button instead of Login / Sign Up for logged-in users.
+export default function Header({showAuthButtons = true}: HeaderProps) {
+  const navigate = useNavigate()
+  const { user, loading, logout } = useAuth()
+
+  const initials = user ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase() : ''
+
+  async function handleLogout() {
+    await logout()
+    navigate('/')
+  }
 
   return (
     <header className="w-100 border-bottom sticky-top shadow-sm" 
@@ -47,22 +58,55 @@ export default function Header() {
         </Link>
 
         {/* Right */}
-        <div className="d-flex justify-content-end gap-1 gap-sm-2">
-          <Button
-            size="sm"
-            variant="outline-light"
-            onClick={() => navigate('/login')}
-          >
-            Login
-          </Button>
-          <Button
-            size="sm"
-            className="fw-normal px-3 text-white border-0"
-            style={{ backgroundColor: '#F07833' }}
-            onClick={() => navigate('/signup')}
-          >
-            Sign Up
-          </Button>
+        <div className="d-flex justify-content-end align-items-center gap-1 gap-sm-2">
+
+          {!loading && user && (
+            <>
+            <Button 
+             size="sm"
+             className="fw-normal px-3 text-white border-0"
+             style={{ backgroundColor: '#F07833' }}
+             onClick = {handleLogout}
+            >
+             Log out
+            </Button>
+
+            {/* Circle with users initial*/}
+            <div className= "d-flex align-items-center justify-content-center rounded-circle fw-semibold"
+              
+              style ={{
+                width: 40,
+                height: 40,
+                backgroundColor: '#D9D9D9',
+                border: '1px solid #14246D',
+                color: '#14246d'
+
+              }}
+            >
+              {initials}
+            </div>
+            </>
+          )}
+
+          {!loading && !user && showAuthButtons && (
+            <>
+              <Button
+                size="sm"
+                variant="outline-light"
+                onClick={() => navigate('/login')}
+              >
+                Login
+              </Button>
+              <Button
+                size="sm"
+                className="fw-normal px-3 text-white border-0"
+                style={{ backgroundColor: '#F07833' }}
+                onClick={() => navigate('/signup')}
+              >
+                Sign Up
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </header>

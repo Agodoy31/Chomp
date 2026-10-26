@@ -6,6 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { isUflEmail, isValidName, MIN_PASSWORD_LENGTH } from '../utils/validation';
 import { Alert } from 'react-bootstrap';
 import FloatingLabel from 'react-bootstrap/FloatingLabel';
+import { useAuth } from '../hooks/useAuth';
+
 
 
 async function readJson(response: Response) {
@@ -24,6 +26,8 @@ export default function Signup() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const {setUser} = useAuth()
+
 
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -77,6 +81,7 @@ export default function Signup() {
       }
 
        //TODO: edit when homepage is complete
+       setUser(data.user)
        navigate('/clubs')
 
     }

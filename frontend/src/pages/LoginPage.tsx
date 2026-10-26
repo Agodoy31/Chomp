@@ -6,6 +6,7 @@ import Button from 'react-bootstrap/Button';
 import { Link, useNavigate } from 'react-router-dom'
 import Alert from 'react-bootstrap/Alert';
 import FloatingLabel from 'react-bootstrap/FloatingLabel';
+import { useAuth } from '../hooks/useAuth';
 
 async function readJson(response: Response) {
   try {
@@ -21,6 +22,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const {setUser} = useAuth();
 
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -62,6 +64,7 @@ export default function Login() {
         return;
       }
       //TODO: edit when home page is complete
+      setUser(data.user)
       navigate('/clubs');
     } catch {
       setError('Could not reach the server. Please try again.');

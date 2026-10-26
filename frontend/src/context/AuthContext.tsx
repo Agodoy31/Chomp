@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
         }
 
-        checkSession
+        checkSession()
     }, [])
 
     async function logout() {
