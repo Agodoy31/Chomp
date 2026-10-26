@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import { postMessageHandler } from '../controllers/message.controller';
 
 const router = Router();
 
-// Endpoint handlers will be registered here as each task is implemented
+router.post('/:id/messages', postMessageHandler);
 
 export default router;
