@@ -60,6 +60,9 @@ const messageSchema = new Schema<IMessage>(
 
 messageSchema.index({ conversationId: 1, createdAt: -1, _id: -1 });
 
+// UUIDv7 embeds a millisecond timestamp in the top bits, so tokens from different milliseconds never match.
+// If two users send at the exact same millisecond, the remaining 74 random bits prevent collisions.
+// This index safely catches retry attempts from the same client without cross sender collisions.
 messageSchema.index(
   { conversationId: 1, clientId: 1 },
   {
