@@ -10,8 +10,8 @@ import { isUserParticipant } from './conversation.service';
 const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function sendMessage(
-  conversationId: Types.ObjectId | string,
-  senderId: Types.ObjectId | string,
+  conversationId: Types.ObjectId,
+  senderId: Types.ObjectId,
   text: string,
   clientId?: string,
   isAnnouncement = false
@@ -36,14 +36,11 @@ export async function sendMessage(
     }
   }
 
-  const convObjectId = new Types.ObjectId(conversationId.toString());
-  const senderObjectId = new Types.ObjectId(senderId.toString());
-
   const [conversation, participant] = await Promise.all([
-    Conversation.findById(convObjectId).select('type').lean().exec(),
+    Conversation.findById(conversationId).select('type').lean().exec(),
     ConversationParticipant.findOne({
-      userId: senderObjectId,
-      conversationId: convObjectId,
+      userId: senderId,
+      conversationId,
     })
       .select('permission')
       .lean()
@@ -73,8 +70,8 @@ export async function sendMessage(
 
   try {
     const created = await Message.create({
-      conversationId: convObjectId,
-      senderId: senderObjectId,
+      conversationId,
+      senderId,
       text: text.trim(),
       clientId: cleanClientId,
       isAnnouncement,
@@ -90,7 +87,7 @@ export async function sendMessage(
       cleanClientId
     ) {
       const existing = await Message.findOne({
-        conversationId: convObjectId,
+        conversationId,
         clientId: cleanClientId,
       })
         .lean<IMessage>()
@@ -105,8 +102,8 @@ export async function sendMessage(
 }
 
 export async function getMessages(
-  conversationId: Types.ObjectId | string,
-  requestingUserId: Types.ObjectId | string,
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId,
   limit?: number
 ): Promise<IMessage[]> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
@@ -117,15 +114,12 @@ export async function getMessages(
     throw new Error('Valid requestingUserId is required');
   }
 
-  const convObjectId = new Types.ObjectId(conversationId.toString());
-  const userObjectId = new Types.ObjectId(requestingUserId.toString());
-
-  const isParticipant = await isUserParticipant(convObjectId, userObjectId);
+  const isParticipant = await isUserParticipant(conversationId, requestingUserId);
   if (!isParticipant) {
     throw new Error('User is not a participant in this conversation');
   }
 
-  const query = Message.find({ conversationId: convObjectId }).sort({
+  const query = Message.find({ conversationId }).sort({
     createdAt: -1,
     _id: -1,
   });
@@ -147,8 +141,8 @@ export async function getMessages(
 }
 
 export async function deleteMessage(
-  messageId: Types.ObjectId | string,
-  requestingUserId: Types.ObjectId | string
+  messageId: Types.ObjectId,
+  requestingUserId: Types.ObjectId
 ): Promise<IMessage> {
   if (!messageId || !mongoose.isObjectIdOrHexString(messageId)) {
     throw new Error('Valid messageId is required');
@@ -158,10 +152,7 @@ export async function deleteMessage(
     throw new Error('Valid requestingUserId is required');
   }
 
-  const msgObjectId = new Types.ObjectId(messageId.toString());
-  const userObjectId = new Types.ObjectId(requestingUserId.toString());
-
-  const message = await Message.findById(msgObjectId).exec();
+  const message = await Message.findById(messageId).exec();
   if (!message) {
     throw new Error('Message not found');
   }
@@ -170,10 +161,10 @@ export async function deleteMessage(
     throw new Error('System messages cannot be deleted');
   }
 
-  const isAuthor = message.senderId.toString() === userObjectId.toString();
+  const isAuthor = message.senderId.toString() === requestingUserId.toString();
   if (!isAuthor) {
     const participant = await ConversationParticipant.findOne({
-      userId: userObjectId,
+      userId: requestingUserId,
       conversationId: message.conversationId,
     })
       .select('permission')
@@ -187,7 +178,7 @@ export async function deleteMessage(
 
   if (!message.removedAt) {
     message.removedAt = new Date();
-    message.removedBy = userObjectId;
+    message.removedBy = requestingUserId;
     await message.save();
   }
 

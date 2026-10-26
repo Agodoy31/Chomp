@@ -458,7 +458,7 @@ describe('getMessages service', () => {
 });
 
 describe('deleteMessage service', () => {
-  it('allows author soft deletion and supports hex string identifiers', async () => {
+  it('allows author soft deletion', async () => {
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Gator Corner Soft Serve Repair Crew',
@@ -488,28 +488,6 @@ describe('deleteMessage service', () => {
     const objectIdPersisted = await Message.findById(objectIdMessage._id).lean().exec();
     expect(objectIdPersisted?.removedAt).toBeDefined();
     expect(objectIdPersisted?.removedBy?.toString()).toBe(authorId.toString());
-
-    const hexMessage = await Message.create({
-      conversationId: conversation._id,
-      senderId: authorId,
-      text: `Secondary soft serve check logged by ${ufFixtures.lakeAliceBasker.name}`,
-      isSystem: false,
-    });
-
-    const hexResult = await deleteMessage(
-      hexMessage._id.toHexString(),
-      authorId.toHexString()
-    );
-
-    expect(hexResult._id.toString()).toBe(hexMessage._id.toString());
-    expect(hexResult.removedAt).toBeDefined();
-    expect(hexResult.removedBy?.toString()).toBe(authorId.toString());
-    expect((hexResult as Record<string, unknown>).save).toBeUndefined();
-    expect((hexResult as Record<string, unknown>).$isDefault).toBeUndefined();
-
-    const hexPersisted = await Message.findById(hexMessage._id).lean().exec();
-    expect(hexPersisted?.removedAt).toBeDefined();
-    expect(hexPersisted?.removedBy?.toString()).toBe(authorId.toString());
   });
 
   it('preserves original removedAt timestamp on repeated deletion calls', async () => {
