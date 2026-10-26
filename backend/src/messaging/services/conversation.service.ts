@@ -48,7 +48,7 @@ export async function createDirectConversation(
 
   if (creatorId.toString() === recipientId.toString()) {
     throw new MessagingError(
-      MessagingErrorCode.INVALID_INPUT,
+      MessagingErrorCode.MESSAGE_SELF,
       'Cannot start a direct message conversation with yourself'
     );
   }

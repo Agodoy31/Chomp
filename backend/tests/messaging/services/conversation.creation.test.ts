@@ -103,7 +103,7 @@ describe('createDirectConversation service', () => {
 
     await expect(createDirectConversation(user._id, user._id)).rejects.toMatchObject({
       name: 'MessagingError',
-      code: 'ERR_INVALID_INPUT',
+      code: 'ERR_MESSAGE_SELF',
       message: 'Cannot start a direct message conversation with yourself',
     });
 
