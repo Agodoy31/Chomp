@@ -645,7 +645,7 @@ export async function getConversationDetails(
     },
     {
       $project: {
-        _id: 1,
+        _id: 0,
         permission: 1,
         userId: {
           _id: '$user._id',
