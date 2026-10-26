@@ -382,6 +382,14 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     const leaveMsg = await Message.findOne({ conversationId: group._id, text: /left the group/ }).lean().exec();
     expect(leaveMsg).not.toBeNull();
     expect(leaveMsg?.text).toBe('Danny Wuerffel left the group');
+
+    const club = await createTestClub(moderator._id);
+    const channel = await createChannel(club._id, 'announcements', [moderator._id, member1._id]);
+    await leaveConversation(channel._id, member1._id);
+
+    const channelLeaveMsg = await Message.findOne({ conversationId: channel._id, text: /left the channel/ }).lean().exec();
+    expect(channelLeaveMsg).not.toBeNull();
+    expect(channelLeaveMsg?.text).toBe('GatorCorner Survivor left the channel');
   });
 
   it('retains conversation document when the last participant leaves', async () => {

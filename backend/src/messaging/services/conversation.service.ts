@@ -694,7 +694,8 @@ export async function updateConversationTitle(
 export async function removeParticipantFromConversation(
   conversationId: Types.ObjectId,
   requestingUserId: Types.ObjectId,
-  targetUserId: Types.ObjectId
+  targetUserId: Types.ObjectId,
+  externalSession?: ClientSession
 ): Promise<boolean> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new Error('Valid conversationId is required');
@@ -708,9 +709,47 @@ export async function removeParticipantFromConversation(
     throw new Error('Valid targetUserId is required');
   }
 
+  if (externalSession) {
+    return executeRemoveParticipantFromConversation(
+      conversationId,
+      requestingUserId,
+      targetUserId,
+      externalSession
+    );
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const result = await executeRemoveParticipantFromConversation(
+      conversationId,
+      requestingUserId,
+      targetUserId,
+      session
+    );
+    await session.commitTransaction();
+    return result;
+  } catch (error: any) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function executeRemoveParticipantFromConversation(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId,
+  targetUserId: Types.ObjectId,
+  session: ClientSession
+): Promise<boolean> {
   const conversation = await Conversation.findById(conversationId)
     .select('type')
-    .lean();
+    .session(session)
+    .lean()
+    .exec();
   if (!conversation) {
     throw new Error('Conversation not found');
   }
@@ -724,7 +763,9 @@ export async function removeParticipantFromConversation(
     userId: requestingUserId,
   })
     .select('permission')
-    .lean();
+    .session(session)
+    .lean()
+    .exec();
 
   if (!requesterParticipant) {
     throw new Error('User is not a participant in this conversation');
@@ -735,28 +776,31 @@ export async function removeParticipantFromConversation(
     throw new Error('Only moderators can remove other participants');
   }
 
-  const isTargetParticipant = await isUserParticipant(conversationId, targetUserId);
-  if (!isTargetParticipant) {
-    throw new Error('Target user is not a participant in this conversation');
-  }
-
   const targetParticipant = isSelf
     ? requesterParticipant
     : await ConversationParticipant.findOne({ conversationId, userId: targetUserId })
         .select('permission')
-        .lean();
+        .session(session)
+        .lean()
+        .exec();
+
+  if (!targetParticipant) {
+    throw new Error('Target user is not a participant in this conversation');
+  }
 
   if (
     conversation.type === ConversationType.GROUP &&
-    targetParticipant?.permission === ParticipantPermission.MODERATE
+    targetParticipant.permission === ParticipantPermission.MODERATE
   ) {
-    const totalParticipants = await ConversationParticipant.countDocuments({ conversationId });
+    const totalParticipants = await ConversationParticipant.countDocuments({
+      conversationId,
+    }).session(session);
     if (totalParticipants > 1) {
       const remainingModerators = await ConversationParticipant.countDocuments({
         conversationId,
         permission: ParticipantPermission.MODERATE,
         userId: { $ne: targetUserId },
-      });
+      }).session(session);
       if (remainingModerators === 0) {
         throw new Error(
           'Cannot remove the last moderator from a group conversation with remaining participants'
@@ -765,13 +809,17 @@ export async function removeParticipantFromConversation(
     }
   }
 
-  await ConversationParticipant.deleteOne({
-    conversationId,
-    userId: targetUserId,
-  }).exec();
+  await ConversationParticipant.deleteOne(
+    {
+      conversationId,
+      userId: targetUserId,
+    },
+    { session }
+  ).exec();
 
   const requester = await User.findById(requestingUserId)
     .select('firstName lastName')
+    .session(session)
     .lean<IUserSummary>()
     .exec();
   const requesterName = requester
@@ -780,10 +828,14 @@ export async function removeParticipantFromConversation(
 
   let text: string;
   if (isSelf) {
-    text = `${requesterName} left the group`;
+    text =
+      conversation.type === ConversationType.CHANNEL
+        ? `${requesterName} left the channel`
+        : `${requesterName} left the group`;
   } else {
     const targetUser = await User.findById(targetUserId)
       .select('firstName lastName')
+      .session(session)
       .lean<IUserSummary>()
       .exec();
     const targetName = targetUser
@@ -792,22 +844,26 @@ export async function removeParticipantFromConversation(
     text = `${requesterName} removed ${targetName}`;
   }
 
-  await Message.create([
-    {
-      conversationId,
-      senderId: requestingUserId,
-      text,
-      isAnnouncement: false,
-      isSystem: true,
-    },
-  ]);
+  await Message.create(
+    [
+      {
+        conversationId,
+        senderId: requestingUserId,
+        text,
+        isAnnouncement: false,
+        isSystem: true,
+      },
+    ],
+    { session }
+  );
 
   return true;
 }
 
 export async function leaveConversation(
   conversationId: Types.ObjectId,
-  userId: Types.ObjectId
+  userId: Types.ObjectId,
+  session?: ClientSession
 ): Promise<boolean> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new Error('Valid conversationId is required');
@@ -817,7 +873,7 @@ export async function leaveConversation(
     throw new Error('Valid userId is required');
   }
 
-  return removeParticipantFromConversation(conversationId, userId, userId);
+  return removeParticipantFromConversation(conversationId, userId, userId, session);
 }
 
 export type PermissionUpdate = [Types.ObjectId, ParticipantPermission];
