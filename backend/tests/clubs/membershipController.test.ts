@@ -5,12 +5,16 @@ import request from 'supertest';
 import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
+import { sessionMiddleware } from '../../src/sessions/session';
+import { User } from '../../src/user/models/User';
+import { hashPassword } from '../../src/user/utils/passwordHashing';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 
 function asUser(userId: string) {
   const wrapper = express();
+  wrapper.use(sessionMiddleware);
   wrapper.use((req: Request, _res: Response, next: NextFunction) => {
-    (req as Request & { session?: { userId?: string } }).session = { userId };
+    req.session.userId = userId;
     next();
   });
   wrapper.use(app);
@@ -117,6 +121,26 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(res.body.code).toBe('ERR_AUTHENTICATION_REQUIRED');
     expect(res.body.message).toBe('Authentication required');
     expect(await Membership.countDocuments()).toBe(0);
+  });
+
+  it('accepts the session cookie set by login', async () => {
+    const club = await createClub();
+    const user = await User.create({
+      email: 'albert@ufl.edu',
+      hashedPassword: await hashPassword('password'),
+      firstName: 'Albert',
+      lastName: 'Gator',
+    });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'albert@ufl.edu', password: 'password' });
+
+    const res = await request(app)
+      .post(`/api/clubs/${club._id.toString()}/join`)
+      .set('Cookie', loginRes.headers['set-cookie']);
+
+    expect(res.status).toBe(201);
+    expect(res.body.userId).toBe(user._id.toString());
   });
 
   it('returns 403 when a removed student tries to rejoin', async () => {

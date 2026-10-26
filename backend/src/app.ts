@@ -14,9 +14,8 @@ app.use(
   })
 );
 app.use(express.json());
-app.use('/api/clubs', clubRoutes);
-
 app.use(sessionMiddleware);
+app.use('/api/clubs', clubRoutes);
 
 // foward all requests starting with '/api/auth' to the auth routes file
 app.use("/api/auth", authRoutes);
