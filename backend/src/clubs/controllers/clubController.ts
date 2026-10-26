@@ -4,7 +4,6 @@ import { createChannel } from '../../messaging/services/conversation.service';
 import { User } from '../../user/models/User';
 import {
   CLUB_CATEGORIES,
-  type ClientError,
   type ClubFilter,
   type ClubRequest,
 } from '../interfaces/clubs.interface';
