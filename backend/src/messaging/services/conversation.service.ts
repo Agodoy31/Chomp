@@ -863,13 +863,47 @@ export async function updateParticipantPermissions(
     }
   }
 
-  const conversationQuery = Conversation.findById(conversationId)
-    .select('type')
-    .lean();
   if (session) {
-    conversationQuery.session(session);
+    return executeUpdateParticipantPermissions(
+      conversationId,
+      requestingUserId,
+      normalizedUpdates,
+      session
+    );
   }
-  const conversation = await conversationQuery.exec();
+
+  const internalSession = await mongoose.startSession();
+  try {
+    internalSession.startTransaction();
+    const result = await executeUpdateParticipantPermissions(
+      conversationId,
+      requestingUserId,
+      normalizedUpdates,
+      internalSession
+    );
+    await internalSession.commitTransaction();
+    return result;
+  } catch (error: any) {
+    if (internalSession.inTransaction()) {
+      await internalSession.abortTransaction();
+    }
+    throw error;
+  } finally {
+    await internalSession.endSession();
+  }
+}
+
+async function executeUpdateParticipantPermissions(
+  conversationId: Types.ObjectId,
+  requestingUserId: Types.ObjectId,
+  normalizedUpdates: PermissionUpdate[],
+  session: ClientSession
+): Promise<IConversationParticipant[]> {
+  const conversation = await Conversation.findById(conversationId)
+    .select('type')
+    .session(session)
+    .lean()
+    .exec();
   if (!conversation) {
     throw new Error('Conversation not found');
   }
@@ -878,16 +912,14 @@ export async function updateParticipantPermissions(
     throw new Error('Cannot update permissions in a direct conversation');
   }
 
-  const requesterQuery = ConversationParticipant.findOne({
+  const requesterParticipant = await ConversationParticipant.findOne({
     conversationId,
     userId: requestingUserId,
   })
     .select('permission')
-    .lean();
-  if (session) {
-    requesterQuery.session(session);
-  }
-  const requesterParticipant = await requesterQuery.exec();
+    .session(session)
+    .lean()
+    .exec();
 
   if (!requesterParticipant) {
     throw new Error('User is not a participant in this conversation');
@@ -902,16 +934,14 @@ export async function updateParticipantPermissions(
   const updatedParticipants: IConversationParticipant[] = [];
 
   if (isGroup) {
-    const currentModeratorsQuery = ConversationParticipant.find({
+    const currentModerators = await ConversationParticipant.find({
       conversationId,
       permission: ParticipantPermission.MODERATE,
     })
       .select('userId')
-      .lean();
-    if (session) {
-      currentModeratorsQuery.session(session);
-    }
-    const currentModerators = await currentModeratorsQuery.exec();
+      .session(session)
+      .lean()
+      .exec();
     const moderatorIds = new Set<string>(currentModerators.map((m) => m.userId.toString()));
 
     for (const [targetUserId, newPermission] of normalizedUpdates) {
@@ -929,14 +959,12 @@ export async function updateParticipantPermissions(
   }
 
   for (const [targetUserId, newPermission] of normalizedUpdates) {
-    const targetQuery = ConversationParticipant.findOne({
+    const targetParticipant = await ConversationParticipant.findOne({
       conversationId,
       userId: targetUserId,
-    });
-    if (session) {
-      targetQuery.session(session);
-    }
-    const targetParticipant = await targetQuery.exec();
+    })
+      .session(session)
+      .exec();
 
     if (!targetParticipant) {
       throw new Error('Target user is not a participant in this conversation');
@@ -948,24 +976,20 @@ export async function updateParticipantPermissions(
     updatedParticipants.push(targetParticipant.toObject<IConversationParticipant>());
 
     if (!isBulk && isGroup && oldPermission !== newPermission) {
-      const requesterUserQuery = User.findById(requestingUserId)
+      const requester = await User.findById(requestingUserId)
         .select('firstName lastName')
-        .lean<IUserSummary>();
-      if (session) {
-        requesterUserQuery.session(session);
-      }
-      const requester = await requesterUserQuery.exec();
+        .session(session)
+        .lean<IUserSummary>()
+        .exec();
       const requesterName = requester
         ? `${requester.firstName} ${requester.lastName}`.trim()
         : 'Someone';
 
-      const targetUserQuery = User.findById(targetUserId)
+      const targetUser = await User.findById(targetUserId)
         .select('firstName lastName')
-        .lean<IUserSummary>();
-      if (session) {
-        targetUserQuery.session(session);
-      }
-      const targetUser = await targetUserQuery.exec();
+        .session(session)
+        .lean<IUserSummary>()
+        .exec();
       const targetName = targetUser
         ? `${targetUser.firstName} ${targetUser.lastName}`.trim()
         : 'someone';
@@ -999,7 +1023,7 @@ export async function updateParticipantPermissions(
             isSystem: true,
           },
         ],
-        session ? { session } : undefined
+        { session }
       );
     }
   }
