@@ -63,15 +63,15 @@ describe('addParticipantsToConversation service', () => {
     });
     const user4 = await createTestUser();
 
-    const added = await addParticipantsToConversation(group._id, [user3._id, user4._id]);
+    const added = await addParticipantsToConversation(group._id, [user3._id, user4._id], user1._id);
     expect(added).toHaveLength(2);
     expect(added[0] instanceof ConversationParticipant).toBe(false);
     expect((added[0] as any).save).toBeUndefined();
 
-    const secondAdd = await addParticipantsToConversation(group._id, [user1._id, user3._id]);
+    const secondAdd = await addParticipantsToConversation(group._id, [user1._id, user3._id], user1._id);
     expect(secondAdd).toHaveLength(0);
 
-    const emptyAdd = await addParticipantsToConversation(group._id, []);
+    const emptyAdd = await addParticipantsToConversation(group._id, [], user1._id);
     expect(emptyAdd).toEqual([]);
 
     const allInDb = await ConversationParticipant.find({
@@ -120,6 +120,74 @@ describe('addParticipantsToConversation service', () => {
     expect(multiSysMessage?.text).toBe('Potato Sculpture added 2 people');
   });
 
+  it('enforces caller permissions on group conversations and allows channels without requester', async () => {
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const writeMember = await createTestUser({
+      firstName: 'Krishna',
+      lastName: 'Regular',
+      email: 'lunch_line@ufl.edu',
+    });
+    const group = await createGroupConversation(
+      creator._id,
+      [writeMember._id],
+      'Krishna Lunch Line Appreciators'
+    );
+
+    const outsideUser = await createTestUser({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
+    const candidate = await createTestUser();
+
+    await expect(
+      addParticipantsToConversation(group._id, [candidate._id])
+    ).rejects.toThrow('requestingUserId is required for group conversations');
+
+    await expect(
+      addParticipantsToConversation(group._id, [candidate._id], outsideUser._id)
+    ).rejects.toThrow('User is not a participant in this conversation');
+
+    await updateParticipantPermission(
+      group._id,
+      creator._id,
+      writeMember._id,
+      ParticipantPermission.READ
+    );
+
+    await expect(
+      addParticipantsToConversation(group._id, [candidate._id], writeMember._id)
+    ).rejects.toThrow('User does not have permission to add participants');
+
+    await updateParticipantPermission(
+      group._id,
+      creator._id,
+      writeMember._id,
+      ParticipantPermission.WRITE
+    );
+
+    const addedByWrite = await addParticipantsToConversation(
+      group._id,
+      [candidate._id],
+      writeMember._id
+    );
+    expect(addedByWrite).toHaveLength(1);
+
+    const club = await createTestClub(creator._id);
+    const channel = await createChannel(club._id, 'announcements', [creator._id]);
+    const channelCandidate = await createTestUser();
+
+    const addedToChannel = await addParticipantsToConversation(
+      channel._id,
+      [channelCandidate._id]
+    );
+    expect(addedToChannel).toHaveLength(1);
+  });
+
   it('rejects adding participants on direct conversations non-existent conversations or invalid inputs', async () => {
     const user1 = await createTestUser();
     const user2 = await createTestUser();
@@ -150,7 +218,7 @@ describe('addParticipantsToConversation service', () => {
     const group = await createGroupConversation(user1._id, [user2._id], 'Rejection Test Group');
 
     await expect(
-      addParticipantsToConversation(group._id, [user1._id, nonExistentId])
+      addParticipantsToConversation(group._id, [user1._id, nonExistentId], user1._id)
     ).rejects.toThrow('One or more users do not exist');
   });
 });
