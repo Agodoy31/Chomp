@@ -275,6 +275,31 @@ export async function addParticipantsToConversation(
     throw new Error('Cannot add participants to a direct conversation');
   }
 
+  if (conversation.type === ConversationType.GROUP) {
+    if (!_requestingUserId) {
+      throw new Error('requestingUserId is required for group conversations');
+    }
+
+    const requesterQuery = ConversationParticipant.findOne({
+      conversationId,
+      userId: _requestingUserId,
+    })
+      .select('permission')
+      .lean();
+    if (activeSession) {
+      requesterQuery.session(activeSession);
+    }
+    const requester = await requesterQuery.exec();
+
+    if (!requester) {
+      throw new Error('User is not a participant in this conversation');
+    }
+
+    if (requester.permission === ParticipantPermission.READ) {
+      throw new Error('User does not have permission to add participants');
+    }
+  }
+
   const uniqueUserIds = deduplicateObjectIds(userIds);
   if (uniqueUserIds.length === 0) {
     return [];
