@@ -518,10 +518,12 @@ describe('deleteMessage service', () => {
     const firstResult = await deleteMessage(message._id, authorId);
     const initialTimestamp = firstResult.removedAt;
     expect(initialTimestamp).toBeDefined();
+    expect(firstResult.text).toBe('This message was deleted');
 
     const secondResult = await deleteMessage(message._id, authorId);
     expect(secondResult.removedAt).toEqual(initialTimestamp);
     expect(secondResult.removedBy?.toString()).toBe(authorId.toString());
+    expect(secondResult.text).toBe('This message was deleted');
 
     const moderatorResult = await deleteMessage(message._id, moderatorId);
     expect(moderatorResult.removedAt).toEqual(initialTimestamp);
@@ -733,6 +735,42 @@ describe('deleteMessage service', () => {
 
     const persisted = await Message.findById(message._id).lean().exec();
     expect(persisted?.removedBy?.toString()).toBe(authorId.toString());
+  });
+
+  it('rejects deletion when author is no longer an active participant', async () => {
+    const conversation = await Conversation.create({
+      type: ConversationType.GROUP,
+      title: 'Newell Hall Late Night Debuggers',
+    });
+    const authorId = new Types.ObjectId();
+    const otherMemberId = new Types.ObjectId();
+
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: authorId,
+      permission: ParticipantPermission.WRITE,
+    });
+    await ConversationParticipant.create({
+      conversationId: conversation._id,
+      userId: otherMemberId,
+      permission: ParticipantPermission.MODERATE,
+    });
+
+    const message = await Message.create({
+      conversationId: conversation._id,
+      senderId: authorId,
+      text: 'Original debug notes',
+      isSystem: false,
+    });
+
+    await ConversationParticipant.deleteOne({
+      conversationId: conversation._id,
+      userId: authorId,
+    });
+
+    await expect(
+      deleteMessage(message._id, authorId)
+    ).rejects.toThrow('User is not authorized to delete this message');
   });
 
   it('rejects invalid input parameters or missing message identifiers', async () => {

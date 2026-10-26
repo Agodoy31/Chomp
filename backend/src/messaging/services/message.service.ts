@@ -161,19 +161,21 @@ export async function deleteMessage(
     throw new Error('System messages cannot be deleted');
   }
 
-  const isAuthor = message.senderId.toString() === requestingUserId.toString();
-  if (!isAuthor) {
-    const participant = await ConversationParticipant.findOne({
-      userId: requestingUserId,
-      conversationId: message.conversationId,
-    })
-      .select('permission')
-      .lean()
-      .exec();
+  const requesterParticipant = await ConversationParticipant.findOne({
+    userId: requestingUserId,
+    conversationId: message.conversationId,
+  })
+    .select('permission')
+    .lean()
+    .exec();
 
-    if (!participant || participant.permission !== ParticipantPermission.MODERATE) {
-      throw new Error('User is not authorized to delete this message');
-    }
+  if (!requesterParticipant) {
+    throw new Error('User is not authorized to delete this message');
+  }
+
+  const isAuthor = message.senderId.toString() === requestingUserId.toString();
+  if (!isAuthor && requesterParticipant.permission !== ParticipantPermission.MODERATE) {
+    throw new Error('User is not authorized to delete this message');
   }
 
   if (!message.removedAt) {
@@ -182,6 +184,10 @@ export async function deleteMessage(
     await message.save();
   }
 
-  return message.toObject<IMessage>();
+  const messageObject = message.toObject<IMessage>();
+  return {
+    ...messageObject,
+    text: 'This message was deleted',
+  };
 }
 
