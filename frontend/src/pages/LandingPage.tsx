@@ -43,7 +43,7 @@ export default function LandingPage() {
     if (section) section.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleJoinClub = (clubId: string) => {
+  const handleJoinClub = () => {
     if (user) {
       // TODO: when clubs are inserted update to club id 
       navigate('/clubs');
@@ -155,7 +155,7 @@ export default function LandingPage() {
                 <div key={club._id} className="col-12 col-md-6 col-lg-4">
                   <ClubCard
                     club={club}
-                    onJoin={() => handleJoinClub(club._id)}
+                    onJoin={() => handleJoinClub()}
                   />{' '}
                 </div>
               ))}

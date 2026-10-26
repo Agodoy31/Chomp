@@ -8,6 +8,7 @@ type AuthContextValue = {
     logout: () => Promise<void>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext<AuthContextValue | null>(null)
  
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -26,7 +27,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     setUser(data.user)
                 }
             }
-            catch{}
+            catch{
+                // Ignore session errors
+            }
             finally {
                 setLoading(false)
             }
@@ -42,7 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 credentials: 'include'
             })
         }
-        catch {}
+        catch {
+            //Ignore logout fetch
+        }
         setUser(null)
     }
 
