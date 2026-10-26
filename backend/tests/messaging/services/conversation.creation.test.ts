@@ -101,9 +101,11 @@ describe('createDirectConversation service', () => {
       email: 'game.room@ufl.edu',
     });
 
-    await expect(createDirectConversation(user._id, user._id)).rejects.toThrow(
-      'Cannot start a direct message conversation with yourself'
-    );
+    await expect(createDirectConversation(user._id, user._id)).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'Cannot start a direct message conversation with yourself',
+    });
 
     const count = await Conversation.countDocuments().exec();
     expect(count).toBe(0);
@@ -225,15 +227,27 @@ describe('createDirectConversation service', () => {
 
     await expect(
       createDirectConversation(missingUserA, validUser._id)
-    ).rejects.toThrow('One or more users do not exist');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_USER_NOT_FOUND',
+      message: 'One or more users do not exist',
+    });
 
     await expect(
       createDirectConversation(validUser._id, missingUserA)
-    ).rejects.toThrow('One or more users do not exist');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_USER_NOT_FOUND',
+      message: 'One or more users do not exist',
+    });
 
     await expect(
       createDirectConversation(missingUserA, missingUserB)
-    ).rejects.toThrow('One or more users do not exist');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_USER_NOT_FOUND',
+      message: 'One or more users do not exist',
+    });
   });
 });
 
@@ -426,7 +440,11 @@ describe('createGroupConversation service', () => {
 
     await expect(
       createGroupConversation(creatorId, [], 'Title')
-    ).rejects.toThrow('Group conversation requires at least two distinct participants');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'Group conversation requires at least two distinct participants',
+    });
 
     await expect(
       createGroupConversation(creatorId, [creatorId], 'Title')

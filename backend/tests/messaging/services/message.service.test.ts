@@ -163,7 +163,11 @@ describe('sendMessage service', () => {
         undefined,
         true
       )
-    ).rejects.toThrow('Announcements are only allowed in club channels');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'Announcements are only allowed in club channels',
+    });
 
     const channelConversation = await Conversation.create({
       type: ConversationType.CHANNEL,
@@ -185,7 +189,11 @@ describe('sendMessage service', () => {
         undefined,
         true
       )
-    ).rejects.toThrow('Only moderators can post announcements');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_OFFICER_PERMISSION_REQUIRED',
+      message: 'Only moderators can post announcements',
+    });
   });
 
   it('rejects message sending when user is not participant or has read only permission', async () => {
@@ -201,7 +209,11 @@ describe('sendMessage service', () => {
         nonParticipantId,
         `Message from outsider by ${ufFixtures.timTebow.name}`
       )
-    ).rejects.toThrow('Sender is not a participant in this conversation');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_NOT_PARTICIPANT',
+      message: 'Sender is not a participant in this conversation',
+    });
 
     const readOnlyUserId = new Types.ObjectId();
     await ConversationParticipant.create({
@@ -216,7 +228,11 @@ describe('sendMessage service', () => {
         readOnlyUserId,
         `Message from read only user by ${ufFixtures.lakeAliceBasker.name}`
       )
-    ).rejects.toThrow('Sender has read-only permission in this conversation');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_PERMISSION_DENIED',
+      message: 'Sender has read-only permission in this conversation',
+    });
   });
 
   it('rejects invalid conversationId senderId text or clientId inputs', async () => {
@@ -375,7 +391,11 @@ describe('getMessages service', () => {
 
     await expect(
       getMessages(conversation._id, outsiderId)
-    ).rejects.toThrow('User is not a participant in this conversation');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_NOT_PARTICIPANT',
+      message: 'User is not a participant in this conversation',
+    });
   });
 
   it('rejects invalid conversationId or requestingUserId with validation errors', async () => {
