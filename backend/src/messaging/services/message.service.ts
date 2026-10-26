@@ -6,6 +6,7 @@ import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
 import { Message } from '../models/Message';
 import { isUserParticipant } from './conversation.service';
+import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 
 const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -17,22 +18,34 @@ export async function sendMessage(
   isAnnouncement = false
 ): Promise<IMessage> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid conversationId is required'
+    );
   }
 
   if (!senderId || !mongoose.isObjectIdOrHexString(senderId)) {
-    throw new Error('Valid senderId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid senderId is required'
+    );
   }
 
   if (!text || text.trim().length === 0) {
-    throw new Error('text cannot be empty');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'text cannot be empty'
+    );
   }
 
   let cleanClientId: string | undefined;
   if (clientId !== undefined) {
     cleanClientId = clientId.trim();
     if (!UUID_V7_REGEX.test(cleanClientId)) {
-      throw new Error('Invalid clientId');
+      throw new MessagingError(
+        MessagingErrorCode.INVALID_INPUT,
+        'Invalid clientId'
+      );
     }
   }
 
@@ -48,23 +61,38 @@ export async function sendMessage(
   ]);
 
   if (!conversation) {
-    throw new Error('Conversation not found');
+    throw new MessagingError(
+      MessagingErrorCode.CONVERSATION_NOT_FOUND,
+      'Conversation not found'
+    );
   }
 
   if (!participant) {
-    throw new Error('Sender is not a participant in this conversation');
+    throw new MessagingError(
+      MessagingErrorCode.NOT_PARTICIPANT,
+      'Sender is not a participant in this conversation'
+    );
   }
 
   if (participant.permission === ParticipantPermission.READ) {
-    throw new Error('Sender has read-only permission in this conversation');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'Sender has read-only permission in this conversation'
+    );
   }
 
   if (isAnnouncement) {
     if (conversation.type !== ConversationType.CHANNEL) {
-      throw new Error('Announcements are only allowed in club channels');
+      throw new MessagingError(
+        MessagingErrorCode.INVALID_INPUT,
+        'Announcements are only allowed in club channels'
+      );
     }
     if (participant.permission !== ParticipantPermission.MODERATE) {
-      throw new Error('Only moderators can post announcements');
+      throw new MessagingError(
+        MessagingErrorCode.OFFICER_PERMISSION_REQUIRED,
+        'Only moderators can post announcements'
+      );
     }
   }
 
@@ -107,16 +135,25 @@ export async function getMessages(
   limit?: number
 ): Promise<IMessage[]> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid conversationId is required'
+    );
   }
 
   if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
-    throw new Error('Valid requestingUserId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid requestingUserId is required'
+    );
   }
 
   const isParticipant = await isUserParticipant(conversationId, requestingUserId);
   if (!isParticipant) {
-    throw new Error('User is not a participant in this conversation');
+    throw new MessagingError(
+      MessagingErrorCode.NOT_PARTICIPANT,
+      'User is not a participant in this conversation'
+    );
   }
 
   const query = Message.find({ conversationId }).sort({
