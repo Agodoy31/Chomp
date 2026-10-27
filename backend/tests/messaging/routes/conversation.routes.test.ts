@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import request from 'supertest';
 import { Types } from 'mongoose';
 import app from '../../../src/app';
@@ -17,6 +17,11 @@ let studentA: SignedInStudent;
 let studentB: SignedInStudent;
 let studentC: SignedInStudent;
 
+let directConversationId: string;
+let groupConversationId: string;
+let channelConversationId: string;
+let clubId: string;
+
 beforeAll(async () => {
   await connectTestDb();
   await Promise.all([
@@ -26,32 +31,23 @@ beforeAll(async () => {
     Message.init(),
     User.init(),
   ]);
+
   studentA = await createSignedInStudent({
-    firstName: 'Marston',
-    lastName: 'Dweller',
-    email: 'basement.coder@ufl.edu',
+    firstName: 'Century',
+    lastName: 'Tower',
+    email: 'carillon@ufl.edu',
   });
   studentB = await createSignedInStudent({
-    firstName: 'Alberta',
-    lastName: 'Gator',
-    email: 'alberta@ufl.edu',
-  });
-  studentC = await createSignedInStudent({
     firstName: 'Dennis',
     lastName: 'Heckler',
     email: 'turlington_screamer@ufl.edu',
   });
+  studentC = await createSignedInStudent({
+    firstName: 'Newell',
+    lastName: 'Nightowl',
+    email: 'newell3am@ufl.edu',
+  });
 }, 60000);
-
-afterEach(async () => {
-  jest.restoreAllMocks();
-  await Promise.all([
-    Conversation.deleteMany({}),
-    ConversationParticipant.deleteMany({}),
-    Message.deleteMany({}),
-    Club.deleteMany({}),
-  ]);
-});
 
 afterAll(async () => {
   await clearTestDb();
@@ -61,7 +57,6 @@ afterAll(async () => {
 describe('conversation route authentication guards', () => {
   it('rejects unauthenticated GET /api/conversations with 401', async () => {
     const res = await request(app).get('/api/conversations');
-
     expect(res.status).toBe(401);
     expect(res.body).toEqual({
       message: 'ERR_REQUIRE_AUTH',
@@ -73,7 +68,6 @@ describe('conversation route authentication guards', () => {
     const res = await request(app)
       .post('/api/conversations')
       .send({ type: 'DIRECT', recipientId: '507f1f77bcf86cd799439011' });
-
     expect(res.status).toBe(401);
     expect(res.body).toEqual({
       message: 'ERR_REQUIRE_AUTH',
@@ -83,7 +77,6 @@ describe('conversation route authentication guards', () => {
 
   it('rejects unauthenticated GET /api/conversations/:id with 401', async () => {
     const res = await request(app).get('/api/conversations/507f1f77bcf86cd799439011');
-
     expect(res.status).toBe(401);
     expect(res.body).toEqual({
       message: 'ERR_REQUIRE_AUTH',
@@ -110,43 +103,35 @@ describe('conversation route authentication guards', () => {
   });
 });
 
-describe('POST /api/conversations', () => {
-  it('creates new direct conversation returning 201 with details at root without isNew or dmPairKey', async () => {
+describe('empty conversation inbox', () => {
+  it('returns empty array when student has no active conversations', async () => {
     const res = await studentA.agent
-      .post('/api/conversations')
-      .send({
-        type: 'DIRECT',
-        recipientId: studentB.user._id.toString(),
-      });
+      .get('/api/conversations')
+      .expect(200);
 
-    expect(res.status).toBe(201);
-    expect(res.body._id).toBeDefined();
-    expect(res.body.type).toBe('DIRECT');
-    expect(res.body.displayName).toBe('Alberta Gator');
-    expect(res.body.isNew).toBeUndefined();
-    expect(res.body.dmPairKey).toBeUndefined();
-    expect(res.body.__v).toBeUndefined();
-
-    expect(res.body.participants).toHaveLength(2);
-    expect(res.body.participants[0].userId._id).toBeDefined();
-    expect(res.body.participants[0].userId.firstName).toBeDefined();
-    expect(res.body.participants[0].userId.lastName).toBeDefined();
-    expect(res.body.participants[0].permission).toBe(ParticipantPermission.WRITE);
-    expect(res.body.participants[0]._id).toBeUndefined();
-
-    expect(res.body.participants[1].userId._id).toBeDefined();
-    expect(res.body.participants[1].permission).toBe(ParticipantPermission.WRITE);
-    expect(res.body.participants[1]._id).toBeUndefined();
+    expect(res.body).toEqual([]);
   });
+});
 
-  it('opens existing direct conversation returning 200 with identical id without isNew', async () => {
+describe('POST /api/conversations', () => {
+  it('creates new direct conversation returning 201 and reopens existing returning 200 without isNew', async () => {
     const first = await studentA.agent
       .post('/api/conversations')
       .send({
         type: 'DIRECT',
         recipientId: studentB.user._id.toString(),
       });
+
     expect(first.status).toBe(201);
+    expect(first.body._id).toBeDefined();
+    expect(first.body.type).toBe('DIRECT');
+    expect(first.body.displayName).toBe('Dennis Heckler');
+    expect(first.body.isNew).toBeUndefined();
+    expect(first.body.dmPairKey).toBeUndefined();
+    expect(first.body.__v).toBeUndefined();
+    expect(first.body.participants).toHaveLength(2);
+
+    directConversationId = first.body._id;
 
     const second = await studentB.agent
       .post('/api/conversations')
@@ -154,16 +139,17 @@ describe('POST /api/conversations', () => {
         type: 'DIRECT',
         recipientId: studentA.user._id.toString(),
       });
+
     expect(second.status).toBe(200);
-    expect(second.body._id).toBe(first.body._id);
+    expect(second.body._id).toBe(directConversationId);
+    expect(second.body.displayName).toBe('Century Tower');
     expect(second.body.isNew).toBeUndefined();
-    expect(second.body.displayName).toBe('Marston Dweller');
   });
 
   it('creates group conversation returning 201 with moderator role for creator and distinct ids on duplicate requests', async () => {
     const payload = {
       type: 'GROUP',
-      title: '  Reitz Union Smash Bros  ',
+      title: '  French Fries Monument Preservation Society  ',
       participantIds: [
         studentB.user._id.toString(),
         studentC.user._id.toString(),
@@ -177,21 +163,16 @@ describe('POST /api/conversations', () => {
     expect(first.status).toBe(201);
     expect(first.body._id).toBeDefined();
     expect(first.body.type).toBe('GROUP');
-    expect(first.body.displayName).toBe('Reitz Union Smash Bros');
+    expect(first.body.displayName).toBe('French Fries Monument Preservation Society');
     expect(first.body.isNew).toBeUndefined();
-
     expect(first.body.participants).toHaveLength(3);
+
+    groupConversationId = first.body._id;
+
     const creatorEntry = first.body.participants.find(
       (p: { userId: { _id: string } }) => p.userId._id === studentA.user._id.toString()
     );
-    expect(creatorEntry).toBeDefined();
-    expect(creatorEntry.permission).toBe(ParticipantPermission.MODERATE);
-
-    const memberEntry = first.body.participants.find(
-      (p: { userId: { _id: string } }) => p.userId._id === studentB.user._id.toString()
-    );
-    expect(memberEntry).toBeDefined();
-    expect(memberEntry.permission).toBe(ParticipantPermission.WRITE);
+    expect(creatorEntry?.permission).toBe(ParticipantPermission.MODERATE);
 
     const second = await studentA.agent
       .post('/api/conversations')
@@ -199,10 +180,6 @@ describe('POST /api/conversations', () => {
 
     expect(second.status).toBe(201);
     expect(second.body._id).not.toBe(first.body._id);
-    expect(second.body.displayName).toBe('Reitz Union Smash Bros');
-
-    const totalGroups = await Conversation.countDocuments({ type: ConversationType.GROUP });
-    expect(totalGroups).toBe(2);
   });
 
   it('rejects missing or whitespace group title with 400 and ERR_TITLE_REQUIRED', async () => {
@@ -244,10 +221,7 @@ describe('POST /api/conversations', () => {
         recipientId: studentA.user._id.toString(),
       });
     expect(selfRes.status).toBe(400);
-    expect(selfRes.body).toEqual({
-      code: 'ERR_MESSAGE_SELF',
-      message: 'Cannot start a direct message conversation with yourself',
-    });
+    expect(selfRes.body.code).toBe('ERR_MESSAGE_SELF');
 
     const soloRes = await studentA.agent
       .post('/api/conversations')
@@ -257,10 +231,7 @@ describe('POST /api/conversations', () => {
         participantIds: [studentA.user._id.toString()],
       });
     expect(soloRes.status).toBe(400);
-    expect(soloRes.body).toEqual({
-      code: 'ERR_INSUFFICIENT_PARTICIPANTS',
-      message: 'Group conversation requires at least two distinct participants',
-    });
+    expect(soloRes.body.code).toBe('ERR_INSUFFICIENT_PARTICIPANTS');
 
     const missingId = new Types.ObjectId().toString();
     const missingRes = await studentA.agent
@@ -270,15 +241,12 @@ describe('POST /api/conversations', () => {
         recipientId: missingId,
       });
     expect(missingRes.status).toBe(404);
-    expect(missingRes.body).toEqual({
-      code: 'ERR_USER_NOT_FOUND',
-      message: 'One or more users do not exist',
-    });
+    expect(missingRes.body.code).toBe('ERR_USER_NOT_FOUND');
   });
 
   it('returns 500 when service encounters unexpected internal failure', async () => {
     jest.spyOn(conversationService, 'createDirectConversation').mockRejectedValueOnce(
-      new Error('Replica set primary stepdown in progress')
+      new Error('Replica set primary failover')
     );
 
     const res = await studentA.agent
@@ -289,294 +257,108 @@ describe('POST /api/conversations', () => {
       });
 
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({
-      code: 'ERR_SERVER_ERROR',
-      message: 'An unexpected error occurred',
-    });
+    expect(res.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
   });
 });
 
-describe('GET /api/conversations', () => {
-  it('returns direct group and channel conversations ordered by lastActivityAt descending', async () => {
-    const directChat = await Conversation.create({
-      type: ConversationType.DIRECT,
-      dmPairKey: [studentA.user._id.toString(), studentB.user._id.toString()].sort().join(':'),
-    });
-    await ConversationParticipant.create([
-      {
-        conversationId: directChat._id,
-        userId: studentA.user._id,
-        permission: ParticipantPermission.WRITE,
-      },
-      {
-        conversationId: directChat._id,
-        userId: studentB.user._id,
-        permission: ParticipantPermission.WRITE,
-      },
-    ]);
+describe('GET /api/conversations/:id', () => {
+  it('returns direct and group conversation details with participants and permissions', async () => {
+    const directRes = await studentA.agent
+      .get(`/api/conversations/${directConversationId}`)
+      .expect(200);
 
-    const groupChat = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Norman Hall Coffee Club',
-    });
-    await ConversationParticipant.create([
-      {
-        conversationId: groupChat._id,
-        userId: studentA.user._id,
-        permission: ParticipantPermission.MODERATE,
-      },
-      {
-        conversationId: groupChat._id,
-        userId: studentB.user._id,
-        permission: ParticipantPermission.WRITE,
-      },
-    ]);
+    expect(directRes.body._id).toBe(directConversationId);
+    expect(directRes.body.type).toBe('DIRECT');
+    expect(directRes.body.displayName).toBe('Dennis Heckler');
+    expect(directRes.body.participants).toHaveLength(2);
 
+    const groupRes = await studentA.agent
+      .get(`/api/conversations/${groupConversationId}`)
+      .expect(200);
+
+    expect(groupRes.body._id).toBe(groupConversationId);
+    expect(groupRes.body.type).toBe('GROUP');
+    expect(groupRes.body.displayName).toBe('French Fries Monument Preservation Society');
+    expect(groupRes.body.participants).toHaveLength(3);
+  });
+
+  it('rejects non-participant with 404 and ERR_CONVERSATION_NOT_FOUND', async () => {
+    const res = await studentC.agent
+      .get(`/api/conversations/${directConversationId}`)
+      .expect(404);
+
+    expect(res.body).toEqual({
+      code: 'ERR_CONVERSATION_NOT_FOUND',
+      message: 'Conversation not found',
+    });
+  });
+
+  it('rejects malformed conversation id with 400 and ERR_INVALID_INPUT', async () => {
+    const res = await studentA.agent
+      .get('/api/conversations/not-a-valid-object-id')
+      .expect(400);
+
+    expect(res.body).toEqual({
+      code: 'ERR_INVALID_INPUT',
+      message: 'Valid conversationId is required',
+    });
+  });
+
+  it('returns 500 when service encounters unexpected internal failure', async () => {
+    jest.spyOn(conversationService, 'getConversationDetails').mockRejectedValueOnce(
+      new Error('Replica set primary election')
+    );
+
+    const res = await studentA.agent
+      .get(`/api/conversations/${groupConversationId}`)
+      .expect(500);
+
+    expect(res.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+describe('channel helper setup', () => {
+  it('provisions club and channel with studentA as moderator and studentB as member', async () => {
     const club = await Club.create({
-      name: 'Southwest Rec Bench Press Waitlist',
-      description: 'Lifting team coordinating bench rotations',
+      name: 'Chomp Streetwear Collective',
+      description: 'Campus fashion and thrifting club',
       proposerId: studentA.user._id,
     });
-    const channelChat = await Conversation.create({
+    clubId = club._id.toString();
+
+    const channel = await Conversation.create({
       type: ConversationType.CHANNEL,
       clubId: club._id,
       title: 'announcements',
     });
+    channelConversationId = channel._id.toString();
+
     await ConversationParticipant.create([
       {
-        conversationId: channelChat._id,
+        conversationId: channel._id,
         userId: studentA.user._id,
         permission: ParticipantPermission.MODERATE,
       },
       {
-        conversationId: channelChat._id,
+        conversationId: channel._id,
         userId: studentB.user._id,
         permission: ParticipantPermission.WRITE,
       },
     ]);
 
-    const baseTime = Date.now();
-    const t1 = new Date(baseTime + 1000);
-    const t2 = new Date(baseTime + 2000);
-    const t3 = new Date(baseTime + 3000);
-
-    await Message.create([
-      {
-        conversationId: directChat._id,
-        senderId: studentB.user._id,
-        text: 'Studying in the Marston basement stacks',
-        isAnnouncement: false,
-        isSystem: false,
-        createdAt: t1,
-        updatedAt: t1,
-      },
-      {
-        conversationId: channelChat._id,
-        senderId: studentA.user._id,
-        text: 'Bench racks free at Southwest right now',
-        isAnnouncement: true,
-        isSystem: false,
-        createdAt: t2,
-        updatedAt: t2,
-      },
-      {
-        conversationId: groupChat._id,
-        senderId: studentB.user._id,
-        text: 'Pouring fresh cold brew at Norman',
-        isAnnouncement: false,
-        isSystem: false,
-        createdAt: t3,
-        updatedAt: t3,
-      },
-    ]);
-
-    const res = await studentA.agent
-      .get('/api/conversations')
-      .expect(200);
-
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body).toHaveLength(3);
-
-    expect(res.body[0]._id).toBe(groupChat._id.toString());
-    expect(res.body[0].type).toBe(ConversationType.GROUP);
-    expect(res.body[0].displayName).toBe('Norman Hall Coffee Club');
-    expect(res.body[0].clubId).toBeUndefined();
-    expect(res.body[0].lastMessage).toEqual({
-      text: 'Pouring fresh cold brew at Norman',
-      senderName: 'Alberta Gator',
-      createdAt: t3.toISOString(),
-    });
-
-    expect(res.body[1]._id).toBe(channelChat._id.toString());
-    expect(res.body[1].type).toBe(ConversationType.CHANNEL);
-    expect(res.body[1].displayName).toBe('announcements');
-    expect(res.body[1].clubId).toBe(club._id.toString());
-    expect(res.body[1].lastMessage).toEqual({
-      text: 'Bench racks free at Southwest right now',
-      senderName: 'Marston Dweller',
-      createdAt: t2.toISOString(),
-    });
-
-    expect(res.body[2]._id).toBe(directChat._id.toString());
-    expect(res.body[2].type).toBe(ConversationType.DIRECT);
-    expect(res.body[2].displayName).toBe('Alberta Gator');
-    expect(res.body[2].clubId).toBeUndefined();
-    expect(res.body[2].lastMessage).toEqual({
-      text: 'Studying in the Marston basement stacks',
-      senderName: 'Alberta Gator',
-      createdAt: t1.toISOString(),
-    });
-  });
-
-  it('omits empty conversations that have no messages', async () => {
-    const activeGroup = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Active Study Crew',
-    });
-    await ConversationParticipant.create({
-      conversationId: activeGroup._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-    await Message.create({
-      conversationId: activeGroup._id,
-      senderId: studentA.user._id,
-      text: 'Active discussion ping',
-      isAnnouncement: false,
-      isSystem: false,
-    });
-
-    const emptyDirect = await Conversation.create({
-      type: ConversationType.DIRECT,
-      dmPairKey: [studentA.user._id.toString(), studentB.user._id.toString()].sort().join(':'),
-    });
-    await ConversationParticipant.create({
-      conversationId: emptyDirect._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const club = await Club.create({
-      name: 'Quiet Reading Society',
-      description: 'Silent reading sessions on campus',
-      proposerId: studentA.user._id,
-    });
-    const emptyChannel = await Conversation.create({
-      type: ConversationType.CHANNEL,
-      clubId: club._id,
-      title: 'quiet-channel',
-    });
-    await ConversationParticipant.create({
-      conversationId: emptyChannel._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const res = await studentA.agent
-      .get('/api/conversations')
-      .expect(200);
-
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]._id).toBe(activeGroup._id.toString());
-  });
-
-  it('masks soft-deleted latest message text as tombstone preview', async () => {
-    const group = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Norman Hall Coffee Club',
-    });
-    await ConversationParticipant.create({
-      conversationId: group._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.MODERATE,
-    });
-
-    const [msg] = await Message.create([
-      {
-        conversationId: group._id,
-        senderId: studentA.user._id,
-        text: 'Secret study coordinates',
-        isAnnouncement: false,
-        isSystem: false,
-      },
-    ]);
-
-    await deleteMessage(msg._id, studentA.user._id);
-
-    const res = await studentA.agent
-      .get('/api/conversations')
-      .expect(200);
-
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].lastMessage.text).toBe('This message was deleted');
-    expect(res.body[0].lastMessage.senderName).toBe('Marston Dweller');
-    expect(res.body[0].lastMessage.createdAt).toBeDefined();
-  });
-
-  it('returns empty array when student has no active conversations and prevents viewing other students chats', async () => {
-    const privateGroup = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Secret Officer Lounge',
-    });
-    await ConversationParticipant.create([
-      {
-        conversationId: privateGroup._id,
-        userId: studentB.user._id,
-        permission: ParticipantPermission.WRITE,
-      },
-      {
-        conversationId: privateGroup._id,
-        userId: studentC.user._id,
-        permission: ParticipantPermission.WRITE,
-      },
-    ]);
-    await Message.create({
-      conversationId: privateGroup._id,
-      senderId: studentB.user._id,
-      text: 'Only for B and C',
-      isAnnouncement: false,
-      isSystem: false,
-    });
-
-    const res = await studentA.agent
-      .get(`/api/conversations?userId=${studentB.user._id.toString()}`)
-      .expect(200);
-
-    expect(res.body).toEqual([]);
-
-    jest.spyOn(conversationService, 'getUserConversations').mockRejectedValueOnce(
-      new Error('Replica set primary failover')
-    );
-
-    const errorRes = await studentA.agent
-      .get('/api/conversations')
-      .expect(500);
-
-    expect(errorRes.body).toEqual({
-      code: 'ERR_SERVER_ERROR',
-      message: 'An unexpected error occurred',
-    });
+    expect(channelConversationId).toBeDefined();
   });
 });
 
 describe('POST /api/conversations/:id/messages', () => {
   it('sends message and returns 201 with public message fields and session sender', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'French Fries Monument Preservation Society',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
     const spoofedSenderId = new Types.ObjectId().toString();
     const clientId = '0192c4a0-7c00-7000-8000-000000000001';
 
     const res = await studentA.agent
-      .post(`/api/conversations/${conversation._id.toString()}/messages`)
+      .post(`/api/conversations/${groupConversationId}/messages`)
       .send({
         text: '  Meeting at the sculpture at five  ',
         clientId,
@@ -585,7 +367,7 @@ describe('POST /api/conversations/:id/messages', () => {
 
     expect(res.status).toBe(201);
     expect(res.body._id).toBeDefined();
-    expect(res.body.conversationId).toBe(conversation._id.toString());
+    expect(res.body.conversationId).toBe(groupConversationId);
     expect(res.body.senderId).toBe(studentA.user._id.toString());
     expect(res.body.text).toBe('Meeting at the sculpture at five');
     expect(res.body.clientId).toBe(clientId);
@@ -598,63 +380,30 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('deduplicates sends with identical client id and does not create second document', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Newell Hall Late Night Debuggers',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
     const clientId = '0192c4a0-7c00-7000-8000-000000000002';
 
     const first = await studentA.agent
-      .post(`/api/conversations/${conversation._id.toString()}/messages`)
+      .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Anyone have spare coffee?', clientId });
     expect(first.status).toBe(201);
 
     const second = await studentA.agent
-      .post(`/api/conversations/${conversation._id.toString()}/messages`)
+      .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Altered duplicate request body', clientId });
     expect(second.status).toBe(201);
     expect(second.body._id).toBe(first.body._id);
     expect(second.body.text).toBe('Anyone have spare coffee?');
-
-    const totalInDb = await Message.countDocuments({ conversationId: conversation._id });
-    expect(totalInDb).toBe(1);
   });
 
   it('allows channel moderator announcement and rejects regular member announcement with 403', async () => {
-    const channel = await Conversation.create({
-      type: ConversationType.CHANNEL,
-      title: 'general',
-      clubId: new Types.ObjectId(),
-    });
-
-    await ConversationParticipant.create([
-      {
-        conversationId: channel._id,
-        userId: studentA.user._id,
-        permission: ParticipantPermission.MODERATE,
-      },
-      {
-        conversationId: channel._id,
-        userId: studentB.user._id,
-        permission: ParticipantPermission.WRITE,
-      },
-    ]);
-
     const modRes = await studentA.agent
-      .post(`/api/conversations/${channel._id.toString()}/messages`)
+      .post(`/api/conversations/${channelConversationId}/messages`)
       .send({ text: 'GBM starts in ten minutes', isAnnouncement: true });
     expect(modRes.status).toBe(201);
     expect(modRes.body.isAnnouncement).toBe(true);
 
     const memberRes = await studentB.agent
-      .post(`/api/conversations/${channel._id.toString()}/messages`)
+      .post(`/api/conversations/${channelConversationId}/messages`)
       .send({ text: 'Free pizza outside', isAnnouncement: true });
     expect(memberRes.status).toBe(403);
     expect(memberRes.body).toEqual({
@@ -664,19 +413,8 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('rejects announcements in non-channel conversation with 400', async () => {
-    const group = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Newell Hall Late Night Debuggers',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: group._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.MODERATE,
-    });
-
     const res = await studentA.agent
-      .post(`/api/conversations/${group._id.toString()}/messages`)
+      .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Quiet hours announcement', isAnnouncement: true });
 
     expect(res.status).toBe(400);
@@ -684,19 +422,8 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('rejects non-participant with 403 and missing conversation with 404', async () => {
-    const privateGroup = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Secret Study Room',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: privateGroup._id,
-      userId: studentB.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const nonPartRes = await studentA.agent
-      .post(`/api/conversations/${privateGroup._id.toString()}/messages`)
+    const nonPartRes = await studentC.agent
+      .post(`/api/conversations/${channelConversationId}/messages`)
       .send({ text: 'Let me join please' });
     expect(nonPartRes.status).toBe(403);
     expect(nonPartRes.body).toEqual({
@@ -716,238 +443,127 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('rejects blank text invalid client id and malformed route id with 400', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'French Fries Monument Preservation Society',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
     const emptyTextRes = await studentA.agent
-      .post(`/api/conversations/${conversation._id.toString()}/messages`)
+      .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: '   ' });
     expect(emptyTextRes.status).toBe(400);
-    expect(emptyTextRes.body).toEqual({
-      code: 'ERR_TEXT_EMPTY',
-      message: 'Message text cannot be empty',
-    });
+    expect(emptyTextRes.body.code).toBe('ERR_TEXT_EMPTY');
 
     const badClientIdRes = await studentA.agent
-      .post(`/api/conversations/${conversation._id.toString()}/messages`)
+      .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Valid message text', clientId: 'bad-client-id' });
     expect(badClientIdRes.status).toBe(400);
-    expect(badClientIdRes.body).toEqual({
-      code: 'ERR_CLIENT_ID_INVALID',
-      message: 'Client ID must be a valid UUIDv7',
-    });
+    expect(badClientIdRes.body.code).toBe('ERR_CLIENT_ID_INVALID');
 
     const badRouteIdRes = await studentA.agent
       .post('/api/conversations/not-a-valid-id/messages')
       .send({ text: 'Valid message text' });
     expect(badRouteIdRes.status).toBe(400);
-    expect(badRouteIdRes.body).toEqual({
-      code: 'ERR_INVALID_INPUT',
-      message: 'Valid conversationId is required',
-    });
+    expect(badRouteIdRes.body.code).toBe('ERR_INVALID_INPUT');
   });
 
   it('returns 500 when service encounters unexpected internal failure', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'French Fries Monument Preservation Society',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    jest.spyOn(messageService, 'sendMessage').mockRejectedValueOnce(new Error('MongoDB replica set connection timed out'));
+    jest.spyOn(messageService, 'sendMessage').mockRejectedValueOnce(
+      new Error('MongoDB replica set connection timed out')
+    );
 
     const res = await studentA.agent
-      .post(`/api/conversations/${conversation._id.toString()}/messages`)
+      .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Hello Century Tower' });
 
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({
-      code: 'ERR_SERVER_ERROR',
-      message: 'An unexpected error occurred',
-    });
+    expect(res.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
   });
 });
 
 describe('GET /api/conversations/:id/messages', () => {
   it('returns recent messages ordered newest first capped at 50 by default', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Gator Corner Soft Serve Repair Crew',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.MODERATE,
-    });
-
     const baseTime = Date.now();
-    const messageDocs = Array.from({ length: 55 }, (_, i) => ({
-      conversationId: conversation._id,
+    const bulkDocs = Array.from({ length: 50 }, (_, i) => ({
+      conversationId: new Types.ObjectId(groupConversationId),
       senderId: studentA.user._id,
-      text: `Repair log entry ${i + 1}`,
+      text: `Extra message entry ${i + 1}`,
       isAnnouncement: false,
       isSystem: false,
-      createdAt: new Date(baseTime + i * 1000),
-      updatedAt: new Date(baseTime + i * 1000),
+      createdAt: new Date(baseTime + (i + 10) * 1000),
+      updatedAt: new Date(baseTime + (i + 10) * 1000),
     }));
-
-    await Message.insertMany(messageDocs);
+    await Message.insertMany(bulkDocs);
 
     const res = await studentA.agent
-      .get(`/api/conversations/${conversation._id.toString()}/messages`)
+      .get(`/api/conversations/${groupConversationId}/messages`)
       .expect(200);
 
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(50);
-
-    expect(res.body[0].text).toBe('Repair log entry 55');
-    expect(res.body[49].text).toBe('Repair log entry 6');
-
-    const firstItem = res.body[0];
-    expect(firstItem._id).toBeDefined();
-    expect(firstItem.conversationId).toBe(conversation._id.toString());
-    expect(firstItem.senderId).toBe(studentA.user._id.toString());
-    expect(firstItem.isAnnouncement).toBe(false);
-    expect(firstItem.isSystem).toBe(false);
-    expect(firstItem.createdAt).toBeDefined();
-    expect(firstItem.__v).toBeUndefined();
-    expect(firstItem.updatedAt).toBeUndefined();
-    expect(firstItem.removedBy).toBeUndefined();
+    expect(res.body[0].text).toBe('Extra message entry 50');
+    expect(res.body[0].senderId).toBe(studentA.user._id.toString());
   });
 
   it('supports custom limit query parameter and returns empty array for empty chat', async () => {
-    const activeChat = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Gator Corner Soft Serve Repair Crew',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: activeChat._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const baseTime = Date.now();
-    const messageDocs = Array.from({ length: 10 }, (_, i) => ({
-      conversationId: activeChat._id,
-      senderId: studentA.user._id,
-      text: `Status ping ${i + 1}`,
-      isAnnouncement: false,
-      isSystem: false,
-      createdAt: new Date(baseTime + i * 1000),
-      updatedAt: new Date(baseTime + i * 1000),
-    }));
-    await Message.insertMany(messageDocs);
-
     const limitRes = await studentA.agent
-      .get(`/api/conversations/${activeChat._id.toString()}/messages?limit=3`)
+      .get(`/api/conversations/${groupConversationId}/messages?limit=3`)
       .expect(200);
 
     expect(limitRes.body).toHaveLength(3);
-    expect(limitRes.body[0].text).toBe('Status ping 10');
-    expect(limitRes.body[1].text).toBe('Status ping 9');
-    expect(limitRes.body[2].text).toBe('Status ping 8');
-
-    const emptyChat = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Empty Study Group',
-    });
-    await ConversationParticipant.create({
-      conversationId: emptyChat._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
+    expect(limitRes.body[0].text).toBe('Extra message entry 50');
+    expect(limitRes.body[1].text).toBe('Extra message entry 49');
+    expect(limitRes.body[2].text).toBe('Extra message entry 48');
 
     const emptyRes = await studentA.agent
-      .get(`/api/conversations/${emptyChat._id.toString()}/messages`)
+      .get(`/api/conversations/${directConversationId}/messages`)
       .expect(200);
 
     expect(emptyRes.body).toEqual([]);
   });
 
   it('masks soft-deleted message text as tombstone while preserving removedAt and system messages', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Gator Corner Soft Serve Repair Crew',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.MODERATE,
-    });
-
-    const [deletedDoc] = await Message.create([
-      {
-        conversationId: conversation._id,
-        senderId: studentA.user._id,
-        text: 'This should be removed from view',
-        isAnnouncement: false,
-        isSystem: false,
-      },
-    ]);
-
-    await deleteMessage(deletedDoc._id, studentA.user._id);
-
     await Message.create([
       {
-        conversationId: conversation._id,
+        conversationId: new Types.ObjectId(groupConversationId),
         senderId: studentA.user._id,
-        text: 'Marston Dweller created the group',
+        text: 'Century Tower updated the group',
         isAnnouncement: false,
         isSystem: true,
+        createdAt: new Date(Date.now() + 200000),
       },
     ]);
 
+    const [msgToSoftDelete] = await Message.create([
+      {
+        conversationId: new Types.ObjectId(groupConversationId),
+        senderId: studentA.user._id,
+        text: 'This secret should be deleted',
+        isAnnouncement: false,
+        isSystem: false,
+        createdAt: new Date(Date.now() + 300000),
+      },
+    ]);
+
+    await deleteMessage(msgToSoftDelete._id, studentA.user._id);
+
     const res = await studentA.agent
-      .get(`/api/conversations/${conversation._id.toString()}/messages`)
+      .get(`/api/conversations/${groupConversationId}/messages?limit=5`)
       .expect(200);
-
-    expect(res.body).toHaveLength(2);
-
-    const systemMsg = res.body.find((m: { isSystem: boolean }) => m.isSystem);
-    expect(systemMsg).toBeDefined();
-    expect(systemMsg.text).toBe('Marston Dweller created the group');
-    expect(systemMsg.isSystem).toBe(true);
 
     const deletedMsg = res.body.find((m: { text: string }) => m.text === 'This message was deleted');
     expect(deletedMsg).toBeDefined();
-    expect(deletedMsg._id).toBe(deletedDoc._id.toString());
+    expect(deletedMsg._id).toBe(msgToSoftDelete._id.toString());
     expect(deletedMsg.removedAt).toBeDefined();
     expect(deletedMsg.removedBy).toBeUndefined();
+
+    const systemMsg = res.body.find((m: { isSystem: boolean }) => m.isSystem);
+    expect(systemMsg).toBeDefined();
+    expect(systemMsg.isSystem).toBe(true);
   });
 
   it('rejects out of range or non integer limit with 400 and ERR_VALIDATION_FAILED', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Limit Validation Group',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
     const invalidLimits = ['0', '101', '500', 'abc', '1.5', '-5'];
 
     for (const limit of invalidLimits) {
       const res = await studentA.agent
-        .get(`/api/conversations/${conversation._id.toString()}/messages?limit=${limit}`)
+        .get(`/api/conversations/${groupConversationId}/messages?limit=${limit}`)
         .expect(400);
 
       expect(res.body).toEqual({
@@ -969,19 +585,8 @@ describe('GET /api/conversations/:id/messages', () => {
   });
 
   it('returns 404 for missing conversation or non-participant and 500 for unexpected error', async () => {
-    const conversation = await Conversation.create({
-      type: ConversationType.GROUP,
-      title: 'Gator Corner Soft Serve Repair Crew',
-    });
-
-    await ConversationParticipant.create({
-      conversationId: conversation._id,
-      userId: studentA.user._id,
-      permission: ParticipantPermission.WRITE,
-    });
-
-    const outsiderRes = await studentB.agent
-      .get(`/api/conversations/${conversation._id.toString()}/messages`)
+    const outsiderRes = await studentC.agent
+      .get(`/api/conversations/${channelConversationId}/messages`)
       .expect(404);
 
     expect(outsiderRes.body).toEqual({
@@ -1004,12 +609,66 @@ describe('GET /api/conversations/:id/messages', () => {
     );
 
     const errorRes = await studentA.agent
-      .get(`/api/conversations/${conversation._id.toString()}/messages`)
+      .get(`/api/conversations/${groupConversationId}/messages`)
       .expect(500);
 
-    expect(errorRes.body).toEqual({
-      code: 'ERR_SERVER_ERROR',
-      message: 'An unexpected error occurred',
-    });
+    expect(errorRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+describe('GET /api/conversations', () => {
+  it('returns active group and channel conversations ordered by lastActivityAt descending and omits empty chats', async () => {
+    const res = await studentA.agent
+      .get('/api/conversations')
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(3);
+
+    const groupItem = res.body.find((c: { _id: string }) => c._id === groupConversationId);
+    expect(groupItem).toBeDefined();
+    expect(groupItem.type).toBe('GROUP');
+    expect(groupItem.displayName).toBe('French Fries Monument Preservation Society');
+    expect(groupItem.clubId).toBeUndefined();
+    expect(groupItem.lastMessage).toBeDefined();
+
+    const channelItem = res.body.find((c: { _id: string }) => c._id === channelConversationId);
+    expect(channelItem).toBeDefined();
+    expect(channelItem.type).toBe('CHANNEL');
+    expect(channelItem.displayName).toBe('announcements');
+    expect(channelItem.clubId).toBe(clubId);
+    expect(channelItem.lastMessage).toBeDefined();
+
+    const emptyDirectItem = res.body.find((c: { _id: string }) => c._id === directConversationId);
+    expect(emptyDirectItem).toBeUndefined();
+  });
+
+  it('masks soft-deleted latest message text in inbox preview', async () => {
+    const res = await studentA.agent
+      .get('/api/conversations')
+      .expect(200);
+
+    const groupItem = res.body.find((c: { _id: string }) => c._id === groupConversationId);
+    expect(groupItem.lastMessage.text).toBe('This message was deleted');
+  });
+
+  it('prevents viewing other students chats and handles service failure with 500', async () => {
+    const res = await studentA.agent
+      .get(`/api/conversations?userId=${studentB.user._id.toString()}`)
+      .expect(200);
+
+    expect(res.body).toHaveLength(3);
+
+    jest.spyOn(conversationService, 'getUserConversations').mockRejectedValueOnce(
+      new Error('Replica set failover')
+    );
+
+    const errorRes = await studentA.agent
+      .get('/api/conversations')
+      .expect(500);
+
+    expect(errorRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
   });
 });

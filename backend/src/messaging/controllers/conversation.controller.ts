@@ -170,3 +170,39 @@ export async function getUserConversationsHandler(req: Request, res: Response): 
   }
 }
 
+export async function getConversationDetailsHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: 'ERR_INVALID_INPUT',
+      message: 'Valid conversationId is required',
+    });
+    return;
+  }
+
+  const sessionUserId = req.session?.userId;
+  if (typeof sessionUserId !== 'string' || !mongoose.isObjectIdOrHexString(sessionUserId)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const conversationId = new Types.ObjectId(id);
+  const requestingUserId = new Types.ObjectId(sessionUserId);
+
+  try {
+    const details = await getConversationDetails(conversationId, requestingUserId);
+    if (!details) {
+      res.status(404).json({
+        code: 'ERR_CONVERSATION_NOT_FOUND',
+        message: 'Conversation not found',
+      });
+      return;
+    }
+
+    res.status(200).json(details);
+  } catch (error: unknown) {
+    sendMessagingError(res, error);
+  }
+}
+
+
