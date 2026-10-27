@@ -9,3 +9,24 @@ export const postMessageBodySchema = z.object({
 });
 
 export type PostMessageBodyInput = z.infer<typeof postMessageBodySchema>;
+
+export const messageHistoryQuerySchema = z.object({
+  limit: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (val === undefined) {
+          return true;
+        }
+        const num = Number(val);
+        return Number.isInteger(num) && num >= 1 && num <= 100 && String(num) === val.trim();
+      },
+      {
+        message: 'limit must be an integer between 1 and 100',
+      }
+    )
+    .transform((val) => (val === undefined ? 50 : parseInt(val, 10))),
+});
+
+export type MessageHistoryQueryInput = z.infer<typeof messageHistoryQuerySchema>;
