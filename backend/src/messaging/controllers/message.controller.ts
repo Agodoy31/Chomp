@@ -2,8 +2,12 @@ import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
 import { IMessage } from '../interfaces/message.interfaces';
 import { IMessageResponse } from '../interfaces/message.responses';
-import { postMessageBodySchema } from '../validators/message.validator';
-import { sendMessage } from '../services/message.service';
+import {
+  messageHistoryQuerySchema,
+  postMessageBodySchema,
+} from '../validators/message.validator';
+import { getMessages, sendMessage } from '../services/message.service';
+import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
 
 export function toMessageResponse(message: IMessage): IMessageResponse {
@@ -69,6 +73,58 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
 
     res.status(201).json(toMessageResponse(message));
   } catch (error) {
+    sendMessagingError(res, error);
+  }
+}
+
+export async function getMessageHistoryHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: 'ERR_INVALID_INPUT',
+      message: 'Valid conversationId is required',
+    });
+    return;
+  }
+
+  const parseResult = messageHistoryQuerySchema.safeParse(req.query);
+  if (!parseResult.success) {
+    res.status(400).json({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'limit must be an integer between 1 and 100',
+    });
+    return;
+  }
+
+  const userId = req.session?.userId;
+  if (typeof userId !== 'string' || !mongoose.isObjectIdOrHexString(userId)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const conversationId = new Types.ObjectId(id);
+  const requestingUserId = new Types.ObjectId(userId);
+
+  try {
+    const messages = await getMessages(
+      conversationId,
+      requestingUserId,
+      parseResult.data.limit
+    );
+    const response = messages.map(toMessageResponse);
+    res.status(200).json(response);
+  } catch (error: unknown) {
+    if (
+      error instanceof MessagingError &&
+      (error.code === MessagingErrorCode.NOT_PARTICIPANT ||
+        error.code === MessagingErrorCode.CONVERSATION_NOT_FOUND)
+    ) {
+      res.status(404).json({
+        code: 'ERR_CONVERSATION_NOT_FOUND',
+        message: 'Conversation not found',
+      });
+      return;
+    }
     sendMessagingError(res, error);
   }
 }
