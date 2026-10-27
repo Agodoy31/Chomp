@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
+import request from 'supertest';
 import { Types } from 'mongoose';
+import app from '../../../src/app';
 import { clearTestDb, closeTestDb, connectTestDb } from '../../helpers/db';
 import { Conversation, ConversationType } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant, ParticipantPermission } from '../../../src/messaging/models/ConversationParticipant';
@@ -594,4 +596,57 @@ describe('GET /api/conversations', () => {
     });
   });
 });
+
+describe('conversation route authentication guards', () => {
+  it('rejects unauthenticated GET /api/conversations with 401', async () => {
+    const res = await request(app).get('/api/conversations');
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated POST /api/conversations with 401', async () => {
+    const res = await request(app)
+      .post('/api/conversations')
+      .send({ type: 'DIRECT', recipientId: '507f1f77bcf86cd799439011' });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated GET /api/conversations/:id with 401', async () => {
+    const res = await request(app).get('/api/conversations/507f1f77bcf86cd799439011');
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated GET and POST message routes with 401', async () => {
+    const getRes = await request(app).get('/api/conversations/507f1f77bcf86cd799439011/messages');
+    expect(getRes.status).toBe(401);
+    expect(getRes.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+
+    const postRes = await request(app)
+      .post('/api/conversations/507f1f77bcf86cd799439011/messages')
+      .send({ text: 'Hello from unauthenticated client' });
+    expect(postRes.status).toBe(401);
+    expect(postRes.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+});
+
 
