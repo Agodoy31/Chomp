@@ -7,9 +7,11 @@ import { hashPassword } from '../user/utils/passwordHashing';
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/chomp';
 
-async function seedDatabase(): Promise<void> {
-  console.log(`Connecting to database at ${MONGO_URI}...`);
-  await mongoose.connect(MONGO_URI);
+export async function seedDatabase(disconnectOnComplete = true): Promise<void> {
+  if (mongoose.connection.readyState === 0) {
+    console.log(`Connecting to database at ${MONGO_URI}...`);
+    await mongoose.connect(MONGO_URI);
+  }
 
   console.log('Clearing existing users, clubs, and memberships...');
   await User.deleteMany({});
@@ -515,11 +517,19 @@ async function seedDatabase(): Promise<void> {
   console.log(`Created ${membershipsToCreate.length} active memberships.`);
 
   console.log('Seed completed successfully!');
-  await mongoose.disconnect();
-  process.exit(0);
+  if (disconnectOnComplete) {
+    await mongoose.disconnect();
+    process.exit(0);
+  }
 }
 
-seedDatabase().catch((error) => {
-  console.error('Database seeding failed with error:', error);
-  process.exit(1);
-});
+const isDirectRun =
+  process.argv[1]?.replace(/\\/g, '/').endsWith('src/scripts/seed.ts') ||
+  process.argv[1]?.replace(/\\/g, '/').endsWith('src/scripts/seed');
+
+if (isDirectRun) {
+  seedDatabase().catch((error) => {
+    console.error('Database seeding failed with error:', error);
+    process.exit(1);
+  });
+}
