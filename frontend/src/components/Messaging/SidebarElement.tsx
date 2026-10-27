@@ -1,4 +1,4 @@
-import type { Conversation } from '../../types/Messaging/Converstation';
+import type { Conversation } from '../../types/Messaging/Conversation';
 
 interface SidebarElementProps {
   conversation: Conversation;
