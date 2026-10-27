@@ -1,12 +1,10 @@
-import 'dotenv/config';
+import './demoEnv.js';
 import http from 'http';
 import mongoose from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Server, Socket } from 'socket.io';
-import { seedDatabase } from './seed';
-
-process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'chomp-presentation-demo-secret-key-2026';
-process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+import app from '../app.js';
+import { seedDatabase } from './seed.js';
 
 const PORT = Number(process.env.PORT) || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -30,8 +28,6 @@ async function startDemo(): Promise<void> {
 
   console.log('Pre-seeding 24 campus clubs and 10 demo accounts...');
   await seedDatabase(false);
-
-  const { default: app } = await import('../app.js');
 
   const server = http.createServer(app);
   const io = new Server(server, {
