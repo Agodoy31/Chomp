@@ -8,10 +8,14 @@ import { ConversationParticipant, ParticipantPermission } from '../../../src/mes
 import { Message } from '../../../src/messaging/models/Message';
 import { User } from '../../../src/user/models/User';
 import { Club } from '../../../src/clubs/model/clubModel';
-import { createSignedInStudent } from './messagingRouteTestUtils';
+import { createSignedInStudent, SignedInStudent } from './messagingRouteTestUtils';
 import * as conversationService from '../../../src/messaging/services/conversation.service';
 import * as messageService from '../../../src/messaging/services/message.service';
 import { deleteMessage } from '../../../src/messaging/services/message.service';
+
+let studentA: SignedInStudent;
+let studentB: SignedInStudent;
+let studentC: SignedInStudent;
 
 beforeAll(async () => {
   await connectTestDb();
@@ -22,30 +26,92 @@ beforeAll(async () => {
     Message.init(),
     User.init(),
   ]);
+  studentA = await createSignedInStudent({
+    firstName: 'Marston',
+    lastName: 'Dweller',
+    email: 'basement.coder@ufl.edu',
+  });
+  studentB = await createSignedInStudent({
+    firstName: 'Alberta',
+    lastName: 'Gator',
+    email: 'alberta@ufl.edu',
+  });
+  studentC = await createSignedInStudent({
+    firstName: 'Dennis',
+    lastName: 'Heckler',
+    email: 'turlington_screamer@ufl.edu',
+  });
 }, 60000);
 
 afterEach(async () => {
   jest.restoreAllMocks();
-  await clearTestDb();
+  await Promise.all([
+    Conversation.deleteMany({}),
+    ConversationParticipant.deleteMany({}),
+    Message.deleteMany({}),
+    Club.deleteMany({}),
+  ]);
 });
 
 afterAll(async () => {
+  await clearTestDb();
   await closeTestDb();
+});
+
+describe('conversation route authentication guards', () => {
+  it('rejects unauthenticated GET /api/conversations with 401', async () => {
+    const res = await request(app).get('/api/conversations');
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated POST /api/conversations with 401', async () => {
+    const res = await request(app)
+      .post('/api/conversations')
+      .send({ type: 'DIRECT', recipientId: '507f1f77bcf86cd799439011' });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated GET /api/conversations/:id with 401', async () => {
+    const res = await request(app).get('/api/conversations/507f1f77bcf86cd799439011');
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated GET and POST message routes with 401', async () => {
+    const getRes = await request(app).get('/api/conversations/507f1f77bcf86cd799439011/messages');
+    expect(getRes.status).toBe(401);
+    expect(getRes.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+
+    const postRes = await request(app)
+      .post('/api/conversations/507f1f77bcf86cd799439011/messages')
+      .send({ text: 'Hello from unauthenticated client' });
+    expect(postRes.status).toBe(401);
+    expect(postRes.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
 });
 
 describe('POST /api/conversations', () => {
   it('creates new direct conversation returning 201 with details at root without isNew or dmPairKey', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Krishna',
-      lastName: 'Regular',
-      email: 'lunch_line@ufl.edu',
-    });
-
     const res = await studentA.agent
       .post('/api/conversations')
       .send({
@@ -56,7 +122,7 @@ describe('POST /api/conversations', () => {
     expect(res.status).toBe(201);
     expect(res.body._id).toBeDefined();
     expect(res.body.type).toBe('DIRECT');
-    expect(res.body.displayName).toBe('Krishna Regular');
+    expect(res.body.displayName).toBe('Alberta Gator');
     expect(res.body.isNew).toBeUndefined();
     expect(res.body.dmPairKey).toBeUndefined();
     expect(res.body.__v).toBeUndefined();
@@ -74,17 +140,6 @@ describe('POST /api/conversations', () => {
   });
 
   it('opens existing direct conversation returning 200 with identical id without isNew', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Krishna',
-      lastName: 'Regular',
-      email: 'lunch_line@ufl.edu',
-    });
-
     const first = await studentA.agent
       .post('/api/conversations')
       .send({
@@ -102,26 +157,10 @@ describe('POST /api/conversations', () => {
     expect(second.status).toBe(200);
     expect(second.body._id).toBe(first.body._id);
     expect(second.body.isNew).toBeUndefined();
-    expect(second.body.displayName).toBe('Midtown Survivor');
+    expect(second.body.displayName).toBe('Marston Dweller');
   });
 
   it('creates group conversation returning 201 with moderator role for creator and distinct ids on duplicate requests', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Krishna',
-      lastName: 'Regular',
-      email: 'lunch_line@ufl.edu',
-    });
-    const studentC = await createSignedInStudent({
-      firstName: 'Broward',
-      lastName: 'Freshman',
-      email: 'broward.dining@ufl.edu',
-    });
-
     const payload = {
       type: 'GROUP',
       title: '  Reitz Union Smash Bros  ',
@@ -167,17 +206,6 @@ describe('POST /api/conversations', () => {
   });
 
   it('rejects missing or whitespace group title with 400 and ERR_TITLE_REQUIRED', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Krishna',
-      lastName: 'Regular',
-      email: 'lunch_line@ufl.edu',
-    });
-
     const res = await studentA.agent
       .post('/api/conversations')
       .send({
@@ -194,12 +222,6 @@ describe('POST /api/conversations', () => {
   });
 
   it('rejects channel creation attempt with 400 and ERR_CHANNEL_CREATION_NOT_SUPPORTED', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-
     const res = await studentA.agent
       .post('/api/conversations')
       .send({
@@ -215,12 +237,6 @@ describe('POST /api/conversations', () => {
   });
 
   it('rejects self dm with ERR_MESSAGE_SELF solo group with ERR_INSUFFICIENT_PARTICIPANTS and missing user with ERR_USER_NOT_FOUND', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-
     const selfRes = await studentA.agent
       .post('/api/conversations')
       .send({
@@ -261,17 +277,6 @@ describe('POST /api/conversations', () => {
   });
 
   it('returns 500 when service encounters unexpected internal failure', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Krishna',
-      lastName: 'Regular',
-      email: 'lunch_line@ufl.edu',
-    });
-
     jest.spyOn(conversationService, 'createDirectConversation').mockRejectedValueOnce(
       new Error('Replica set primary stepdown in progress')
     );
@@ -293,17 +298,6 @@ describe('POST /api/conversations', () => {
 
 describe('GET /api/conversations', () => {
   it('returns direct group and channel conversations ordered by lastActivityAt descending', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Marston',
-      lastName: 'Dweller',
-      email: 'basement.coder@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Alberta',
-      lastName: 'Gator',
-      email: 'alberta@ufl.edu',
-    });
-
     const directChat = await Conversation.create({
       type: ConversationType.DIRECT,
       dmPairKey: [studentA.user._id.toString(), studentB.user._id.toString()].sort().join(':'),
@@ -435,17 +429,6 @@ describe('GET /api/conversations', () => {
   });
 
   it('omits empty conversations that have no messages', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Marston',
-      lastName: 'Dweller',
-      email: 'basement.coder@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Alberta',
-      lastName: 'Gator',
-      email: 'alberta@ufl.edu',
-    });
-
     const activeGroup = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Active Study Crew',
@@ -498,12 +481,6 @@ describe('GET /api/conversations', () => {
   });
 
   it('masks soft-deleted latest message text as tombstone preview', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Marston',
-      lastName: 'Dweller',
-      email: 'basement.coder@ufl.edu',
-    });
-
     const group = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Norman Hall Coffee Club',
@@ -537,22 +514,6 @@ describe('GET /api/conversations', () => {
   });
 
   it('returns empty array when student has no active conversations and prevents viewing other students chats', async () => {
-    const studentA = await createSignedInStudent({
-      firstName: 'Marston',
-      lastName: 'Dweller',
-      email: 'basement.coder@ufl.edu',
-    });
-    const studentB = await createSignedInStudent({
-      firstName: 'Alberta',
-      lastName: 'Gator',
-      email: 'alberta@ufl.edu',
-    });
-    const studentC = await createSignedInStudent({
-      firstName: 'GatorCorner',
-      lastName: 'Survivor',
-      email: 'soft_serve_broken@ufl.edu',
-    });
-
     const privateGroup = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Secret Officer Lounge',
@@ -598,67 +559,8 @@ describe('GET /api/conversations', () => {
   });
 });
 
-describe('conversation route authentication guards', () => {
-  it('rejects unauthenticated GET /api/conversations with 401', async () => {
-    const res = await request(app).get('/api/conversations');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({
-      message: 'ERR_REQUIRE_AUTH',
-      redirectTo: '/login',
-    });
-  });
-
-  it('rejects unauthenticated POST /api/conversations with 401', async () => {
-    const res = await request(app)
-      .post('/api/conversations')
-      .send({ type: 'DIRECT', recipientId: '507f1f77bcf86cd799439011' });
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({
-      message: 'ERR_REQUIRE_AUTH',
-      redirectTo: '/login',
-    });
-  });
-
-  it('rejects unauthenticated GET /api/conversations/:id with 401', async () => {
-    const res = await request(app).get('/api/conversations/507f1f77bcf86cd799439011');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({
-      message: 'ERR_REQUIRE_AUTH',
-      redirectTo: '/login',
-    });
-  });
-
-  it('rejects unauthenticated GET and POST message routes with 401', async () => {
-    const getRes = await request(app).get('/api/conversations/507f1f77bcf86cd799439011/messages');
-    expect(getRes.status).toBe(401);
-    expect(getRes.body).toEqual({
-      message: 'ERR_REQUIRE_AUTH',
-      redirectTo: '/login',
-    });
-
-    const postRes = await request(app)
-      .post('/api/conversations/507f1f77bcf86cd799439011/messages')
-      .send({ text: 'Hello from unauthenticated client' });
-    expect(postRes.status).toBe(401);
-    expect(postRes.body).toEqual({
-      message: 'ERR_REQUIRE_AUTH',
-      redirectTo: '/login',
-    });
-  });
-});
-
-
 describe('POST /api/conversations/:id/messages', () => {
   it('sends message and returns 201 with public message fields and session sender', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Albert',
-      lastName: 'Gator',
-      email: 'albert@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'French Fries Monument Preservation Society',
@@ -666,14 +568,14 @@ describe('POST /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
     const spoofedSenderId = new Types.ObjectId().toString();
     const clientId = '0192c4a0-7c00-7000-8000-000000000001';
 
-    const res = await student.agent
+    const res = await studentA.agent
       .post(`/api/conversations/${conversation._id.toString()}/messages`)
       .send({
         text: '  Meeting at the sculpture at five  ',
@@ -684,7 +586,7 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(res.status).toBe(201);
     expect(res.body._id).toBeDefined();
     expect(res.body.conversationId).toBe(conversation._id.toString());
-    expect(res.body.senderId).toBe(student.user._id.toString());
+    expect(res.body.senderId).toBe(studentA.user._id.toString());
     expect(res.body.text).toBe('Meeting at the sculpture at five');
     expect(res.body.clientId).toBe(clientId);
     expect(res.body.isAnnouncement).toBe(false);
@@ -696,12 +598,6 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('deduplicates sends with identical client id and does not create second document', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Newell Hall Late Night Debuggers',
@@ -709,18 +605,18 @@ describe('POST /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
     const clientId = '0192c4a0-7c00-7000-8000-000000000002';
 
-    const first = await student.agent
+    const first = await studentA.agent
       .post(`/api/conversations/${conversation._id.toString()}/messages`)
       .send({ text: 'Anyone have spare coffee?', clientId });
     expect(first.status).toBe(201);
 
-    const second = await student.agent
+    const second = await studentA.agent
       .post(`/api/conversations/${conversation._id.toString()}/messages`)
       .send({ text: 'Altered duplicate request body', clientId });
     expect(second.status).toBe(201);
@@ -732,18 +628,6 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('allows channel moderator announcement and rejects regular member announcement with 403', async () => {
-    const moderator = await createSignedInStudent({
-      firstName: 'Albert',
-      lastName: 'Gator',
-      email: 'albert@ufl.edu',
-    });
-
-    const member = await createSignedInStudent({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-
     const channel = await Conversation.create({
       type: ConversationType.CHANNEL,
       title: 'general',
@@ -753,23 +637,23 @@ describe('POST /api/conversations/:id/messages', () => {
     await ConversationParticipant.create([
       {
         conversationId: channel._id,
-        userId: moderator.user._id,
+        userId: studentA.user._id,
         permission: ParticipantPermission.MODERATE,
       },
       {
         conversationId: channel._id,
-        userId: member.user._id,
+        userId: studentB.user._id,
         permission: ParticipantPermission.WRITE,
       },
     ]);
 
-    const modRes = await moderator.agent
+    const modRes = await studentA.agent
       .post(`/api/conversations/${channel._id.toString()}/messages`)
       .send({ text: 'GBM starts in ten minutes', isAnnouncement: true });
     expect(modRes.status).toBe(201);
     expect(modRes.body.isAnnouncement).toBe(true);
 
-    const memberRes = await member.agent
+    const memberRes = await studentB.agent
       .post(`/api/conversations/${channel._id.toString()}/messages`)
       .send({ text: 'Free pizza outside', isAnnouncement: true });
     expect(memberRes.status).toBe(403);
@@ -780,12 +664,6 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('rejects announcements in non-channel conversation with 400', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Albert',
-      lastName: 'Gator',
-      email: 'albert@ufl.edu',
-    });
-
     const group = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Newell Hall Late Night Debuggers',
@@ -793,11 +671,11 @@ describe('POST /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: group._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.MODERATE,
     });
 
-    const res = await student.agent
+    const res = await studentA.agent
       .post(`/api/conversations/${group._id.toString()}/messages`)
       .send({ text: 'Quiet hours announcement', isAnnouncement: true });
 
@@ -806,18 +684,18 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('rejects non-participant with 403 and missing conversation with 404', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-
     const privateGroup = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Secret Study Room',
     });
 
-    const nonPartRes = await student.agent
+    await ConversationParticipant.create({
+      conversationId: privateGroup._id,
+      userId: studentB.user._id,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const nonPartRes = await studentA.agent
       .post(`/api/conversations/${privateGroup._id.toString()}/messages`)
       .send({ text: 'Let me join please' });
     expect(nonPartRes.status).toBe(403);
@@ -827,7 +705,7 @@ describe('POST /api/conversations/:id/messages', () => {
     });
 
     const missingId = new Types.ObjectId().toString();
-    const missingRes = await student.agent
+    const missingRes = await studentA.agent
       .post(`/api/conversations/${missingId}/messages`)
       .send({ text: 'Anyone here?' });
     expect(missingRes.status).toBe(404);
@@ -838,12 +716,6 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('rejects blank text invalid client id and malformed route id with 400', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Midtown',
-      lastName: 'Survivor',
-      email: 'gator_beverage@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'French Fries Monument Preservation Society',
@@ -851,11 +723,11 @@ describe('POST /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
-    const emptyTextRes = await student.agent
+    const emptyTextRes = await studentA.agent
       .post(`/api/conversations/${conversation._id.toString()}/messages`)
       .send({ text: '   ' });
     expect(emptyTextRes.status).toBe(400);
@@ -864,7 +736,7 @@ describe('POST /api/conversations/:id/messages', () => {
       message: 'Message text cannot be empty',
     });
 
-    const badClientIdRes = await student.agent
+    const badClientIdRes = await studentA.agent
       .post(`/api/conversations/${conversation._id.toString()}/messages`)
       .send({ text: 'Valid message text', clientId: 'bad-client-id' });
     expect(badClientIdRes.status).toBe(400);
@@ -873,7 +745,7 @@ describe('POST /api/conversations/:id/messages', () => {
       message: 'Client ID must be a valid UUIDv7',
     });
 
-    const badRouteIdRes = await student.agent
+    const badRouteIdRes = await studentA.agent
       .post('/api/conversations/not-a-valid-id/messages')
       .send({ text: 'Valid message text' });
     expect(badRouteIdRes.status).toBe(400);
@@ -884,12 +756,6 @@ describe('POST /api/conversations/:id/messages', () => {
   });
 
   it('returns 500 when service encounters unexpected internal failure', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Albert',
-      lastName: 'Gator',
-      email: 'albert@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'French Fries Monument Preservation Society',
@@ -897,13 +763,13 @@ describe('POST /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
     jest.spyOn(messageService, 'sendMessage').mockRejectedValueOnce(new Error('MongoDB replica set connection timed out'));
 
-    const res = await student.agent
+    const res = await studentA.agent
       .post(`/api/conversations/${conversation._id.toString()}/messages`)
       .send({ text: 'Hello Century Tower' });
 
@@ -917,12 +783,6 @@ describe('POST /api/conversations/:id/messages', () => {
 
 describe('GET /api/conversations/:id/messages', () => {
   it('returns recent messages ordered newest first capped at 50 by default', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Potato',
-      lastName: 'Sculpture',
-      email: 'french_fries_monument@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Gator Corner Soft Serve Repair Crew',
@@ -930,14 +790,14 @@ describe('GET /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.MODERATE,
     });
 
     const baseTime = Date.now();
     const messageDocs = Array.from({ length: 55 }, (_, i) => ({
       conversationId: conversation._id,
-      senderId: student.user._id,
+      senderId: studentA.user._id,
       text: `Repair log entry ${i + 1}`,
       isAnnouncement: false,
       isSystem: false,
@@ -947,7 +807,7 @@ describe('GET /api/conversations/:id/messages', () => {
 
     await Message.insertMany(messageDocs);
 
-    const res = await student.agent
+    const res = await studentA.agent
       .get(`/api/conversations/${conversation._id.toString()}/messages`)
       .expect(200);
 
@@ -960,7 +820,7 @@ describe('GET /api/conversations/:id/messages', () => {
     const firstItem = res.body[0];
     expect(firstItem._id).toBeDefined();
     expect(firstItem.conversationId).toBe(conversation._id.toString());
-    expect(firstItem.senderId).toBe(student.user._id.toString());
+    expect(firstItem.senderId).toBe(studentA.user._id.toString());
     expect(firstItem.isAnnouncement).toBe(false);
     expect(firstItem.isSystem).toBe(false);
     expect(firstItem.createdAt).toBeDefined();
@@ -970,12 +830,6 @@ describe('GET /api/conversations/:id/messages', () => {
   });
 
   it('supports custom limit query parameter and returns empty array for empty chat', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Potato',
-      lastName: 'Sculpture',
-      email: 'french_fries_monument@ufl.edu',
-    });
-
     const activeChat = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Gator Corner Soft Serve Repair Crew',
@@ -983,14 +837,14 @@ describe('GET /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: activeChat._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
     const baseTime = Date.now();
     const messageDocs = Array.from({ length: 10 }, (_, i) => ({
       conversationId: activeChat._id,
-      senderId: student.user._id,
+      senderId: studentA.user._id,
       text: `Status ping ${i + 1}`,
       isAnnouncement: false,
       isSystem: false,
@@ -999,7 +853,7 @@ describe('GET /api/conversations/:id/messages', () => {
     }));
     await Message.insertMany(messageDocs);
 
-    const limitRes = await student.agent
+    const limitRes = await studentA.agent
       .get(`/api/conversations/${activeChat._id.toString()}/messages?limit=3`)
       .expect(200);
 
@@ -1014,11 +868,11 @@ describe('GET /api/conversations/:id/messages', () => {
     });
     await ConversationParticipant.create({
       conversationId: emptyChat._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
-    const emptyRes = await student.agent
+    const emptyRes = await studentA.agent
       .get(`/api/conversations/${emptyChat._id.toString()}/messages`)
       .expect(200);
 
@@ -1026,12 +880,6 @@ describe('GET /api/conversations/:id/messages', () => {
   });
 
   it('masks soft-deleted message text as tombstone while preserving removedAt and system messages', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Tim',
-      lastName: 'Tebow',
-      email: 'ttebow15@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Gator Corner Soft Serve Repair Crew',
@@ -1039,33 +887,33 @@ describe('GET /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.MODERATE,
     });
 
     const [deletedDoc] = await Message.create([
       {
         conversationId: conversation._id,
-        senderId: student.user._id,
+        senderId: studentA.user._id,
         text: 'This should be removed from view',
         isAnnouncement: false,
         isSystem: false,
       },
     ]);
 
-    await deleteMessage(deletedDoc._id, student.user._id);
+    await deleteMessage(deletedDoc._id, studentA.user._id);
 
     await Message.create([
       {
         conversationId: conversation._id,
-        senderId: student.user._id,
-        text: 'Tim Tebow created the group',
+        senderId: studentA.user._id,
+        text: 'Marston Dweller created the group',
         isAnnouncement: false,
         isSystem: true,
       },
     ]);
 
-    const res = await student.agent
+    const res = await studentA.agent
       .get(`/api/conversations/${conversation._id.toString()}/messages`)
       .expect(200);
 
@@ -1073,7 +921,7 @@ describe('GET /api/conversations/:id/messages', () => {
 
     const systemMsg = res.body.find((m: { isSystem: boolean }) => m.isSystem);
     expect(systemMsg).toBeDefined();
-    expect(systemMsg.text).toBe('Tim Tebow created the group');
+    expect(systemMsg.text).toBe('Marston Dweller created the group');
     expect(systemMsg.isSystem).toBe(true);
 
     const deletedMsg = res.body.find((m: { text: string }) => m.text === 'This message was deleted');
@@ -1084,12 +932,6 @@ describe('GET /api/conversations/:id/messages', () => {
   });
 
   it('rejects out of range or non integer limit with 400 and ERR_VALIDATION_FAILED', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Tim',
-      lastName: 'Tebow',
-      email: 'ttebow15@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Limit Validation Group',
@@ -1097,14 +939,14 @@ describe('GET /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: student.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
     const invalidLimits = ['0', '101', '500', 'abc', '1.5', '-5'];
 
     for (const limit of invalidLimits) {
-      const res = await student.agent
+      const res = await studentA.agent
         .get(`/api/conversations/${conversation._id.toString()}/messages?limit=${limit}`)
         .expect(400);
 
@@ -1116,13 +958,7 @@ describe('GET /api/conversations/:id/messages', () => {
   });
 
   it('rejects malformed conversation id with 400 and ERR_INVALID_INPUT', async () => {
-    const student = await createSignedInStudent({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-
-    const res = await student.agent
+    const res = await studentA.agent
       .get('/api/conversations/invalid-hex-id/messages')
       .expect(400);
 
@@ -1133,17 +969,6 @@ describe('GET /api/conversations/:id/messages', () => {
   });
 
   it('returns 404 for missing conversation or non-participant and 500 for unexpected error', async () => {
-    const member = await createSignedInStudent({
-      firstName: 'Potato',
-      lastName: 'Sculpture',
-      email: 'french_fries_monument@ufl.edu',
-    });
-    const outsider = await createSignedInStudent({
-      firstName: 'Dennis',
-      lastName: 'Heckler',
-      email: 'turlington_screamer@ufl.edu',
-    });
-
     const conversation = await Conversation.create({
       type: ConversationType.GROUP,
       title: 'Gator Corner Soft Serve Repair Crew',
@@ -1151,11 +976,11 @@ describe('GET /api/conversations/:id/messages', () => {
 
     await ConversationParticipant.create({
       conversationId: conversation._id,
-      userId: member.user._id,
+      userId: studentA.user._id,
       permission: ParticipantPermission.WRITE,
     });
 
-    const outsiderRes = await outsider.agent
+    const outsiderRes = await studentB.agent
       .get(`/api/conversations/${conversation._id.toString()}/messages`)
       .expect(404);
 
@@ -1165,7 +990,7 @@ describe('GET /api/conversations/:id/messages', () => {
     });
 
     const missingId = new Types.ObjectId().toString();
-    const missingRes = await member.agent
+    const missingRes = await studentA.agent
       .get(`/api/conversations/${missingId}/messages`)
       .expect(404);
 
@@ -1178,7 +1003,7 @@ describe('GET /api/conversations/:id/messages', () => {
       new Error('Replica set election in progress')
     );
 
-    const errorRes = await member.agent
+    const errorRes = await studentA.agent
       .get(`/api/conversations/${conversation._id.toString()}/messages`)
       .expect(500);
 
@@ -1188,4 +1013,3 @@ describe('GET /api/conversations/:id/messages', () => {
     });
   });
 });
-
