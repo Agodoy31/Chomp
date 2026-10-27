@@ -1,4 +1,4 @@
-import { Message } from './Message';
+import type { Message } from './Message';
 
 export type ConversationType = 'DIRECT' | 'GROUP' | 'CHANNEL';
 
@@ -6,7 +6,7 @@ export type ParticipantPermission = 'READ' | 'WRITE' | 'MODERATE';
 
 // Flattened participant details
 export interface ConversationParticipant {
-  _id: string; // User's ID
+  _id: string;
   firstName: string;
   lastName: string;
   permission: ParticipantPermission;
@@ -24,8 +24,8 @@ export interface Conversation {
   type: ConversationType;
   displayName: string;
   lastActivityAt?: string;
-  title?: string; // Channel name or group title
-  clubId?: string; // Present for club channels
+  title?: string; // Channel name or group title, in the case of a club its that name
+  clubId?: string; // club channels name
   lastMessage?: ConversationLastMessage;
 
   // The above are fetched for all of the converstations a user is in
