@@ -1,4 +1,4 @@
-import type { Message } from './Message';
+import type { IMessage } from './Message';
 
 export type ConversationType = 'DIRECT' | 'GROUP' | 'CHANNEL';
 
@@ -30,6 +30,6 @@ export interface Conversation {
 
   // The above are fetched for all of the converstations a user is in
   // The below is only done so if the converstation is clicked on
-  messages?: Message[];
+  messages?: IMessage[];
   participants?: ConversationParticipant[];
 }

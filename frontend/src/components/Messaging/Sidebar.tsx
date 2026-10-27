@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { Conversation } from '../../types/Messaging/Converstation';
-import { MOCK_CONVERSATIONS } from '../../testData/mockConverstations';
+import type { Conversation } from '../../types/Messaging/Conversation';
+import { MOCK_CONVERSATIONS } from '../../testData/mockConversations';
 import SidebarElement from './SidebarElement';
 
 interface SidebarProps {

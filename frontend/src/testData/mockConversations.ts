@@ -1,6 +1,6 @@
 // The below is just to be imported temporarily with test data
-import type { Conversation } from '../types/Messaging/Converstation';
-import type { Message } from '../types/Messaging/Message';
+import type { Conversation } from '../types/Messaging/Conversation';
+import type { IMessage } from '../types/Messaging/Message';
 
 // User IDs for the mock session
 export const CURRENT_USER_ID = 'user-you-123';
@@ -9,7 +9,7 @@ export const ALBERT_USER_ID = 'user-albert-789';
 export const JOHN_USER_ID = 'user-john-101';
 
 
-export const MOCK_ALBERTA_MESSAGES: Message[] = [
+export const MOCK_ALBERTA_MESSAGES: IMessage[] = [
   {
     _id: 'msg-1',
     conversationId: 'conv-1',
