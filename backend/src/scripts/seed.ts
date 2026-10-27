@@ -26,7 +26,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Gator',
       email: 'albert@ufl.edu',
       hashedPassword,
-      bio: 'Official mascot and premier ambassador of the Gator Nation.',
+      bio: 'Official mascot, supreme swamp ruler, and the only member with a verified one hundred percent game attendance record.',
       isAdmin: true,
     },
     {
@@ -34,7 +34,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Godoy',
       email: 'andres@ufl.edu',
       hashedPassword,
-      bio: 'Lead backend architect and distributed systems enthusiast.',
+      bio: 'Underappreciated backend developer who carries multi-collection database transactions on his back at 3 AM.',
       isAdmin: false,
     },
     {
@@ -42,7 +42,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Pierrelouis',
       email: 'sephora@ufl.edu',
       hashedPassword,
-      bio: 'Frontend engineer crafting accessible user interfaces for Chomp.',
+      bio: 'Frontend queen who transforms raw API payloads into pristine responsive UI components.',
       isAdmin: false,
     },
     {
@@ -50,7 +50,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Capelli',
       email: 'michael@ufl.edu',
       hashedPassword,
-      bio: 'Software engineer building real-time messaging and chat pages.',
+      bio: 'Product Owner aka the ChompMaster himself, who dictates sprint priorities while surviving on cold brew.',
       isAdmin: false,
     },
     {
@@ -58,7 +58,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Jimenez',
       email: 'alejandro@ufl.edu',
       hashedPassword,
-      bio: 'Full stack developer managing organization data and endpoints.',
+      bio: 'ScrumMaster aka the ClubMaster, ruler of organization models and gatekeeper of all campus clubs.',
       isAdmin: false,
     },
     {
@@ -66,7 +66,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Tebow',
       email: 'ttebow15@ufl.edu',
       hashedPassword,
-      bio: 'Promise keeper and two time national champion quarterback.',
+      bio: 'Promise keeper, jump pass pioneer, and legendary two-time national champion quarterback.',
       isAdmin: false,
     },
     {
@@ -74,7 +74,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Gator',
       email: 'alberta@ufl.edu',
       hashedPassword,
-      bio: 'First lady of the swamp and champion of campus spirit.',
+      bio: 'First lady of the swamp, keeping Albert humble and managing student organization politics.',
       isAdmin: false,
     },
     {
@@ -82,7 +82,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Heckler',
       email: 'turlington_screamer@ufl.edu',
       hashedPassword,
-      bio: 'Turlington plaza regular and vocal outdoor campus philosopher.',
+      bio: 'Turlington Screamer avoidance counselor, who has warned freshmen to dodge flyers since 2008.',
       isAdmin: false,
     },
     {
@@ -90,7 +90,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Lin',
       email: 'maya.lin@ufl.edu',
       hashedPassword,
-      bio: 'Architecture junior mapping out campus quiet study nooks.',
+      bio: 'Architecture major who holds down a fourth floor Marston booth with a single Starbucks cup since sunrise.',
       isAdmin: false,
     },
     {
@@ -98,7 +98,7 @@ async function seedDatabase(): Promise<void> {
       lastName: 'Vargas',
       email: 'mateo.vargas@ufl.edu',
       hashedPassword,
-      bio: 'Computer engineering sophomore surviving on nitro cold brew.',
+      bio: 'Computer engineering junior who survives exclusively on nitro cold brew and stack overflow threads.',
       isAdmin: false,
     },
   ];
