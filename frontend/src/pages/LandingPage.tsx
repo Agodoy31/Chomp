@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import ClubCard from '../components/ClubCard';
 import type { Club } from '../types/club';
+import { useAuth } from '../hooks/useAuth';
 
 const featuredClubs: Club[] = [
   {
@@ -36,9 +37,20 @@ const featuredClubs: Club[] = [
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const scrollToSection = (sectionId: string) => {
     const section = document.getElementById(sectionId);
     if (section) section.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleJoinClub = () => {
+    if (user) {
+      // TODO: when clubs are inserted update to club id 
+      navigate('/clubs');
+    } 
+    else {
+      navigate('/signup');
+    }
   };
 
   return (
@@ -143,7 +155,7 @@ export default function LandingPage() {
                 <div key={club._id} className="col-12 col-md-6 col-lg-4">
                   <ClubCard
                     club={club}
-                    onJoin={() => navigate('/signup')}
+                    onJoin={() => handleJoinClub()}
                   />{' '}
                 </div>
               ))}
