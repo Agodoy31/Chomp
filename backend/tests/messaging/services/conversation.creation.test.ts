@@ -3,6 +3,7 @@ import mongoose, { Types } from 'mongoose';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 import { Conversation } from '../../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
+import { Message } from '../../../src/messaging/models/Message';
 import { ConversationType } from '../../../src/messaging/interfaces/conversation.interfaces';
 import { User } from '../../../src/user/models/User';
 import { Club } from '../../../src/clubs/model/clubModel';
@@ -20,6 +21,7 @@ beforeAll(async () => {
     Club.init(),
     Conversation.init(),
     ConversationParticipant.init(),
+    Message.init(),
     User.init(),
   ]);
 }, 60000);
@@ -34,10 +36,17 @@ afterAll(async () => {
 });
 
 describe('createDirectConversation service', () => {
-
   it('creates new direct conversation and persists two participants in a transaction with isNew set to true', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
+    const user1 = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
     const expectedDmPairKey = [user1._id.toString(), user2._id.toString()].sort().join(':');
 
     const result = await createDirectConversation(user1._id, user2._id);
@@ -59,14 +68,22 @@ describe('createDirectConversation service', () => {
     expect(participantUserIds).toContain(user2._id.toString());
   });
 
-  it('returns existing conversation with isNew set to false when called again', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
+  it('returns existing conversation with isNew false regardless of caller argument order', async () => {
+    const userA = await createTestUser({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
+    const userB = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
 
-    const firstResult = await createDirectConversation(user1._id, user2._id);
+    const firstResult = await createDirectConversation(userA._id, userB._id);
     expect(firstResult.isNew).toBe(true);
 
-    const secondResult = await createDirectConversation(user1._id, user2._id);
+    const secondResult = await createDirectConversation(userB._id, userA._id);
     expect(secondResult.isNew).toBe(false);
     expect(secondResult.conversation._id.toString()).toBe(firstResult.conversation._id.toString());
     expect(secondResult.conversation.dmPairKey).toBe(firstResult.conversation.dmPairKey);
@@ -77,21 +94,12 @@ describe('createDirectConversation service', () => {
     expect(participants).toHaveLength(2);
   });
 
-  it('returns identical conversation regardless of argument order userA userB vs userB userA', async () => {
-    const userA = await createTestUser();
-    const userB = await createTestUser();
-
-    const firstResult = await createDirectConversation(userA._id, userB._id);
-    expect(firstResult.isNew).toBe(true);
-
-    const secondResult = await createDirectConversation(userB._id, userA._id);
-    expect(secondResult.isNew).toBe(false);
-    expect(secondResult.conversation._id.toString()).toBe(firstResult.conversation._id.toString());
-    expect(secondResult.conversation.dmPairKey).toBe(firstResult.conversation.dmPairKey);
-  });
-
   it('throws error when creatorId and recipientId are identical', async () => {
-    const user = await createTestUser();
+    const user = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
 
     await expect(createDirectConversation(user._id, user._id)).rejects.toThrow(
       'Cannot start a direct message conversation with yourself'
@@ -130,8 +138,16 @@ describe('createDirectConversation service', () => {
   });
 
   it('handles race condition duplicate key error 11000 by returning existing conversation with isNew set to false', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
+    const user1 = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
     const dmPairKey = [user1._id.toString(), user2._id.toString()].sort().join(':');
 
     const winner = await Conversation.create({
@@ -169,8 +185,16 @@ describe('createDirectConversation service', () => {
   });
 
   it('rolls back transaction cleanly without creating orphaned conversation if participant creation fails', async () => {
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
+    const user1 = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
     const dmPairKey = [user1._id.toString(), user2._id.toString()].sort().join(':');
 
     jest
@@ -190,45 +214,54 @@ describe('createDirectConversation service', () => {
     expect(participants).toHaveLength(0);
   });
 
-  it('throws error when creator does not exist in database', async () => {
-    const nonExistentCreatorId = new Types.ObjectId();
-    const recipient = await createTestUser();
+  it('throws error when creator or recipient does not exist in database', async () => {
+    const validUser = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const missingUserA = new Types.ObjectId();
+    const missingUserB = new Types.ObjectId();
 
     await expect(
-      createDirectConversation(nonExistentCreatorId, recipient._id)
+      createDirectConversation(missingUserA, validUser._id)
     ).rejects.toThrow('One or more users do not exist');
-  });
-
-  it('throws error when recipient does not exist in database', async () => {
-    const creator = await createTestUser();
-    const nonExistentRecipientId = new Types.ObjectId();
 
     await expect(
-      createDirectConversation(creator._id, nonExistentRecipientId)
+      createDirectConversation(validUser._id, missingUserA)
     ).rejects.toThrow('One or more users do not exist');
-  });
-
-  it('throws error when neither user exists in database', async () => {
-    const nonExistentUser1 = new Types.ObjectId();
-    const nonExistentUser2 = new Types.ObjectId();
 
     await expect(
-      createDirectConversation(nonExistentUser1, nonExistentUser2)
+      createDirectConversation(missingUserA, missingUserB)
     ).rejects.toThrow('One or more users do not exist');
   });
 });
 
 describe('createGroupConversation service', () => {
-  it('creates group conversation with title and saves all participants in a transaction', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-    const user3 = await createTestUser();
-    const title = 'Study Group';
+  it('creates group conversation with permissions initial system message and returns lean object', async () => {
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const invited1 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+    const invited2 = await createTestUser({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
+    const title = 'Gator Lettuce Eating Club';
 
-    const result = await createGroupConversation(creator._id, [user2._id, user3._id], title);
+    const result = await createGroupConversation(creator._id, [invited1._id, invited2._id], title);
 
-    expect(result).toBeDefined();
-    expect(result._id).toBeDefined();
+    expect(typeof result).toBe('object');
+    expect(result).not.toBeNull();
+    expect(result instanceof Conversation).toBe(false);
+    expect(typeof (result as any).save).toBe('undefined');
     expect(result.type).toBe(ConversationType.GROUP);
     expect(result.title).toBe(title);
 
@@ -239,83 +272,85 @@ describe('createGroupConversation service', () => {
       .exec();
 
     expect(participants).toHaveLength(3);
-    const participantUserIds = participants.map((p) => {
-      return p.userId.toString();
+    const creatorRecord = participants.find((p) => {
+      return p.userId.toString() === creator._id.toString();
     });
-    expect(participantUserIds).toContain(creator._id.toString());
-    expect(participantUserIds).toContain(user2._id.toString());
-    expect(participantUserIds).toContain(user3._id.toString());
-  });
+    const invitedRecord1 = participants.find((p) => {
+      return p.userId.toString() === invited1._id.toString();
+    });
+    const invitedRecord2 = participants.find((p) => {
+      return p.userId.toString() === invited2._id.toString();
+    });
 
-  it('trims leading and trailing whitespace from group title', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-    const untrimmedTitle = '  Algorithms Study Group  ';
+    expect(creatorRecord?.permission).toBe('MODERATE');
+    expect(invitedRecord1?.permission).toBe('WRITE');
+    expect(invitedRecord2?.permission).toBe('WRITE');
 
-    const result = await createGroupConversation(creator._id, [user2._id], untrimmedTitle);
-
-    expect(result.title).toBe('Algorithms Study Group');
-
-    const savedInDb = await Conversation.findById(result._id).lean().exec();
-    expect(savedInDb?.title).toBe('Algorithms Study Group');
-  });
-
-  it('falls back to default title when title is undefined or omitted', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-
-    const result = await createGroupConversation(creator._id, [user2._id]);
-
-    expect(result.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
-
-    const savedInDb = await Conversation.findById(result._id).lean().exec();
-    expect(savedInDb?.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
-  });
-
-  it('falls back to default title when title is empty string or whitespace only', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-
-    const emptyResult = await createGroupConversation(creator._id, [user2._id], '');
-    expect(emptyResult.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
-
-    const whitespaceResult = await createGroupConversation(creator._id, [user2._id], '   ');
-    expect(whitespaceResult.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
-  });
-
-  it('automatically includes creator as participant when omitted from participant list', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-    const user3 = await createTestUser();
-
-    const result = await createGroupConversation(
-      creator._id,
-      [user2._id, user3._id],
-      'Project Team'
-    );
-
-    const participants = await ConversationParticipant.find({
+    const systemMessages = await Message.find({
       conversationId: result._id,
     })
       .lean()
       .exec();
 
-    expect(participants).toHaveLength(3);
-    const participantUserIds = participants.map((p) => {
-      return p.userId.toString();
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].senderId.toString()).toBe(creator._id.toString());
+    expect(systemMessages[0].text).toBe('Potato Sculpture created the group');
+    expect(systemMessages[0].isSystem).toBe(true);
+    expect(systemMessages[0].isAnnouncement).toBe(false);
+  });
+
+  it('handles group title trimming and default title fallbacks', async () => {
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
     });
-    expect(participantUserIds).toContain(creator._id.toString());
+    const member = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+
+    const trimmedResult = await createGroupConversation(
+      creator._id,
+      [member._id],
+      '  Gator Lettuce Eating Club  '
+    );
+    expect(trimmedResult.title).toBe('Gator Lettuce Eating Club');
+    const savedTrimmed = await Conversation.findById(trimmedResult._id).lean().exec();
+    expect(savedTrimmed?.title).toBe('Gator Lettuce Eating Club');
+
+    const omittedResult = await createGroupConversation(creator._id, [member._id]);
+    expect(omittedResult.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
+
+    const emptyResult = await createGroupConversation(creator._id, [member._id], '');
+    expect(emptyResult.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
+
+    const whitespaceResult = await createGroupConversation(creator._id, [member._id], '   ');
+    expect(whitespaceResult.title).toBe(DEFAULT_GROUP_CONVERSATION_TITLE);
   });
 
   it('deduplicates duplicate IDs in participant list without throwing unique index collisions', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-    const user3 = await createTestUser();
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+    const user3 = await createTestUser({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
 
     const result = await createGroupConversation(
       creator._id,
       [user2._id, user2._id, user3._id, creator._id],
-      'Deduplication Test'
+      'Turlington Preacher Debate Society'
     );
 
     const participants = await ConversationParticipant.find({
@@ -333,24 +368,21 @@ describe('createGroupConversation service', () => {
     expect(participantUserIds).toContain(user3._id.toString());
   });
 
-  it('throws error when creatorId is missing or invalid', async () => {
-    const user2 = new Types.ObjectId();
-
-    await expect(
-      createGroupConversation(null as unknown as Types.ObjectId, [user2], 'Title')
-    ).rejects.toThrow('Valid creatorId is required');
-
-    await expect(
-      createGroupConversation(undefined as unknown as Types.ObjectId, [user2], 'Title')
-    ).rejects.toThrow('Valid creatorId is required');
-
-    await expect(
-      createGroupConversation('invalid-id' as unknown as Types.ObjectId, [user2], 'Title')
-    ).rejects.toThrow('Valid creatorId is required');
-  });
-
-  it('throws error when participantIds is not an array', async () => {
+  it('validates input parameters before creating group conversation', async () => {
     const creatorId = new Types.ObjectId();
+    const otherId = new Types.ObjectId();
+
+    await expect(
+      createGroupConversation(null as unknown as Types.ObjectId, [otherId], 'Title')
+    ).rejects.toThrow('Valid creatorId is required');
+
+    await expect(
+      createGroupConversation(undefined as unknown as Types.ObjectId, [otherId], 'Title')
+    ).rejects.toThrow('Valid creatorId is required');
+
+    await expect(
+      createGroupConversation('invalid-id' as unknown as Types.ObjectId, [otherId], 'Title')
+    ).rejects.toThrow('Valid creatorId is required');
 
     await expect(
       createGroupConversation(
@@ -367,16 +399,11 @@ describe('createGroupConversation service', () => {
         'Title'
       )
     ).rejects.toThrow('participantIds must be an array');
-  });
-
-  it('throws error when participantIds contains missing or invalid IDs', async () => {
-    const creatorId = new Types.ObjectId();
-    const user2 = new Types.ObjectId();
 
     await expect(
       createGroupConversation(
         creatorId,
-        [user2, null as unknown as Types.ObjectId],
+        [otherId, null as unknown as Types.ObjectId],
         'Title'
       )
     ).rejects.toThrow('Valid participantId is required');
@@ -384,7 +411,7 @@ describe('createGroupConversation service', () => {
     await expect(
       createGroupConversation(
         creatorId,
-        [user2, undefined as unknown as Types.ObjectId],
+        [otherId, undefined as unknown as Types.ObjectId],
         'Title'
       )
     ).rejects.toThrow('Valid participantId is required');
@@ -392,28 +419,32 @@ describe('createGroupConversation service', () => {
     await expect(
       createGroupConversation(
         creatorId,
-        [user2, 'invalid-id' as unknown as Types.ObjectId],
+        [otherId, 'invalid-id' as unknown as Types.ObjectId],
         'Title'
       )
     ).rejects.toThrow('Valid participantId is required');
-  });
-
-  it('throws error when group has fewer than two distinct participants', async () => {
-    const creator = await createTestUser();
 
     await expect(
-      createGroupConversation(creator._id, [], 'Title')
+      createGroupConversation(creatorId, [], 'Title')
     ).rejects.toThrow('Group conversation requires at least two distinct participants');
 
     await expect(
-      createGroupConversation(creator._id, [creator._id], 'Title')
+      createGroupConversation(creatorId, [creatorId], 'Title')
     ).rejects.toThrow('Group conversation requires at least two distinct participants');
   });
 
   it('rolls back transaction cleanly without creating orphaned conversation if participant creation fails', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-    const title = 'Rollback Test Group';
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+    const title = 'Turlington Preacher Debate Society';
 
     jest
       .spyOn(ConversationParticipant, 'create')
@@ -434,53 +465,32 @@ describe('createGroupConversation service', () => {
     expect(participants).toHaveLength(0);
   });
 
-  it('returns lean plain object matching IConversation interface', async () => {
-    const creator = await createTestUser();
-    const user2 = await createTestUser();
-    const title = 'Plain Object Group';
-
-    const result = await createGroupConversation(creator._id, [user2._id], title);
-
-    expect(typeof result).toBe('object');
-    expect(result).not.toBeNull();
-    expect(result instanceof Conversation).toBe(false);
-    expect(typeof (result as any).save).toBe('undefined');
-    expect(result.type).toBe(ConversationType.GROUP);
-    expect(result.title).toBe(title);
-  });
-
-  it('throws error when creator does not exist in database', async () => {
-    const nonExistentCreatorId = new Types.ObjectId();
-    const user2 = await createTestUser();
+  it('throws error when creator or invited participants do not exist in database', async () => {
+    const existingUser = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const nonExistentUserA = new Types.ObjectId();
+    const nonExistentUserB = new Types.ObjectId();
 
     await expect(
-      createGroupConversation(nonExistentCreatorId, [user2._id], 'Study Group')
+      createGroupConversation(nonExistentUserA, [existingUser._id], 'Turlington Preacher Debate Society')
     ).rejects.toThrow('One or more users do not exist');
-  });
-
-  it('throws error when one or more participants do not exist in database', async () => {
-    const creator = await createTestUser();
-    const existingUser = await createTestUser();
-    const nonExistentUser = new Types.ObjectId();
 
     await expect(
       createGroupConversation(
-        creator._id,
-        [existingUser._id, nonExistentUser],
-        'Study Group'
+        existingUser._id,
+        [nonExistentUserA],
+        'Turlington Preacher Debate Society'
       )
     ).rejects.toThrow('One or more users do not exist');
-  });
-
-  it('throws error when none of the participants exist in database', async () => {
-    const nonExistentCreatorId = new Types.ObjectId();
-    const nonExistentUser2 = new Types.ObjectId();
 
     await expect(
       createGroupConversation(
-        nonExistentCreatorId,
-        [nonExistentUser2],
-        'Study Group'
+        nonExistentUserA,
+        [nonExistentUserB],
+        'Turlington Preacher Debate Society'
       )
     ).rejects.toThrow('One or more users do not exist');
   });
@@ -488,8 +498,14 @@ describe('createGroupConversation service', () => {
 
 describe('createChannel service', () => {
   it('creates channel conversation with trimmed title and returns plain IConversation object', async () => {
-    const user = await createTestUser();
-    const club = await createTestClub(user._id);
+    const user = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club = await createTestClub(user._id, {
+      name: 'Turlington Preacher Debate Society',
+    });
 
     const result = await createChannel(club._id, '  general  ');
 
@@ -512,10 +528,24 @@ describe('createChannel service', () => {
   });
 
   it('creates channel with initial participants in a transaction', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
-    const user1 = await createTestUser();
-    const user2 = await createTestUser();
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club = await createTestClub(creator._id, {
+      name: 'Gator Lettuce Eating Club',
+    });
+    const user1 = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+    const user2 = await createTestUser({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
 
     const result = await createChannel(club._id, 'announcements', [user1._id, user2._id]);
 
@@ -536,9 +566,19 @@ describe('createChannel service', () => {
   });
 
   it('creates channel and initial participants within caller transaction when session is provided', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
-    const user = await createTestUser();
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club = await createTestClub(creator._id, {
+      name: 'Newell Hall Late Night Debuggers',
+    });
+    const user = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
 
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -572,8 +612,14 @@ describe('createChannel service', () => {
   });
 
   it('throws error when channel title is duplicate within the same club case-insensitively', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club = await createTestClub(creator._id, {
+      name: 'Gator Lettuce Eating Club',
+    });
 
     await createChannel(club._id, 'events');
 
@@ -583,9 +629,17 @@ describe('createChannel service', () => {
   });
 
   it('allows identical channel titles across different clubs', async () => {
-    const creator = await createTestUser();
-    const club1 = await createTestClub(creator._id);
-    const club2 = await createTestClub(creator._id);
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club1 = await createTestClub(creator._id, {
+      name: 'Gator Lettuce Eating Club',
+    });
+    const club2 = await createTestClub(creator._id, {
+      name: 'Turlington Preacher Debate Society',
+    });
 
     const channel1 = await createChannel(club1._id, 'general');
     const channel2 = await createChannel(club2._id, 'general');
@@ -599,7 +653,10 @@ describe('createChannel service', () => {
     expect(channel2.title).toBe('general');
   });
 
-  it('throws error when clubId is missing or invalid', async () => {
+  it('validates input parameters before creating channel', async () => {
+    const dummyClubId = new Types.ObjectId();
+    const dummyUserId = new Types.ObjectId();
+
     await expect(
       createChannel(null as unknown as Types.ObjectId, 'general')
     ).rejects.toThrow('Valid clubId is required');
@@ -611,51 +668,50 @@ describe('createChannel service', () => {
     await expect(
       createChannel('invalid-id' as unknown as Types.ObjectId, 'general')
     ).rejects.toThrow('Valid clubId is required');
-  });
-
-  it('throws error when title is missing or whitespace only', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
 
     await expect(
-      createChannel(club._id, '')
+      createChannel(dummyClubId, '')
     ).rejects.toThrow('Channel title is required');
 
     await expect(
-      createChannel(club._id, '   ')
+      createChannel(dummyClubId, '   ')
     ).rejects.toThrow('Channel title is required');
 
     await expect(
-      createChannel(club._id, null as unknown as string)
+      createChannel(dummyClubId, null as unknown as string)
     ).rejects.toThrow('Channel title is required');
-  });
-
-  it('throws error when participantIds is not an array', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
 
     await expect(
-      createChannel(club._id, 'general', null as any)
+      createChannel(dummyClubId, 'general', null as any)
     ).rejects.toThrow('participantIds must be an array');
 
     await expect(
-      createChannel(club._id, 'general', 'not-an-array' as any)
+      createChannel(dummyClubId, 'general', 'not-an-array' as any)
     ).rejects.toThrow('participantIds must be an array');
-  });
 
-  it('throws error when any participant ID is invalid', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
-    const validUser = await createTestUser();
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club = await createTestClub(creator._id, {
+      name: 'Gator Lettuce Eating Club',
+    });
 
     await expect(
-      createChannel(club._id, 'general', [validUser._id, 'invalid-id' as any])
+      createChannel(club._id, 'general', [dummyUserId, 'invalid-id' as any])
     ).rejects.toThrow('Valid participantId is required');
   });
 
   it('throws error when one or more participant users do not exist', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club = await createTestClub(creator._id, {
+      name: 'Gator Lettuce Eating Club',
+    });
     const nonExistentUserId = new Types.ObjectId();
 
     await expect(
@@ -664,9 +720,19 @@ describe('createChannel service', () => {
   });
 
   it('aborts transaction and rolls back channel if participant creation fails', async () => {
-    const creator = await createTestUser();
-    const club = await createTestClub(creator._id);
-    const user = await createTestUser();
+    const creator = await createTestUser({
+      firstName: 'Potato',
+      lastName: 'Sculpture',
+      email: 'french_fries_monument@ufl.edu',
+    });
+    const club = await createTestClub(creator._id, {
+      name: 'Gator Lettuce Eating Club',
+    });
+    const user = await createTestUser({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
 
     jest
       .spyOn(ConversationParticipant, 'create')
