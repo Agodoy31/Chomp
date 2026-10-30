@@ -45,14 +45,13 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
   const parseResult = postMessageBodySchema.safeParse(req.body);
   if (!parseResult.success) {
     const firstIssue = parseResult.error.issues[0];
-    const code = firstIssue?.message || 'ERR_VALIDATION_FAILED';
-    let message = 'Validation failed';
-    if (code === 'ERR_TEXT_EMPTY') {
-      message = 'Message text cannot be empty';
-    } else if (code === 'ERR_CLIENT_ID_INVALID') {
-      message = 'Client ID must be a valid UUIDv7';
-    }
-    res.status(400).json({ code, message });
+    const field = firstIssue?.path[0] !== undefined ? String(firstIssue.path[0]) : undefined;
+    const message = firstIssue?.message || 'Validation failed';
+    res.status(400).json({
+      code: 'ERR_VALIDATION_FAILED',
+      message,
+      ...(field !== undefined ? { field } : {}),
+    });
     return;
   }
 

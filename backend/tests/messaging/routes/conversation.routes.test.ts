@@ -442,18 +442,36 @@ describe('POST /api/conversations/:id/messages', () => {
     });
   });
 
-  it('rejects blank text invalid client id and malformed route id with 400', async () => {
+  it('rejects blank text invalid client id bad announcement and malformed route id with 400', async () => {
     const emptyTextRes = await studentA.agent
       .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: '   ' });
     expect(emptyTextRes.status).toBe(400);
-    expect(emptyTextRes.body.code).toBe('ERR_TEXT_EMPTY');
+    expect(emptyTextRes.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Message text cannot be empty',
+      field: 'text',
+    });
 
     const badClientIdRes = await studentA.agent
       .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Valid message text', clientId: 'bad-client-id' });
     expect(badClientIdRes.status).toBe(400);
-    expect(badClientIdRes.body.code).toBe('ERR_CLIENT_ID_INVALID');
+    expect(badClientIdRes.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Client ID must be a valid UUIDv7',
+      field: 'clientId',
+    });
+
+    const badAnnouncementRes = await studentA.agent
+      .post(`/api/conversations/${groupConversationId}/messages`)
+      .send({ text: 'Valid message text', isAnnouncement: 'not-a-boolean' });
+    expect(badAnnouncementRes.status).toBe(400);
+    expect(badAnnouncementRes.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'isAnnouncement must be a boolean',
+      field: 'isAnnouncement',
+    });
 
     const badRouteIdRes = await studentA.agent
       .post('/api/conversations/not-a-valid-id/messages')
