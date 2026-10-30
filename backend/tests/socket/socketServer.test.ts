@@ -7,7 +7,7 @@ import type { Socket } from 'socket.io';
 import app from '../../src/app';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 import { User } from '../../src/user/models/User';
-import { closeSocketServer, getIO, getUserRoom, initSocketServer } from '../../src/socket/socketServer';
+import { closeSocketServer, evictUserFromRoom, getIO, getUserRoom, initSocketServer } from '../../src/socket/socketServer';
 import type { SocketHandlerRegistrar } from '../../src/socket/socket.interfaces';
 
 describe('Socket Server Handshake Authentication', () => {
@@ -191,5 +191,63 @@ describe('Socket Server Handshake Authentication', () => {
     const userRoom = ioInstance?.sockets.adapter.rooms.get(getUserRoom(userId));
     expect(userRoom).toBeDefined();
     expect(userRoom?.has(client.id)).toBe(true);
+  });
+
+  test('Evicts user sockets from specified room', async () => {
+    const registerRes = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: 'turlington_screamer@ufl.edu',
+        password: 'ScreamerPassword123!',
+        firstName: 'Dennis',
+        lastName: 'Heckler',
+      });
+
+    expect(registerRes.status).toBe(201);
+    const rawCookie = registerRes.headers['set-cookie'];
+    expect(rawCookie).toBeDefined();
+    const sessionCookie = Array.isArray(rawCookie) ? rawCookie[0].split(';')[0] : rawCookie.split(';')[0];
+
+    const client: ClientSocket = Client(serverUrl, {
+      autoConnect: false,
+      transports: ['websocket'],
+      extraHeaders: {
+        cookie: sessionCookie,
+      },
+    });
+    activeClients.push(client);
+
+    const connectPromise = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Timed out waiting for connection')), 4000);
+      client.on('connect', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      client.on('connect_error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+
+    client.connect();
+    await connectPromise;
+
+    const ioInstance = getIO();
+    expect(ioInstance).not.toBeNull();
+    const userId = registerRes.body.user.id;
+    const targetRoom = 'conversation:turlington_debate';
+
+    const serverSocket = connectedServerSockets.find(
+      (socket) => socket.data.userId === userId
+    );
+    expect(serverSocket).toBeDefined();
+    await serverSocket?.join(targetRoom);
+
+    expect(ioInstance?.sockets.adapter.rooms.get(targetRoom)?.has(client.id)).toBe(true);
+
+    evictUserFromRoom(userId, targetRoom);
+
+    const roomAfterEvict = ioInstance?.sockets.adapter.rooms.get(targetRoom);
+    expect(roomAfterEvict?.has(client.id) ?? false).toBe(false);
   });
 });
