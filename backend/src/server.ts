@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import http from 'http';
 import mongoose from 'mongoose';
-import { Server, Socket } from 'socket.io';
+import { closeSocketServer, initSocketServer } from './socket/socketServer';
 import app from './app';
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -36,7 +36,7 @@ function listen(server: http.Server, port: number): Promise<void> {
   });
 }
 
-async function shutdown(exitCode: number, io: Server | undefined): Promise<void> {
+async function shutdown(exitCode: number): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
 
@@ -45,12 +45,13 @@ async function shutdown(exitCode: number, io: Server | undefined): Promise<void>
     process.exit(exitCode);
   }, 10000);
   try {
-    if (io) {
-      await io.close().catch((error) => {
-        console.error('Failed to close socket.io: ', error);
+    await closeSocketServer().catch((error: unknown) => {
+      console.error('Failed to close socket server: ', error);
+    });
+    if (httpServer && httpServer.listening) {
+      await new Promise<void>((resolve, reject) => {
+        httpServer!.close((error) => (error ? reject(error) : resolve()));
       });
-    } else if (httpServer) {
-      await new Promise((resolve, reject) => httpServer!.close((error)=>error ? reject(error) : resolve(void 0)));
     }
     await mongoose.disconnect();
   } catch (error) {
@@ -81,26 +82,13 @@ async function start(): Promise<void> {
 
   const server = http.createServer(app);
   httpServer = server;
-  const io = new Server(server, {
-    cors: {
-      origin: CLIENT_URL || 'http://localhost:5173',
-      credentials: true,
-      methods: ['GET', 'POST'],
-    },
-  });
-
-  io.on('connection', (socket: Socket) => {
-    console.log(`Socket client connected: ${socket.id}`);
-    socket.on('disconnect', () => {
-      console.log(`Socket client disconnected: ${socket.id}`);
-    });
-  });
+  initSocketServer(server, CLIENT_URL);
 
   try {
     await listen(server, port);
   } catch (error) {
     console.error('Failed to listen on port: ', error);
-    void shutdown(1, io);
+    void shutdown(1);
     return;
   }
 
@@ -108,14 +96,14 @@ async function start(): Promise<void> {
 
   server.on('error', (error: Error) => {
     console.error('Server error:', error);
-    void shutdown(1, io);
+    void shutdown(1);
   });
 
   process.on('SIGINT', () => {
-    void shutdown(0, io);
+    void shutdown(0);
   });
   process.on('SIGTERM', () => {
-    void shutdown(0, io);
+    void shutdown(0);
   });
 }
 
