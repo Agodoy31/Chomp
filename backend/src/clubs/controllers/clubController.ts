@@ -11,8 +11,8 @@ import { adminRequired, isDuplicateKey, sendError } from '../errors';
 const DEFAULT_CHANNEL_TITLE = 'General';
 
 const clubNameRegex = /^[\p{L}\p{M}\p{N}\p{P} +]+$/u;
-const dayOfWeekRegex = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
-const meetingTimeRegex = /^(0?[1-9]|1[0-2]):[0-5]\d ?[AP]M$/i;
+const dayOfWeekRegex = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)?$/i;
+const meetingTimeRegex = /^((0?[1-9]|1[0-2]):[0-5]\d ?[AP]M)?$/i;
 
 const clubRequestSchema = z.object(
   {
