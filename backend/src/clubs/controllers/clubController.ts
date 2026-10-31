@@ -10,7 +10,7 @@ import { adminRequired, isDuplicateKey, sendError } from '../errors';
 
 const DEFAULT_CHANNEL_TITLE = 'General';
 
-const clubNameRegex = /^[\p{L}\p{N} &'.,-]+$/u;
+const clubNameRegex = /^[\p{L}\p{M}\p{N}\p{P} +]+$/u;
 const dayOfWeekRegex = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
 const meetingTimeRegex = /^(0?[1-9]|1[0-2]):[0-5]\d ?[AP]M$/i;
 
@@ -23,7 +23,7 @@ const clubRequestSchema = z.object(
       .trim()
       .min(1, 'Club name is required')
       .max(100, 'Club name must be 100 characters or fewer')
-      .regex(clubNameRegex, "Club name can only use letters, numbers, spaces, and & ' . , -"),
+      .regex(clubNameRegex, 'Club name can only use letters, numbers, spaces, punctuation, and +'),
     description: z
       .string({
         error: (issue) =>
