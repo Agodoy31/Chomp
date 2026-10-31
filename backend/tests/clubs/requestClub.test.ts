@@ -85,10 +85,14 @@ describe('POST /api/clubs', () => {
     expect(stored?.meeting).toEqual({ day: 'Monday' });
   });
 
-  it('accepts a description of exactly 1000 characters', async () => {
+  it('accepts each field at its max length', async () => {
     const res = await request(asUser(userId))
       .post('/api/clubs')
-      .send(clubInput({ description: 'a'.repeat(1000) }));
+      .send({
+        name: 'a'.repeat(100),
+        description: 'a'.repeat(1000),
+        meeting: { day: 'Wednesday', time: '12:30 PM', location: 'a'.repeat(120) },
+      });
 
     expect(res.status).toBe(201);
   });
@@ -135,47 +139,66 @@ describe('POST /api/clubs', () => {
     expect(await Club.countDocuments()).toBe(0);
   });
 
-  it('returns 400 when no body is sent', async () => {
-    const res = await request(asUser(userId)).post('/api/clubs');
+  it('returns 400 when the body, name, or description is missing or blank', async () => {
+    const cases: [string | object | undefined, string][] = [
+      [undefined, 'Club name is required'],
+      [['Chess Club'], 'Club name is required'],
+      [{ description: 'Weekly chess matches' }, 'Club name is required'],
+      [clubInput({ name: '   ' }), 'Club name is required'],
+      [{ name: 'Chess Club' }, 'Club description is required'],
+      [clubInput({ description: '   ' }), 'Club description is required'],
+    ];
 
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ code: 'ERR_INVALID_CLUB_REQUEST', message: 'Club name is required' });
+    for (const [body, message] of cases) {
+      const res = await request(asUser(userId)).post('/api/clubs').send(body);
+      expect({ status: res.status, body: res.body }).toEqual({
+        status: 400,
+        body: { code: 'ERR_INVALID_CLUB_REQUEST', message },
+      });
+    }
     expect(await Club.countDocuments()).toBe(0);
   });
 
-  it.each([
-    ['the body is not an object', ['Chess Club'], 'Club name is required'],
-    ['the name is missing', { description: 'Weekly chess matches' }, 'Club name is required'],
-    ['the name is blank', clubInput({ name: '   ' }), 'Club name is required'],
-    ['the description is missing', { name: 'Chess Club' }, 'Club description is required'],
-    ['the description is blank', clubInput({ description: '   ' }), 'Club description is required'],
-  ])('returns 400 when %s', async (_case, body, message) => {
-    const res = await request(asUser(userId)).post('/api/clubs').send(body);
+  it('returns 400 with the field error for wrong types, long text, and bad formats', async () => {
+    const hexDump = Array.from({ length: 4000 }, (_, i) => '0x' + (0xdeadbeef + i).toString(16)).join('_');
+    const cases: [Record<string, unknown>, string][] = [
+      [
+        { name: hexDump, description: false, meeting: { day: 999999, time: true, location: 404 } },
+        'Club name must be 100 characters or fewer',
+      ],
+      [{ name: 'a'.repeat(101) }, 'Club name must be 100 characters or fewer'],
+      [{ name: 'Chess Club <3' }, "Club name can only use letters, numbers, spaces, and & ' . , -"],
+      [{ name: 42 }, 'Club name must be text'],
+      [{ description: false }, 'Club description must be text'],
+      [{ description: 'a'.repeat(1001) }, 'Club description must be 1000 characters or fewer'],
+      [{ meeting: 'Wednesday' }, 'Meeting details must be an object'],
+      [{ meeting: ['Wednesday'] }, 'Meeting details must be an object'],
+      [{ meeting: { day: { at: 'noon' } } }, 'Meeting day must be text'],
+      [{ meeting: { day: 'Someday' } }, 'Meeting day must be a day of the week'],
+      [{ meeting: { time: true } }, 'Meeting time must be text'],
+      [{ meeting: { time: '25:00' } }, 'Meeting time must look like 6:30 PM'],
+      [{ meeting: { location: 404 } }, 'Meeting location must be text'],
+      [{ meeting: { location: 'a'.repeat(121) } }, 'Meeting location must be 120 characters or fewer'],
+    ];
 
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ code: 'ERR_INVALID_CLUB_REQUEST', message });
+    for (const [overrides, message] of cases) {
+      const res = await request(asUser(userId)).post('/api/clubs').send(clubInput(overrides));
+      expect({ status: res.status, body: res.body }).toEqual({
+        status: 400,
+        body: { code: 'ERR_INVALID_CLUB_REQUEST', message },
+      });
+    }
     expect(await Club.countDocuments()).toBe(0);
   });
 
-  it.each([
-    ['the description is over 1000 characters', { description: 'a'.repeat(1001) }, 'description'],
-    ['the meeting details are text', { meeting: 'Wednesday' }, 'meeting'],
-    ['the meeting details are a list', { meeting: ['Wednesday'] }, 'meeting'],
-    ['a meeting field cannot be stored as text', { meeting: { day: { at: 'noon' } } }, 'day'],
-  ])('returns 400 with the schema message when %s', async (_case, overrides, field) => {
-    const res = await request(asUser(userId)).post('/api/clubs').send(clubInput(overrides));
-
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('ERR_INVALID_CLUB_REQUEST');
-    expect(res.body.message).toContain(field);
-    expect(await Club.countDocuments()).toBe(0);
-  });
-
-  it.each(['GAMING', '', '   ', 42, null])('returns 400 with ERR_INVALID_CATEGORY for category %p', async (category) => {
-    const res = await request(asUser(userId)).post('/api/clubs').send(clubInput({ category }));
-
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ code: 'ERR_INVALID_CATEGORY', message: 'Invalid Category' });
+  it('returns 400 with ERR_INVALID_CATEGORY for an unknown, blank, or non-text category', async () => {
+    for (const category of ['GAMING', '', '   ', 42, null]) {
+      const res = await request(asUser(userId)).post('/api/clubs').send(clubInput({ category }));
+      expect({ status: res.status, body: res.body }).toEqual({
+        status: 400,
+        body: { code: 'ERR_INVALID_CATEGORY', message: 'Invalid Category' },
+      });
+    }
     expect(await Club.countDocuments()).toBe(0);
   });
 });

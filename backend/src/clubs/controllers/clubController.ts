@@ -1,17 +1,63 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import { z } from 'zod';
 import { createChannel } from '../../messaging/services/conversation.service';
 import { User } from '../../user/models/User';
-import {
-  CLUB_CATEGORIES,
-  type ClubFilter,
-  type ClubRequest,
-} from '../interfaces/clubs.interface';
+import { CLUB_CATEGORIES, type ClubFilter } from '../interfaces/clubs.interface';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
 import { adminRequired, authenticationRequired, isDuplicateKey, sendError } from '../errors';
 
 const DEFAULT_CHANNEL_TITLE = 'General';
+
+const clubNameRegex = /^[\p{L}\p{N} &'.,-]+$/u;
+const dayOfWeekRegex = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
+const meetingTimeRegex = /^(0?[1-9]|1[0-2]):[0-5]\d ?[AP]M$/i;
+
+const clubRequestSchema = z.object(
+  {
+    name: z
+      .string({
+        error: (issue) => (issue.input === undefined ? 'Club name is required' : 'Club name must be text'),
+      })
+      .trim()
+      .min(1, 'Club name is required')
+      .max(100, 'Club name must be 100 characters or fewer')
+      .regex(clubNameRegex, "Club name can only use letters, numbers, spaces, and & ' . , -"),
+    description: z
+      .string({
+        error: (issue) =>
+          issue.input === undefined ? 'Club description is required' : 'Club description must be text',
+      })
+      .trim()
+      .min(1, 'Club description is required')
+      .max(1000, 'Club description must be 1000 characters or fewer'),
+    category: z.string().trim().toUpperCase().pipe(z.enum(CLUB_CATEGORIES)).optional(),
+    meeting: z
+      .object(
+        {
+          day: z
+            .string({ error: 'Meeting day must be text' })
+            .trim()
+            .regex(dayOfWeekRegex, 'Meeting day must be a day of the week')
+            .optional(),
+          time: z
+            .string({ error: 'Meeting time must be text' })
+            .trim()
+            .regex(meetingTimeRegex, 'Meeting time must look like 6:30 PM')
+            .optional(),
+          location: z
+            .string({ error: 'Meeting location must be text' })
+            .trim()
+            .max(120, 'Meeting location must be 120 characters or fewer')
+            .optional(),
+        },
+        { error: 'Meeting details must be an object' }
+      )
+      .optional(),
+  },
+  { error: 'Club name is required' }
+);
 
 function findApprovedClubByName(name: string) {
   return Club.exists({ name, status: 'APPROVED' }).collation({ locale: 'en', strength: 2 });
@@ -65,22 +111,12 @@ export const requestClub = async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
-  const { name, description, category, meeting }: Partial<ClubRequest> = req.body ?? {};
-  const club = new Club({
-    name,
-    description,
-    category: typeof category === 'string' ? category.trim().toUpperCase() : category,
-    meeting,
-    proposerId: userId,
-    status: 'PENDING',
-  });
-
-  const validationError = club.validateSync();
-  if (validationError) {
-    const [firstError] = Object.values(validationError.errors);
+  const parsed = clubRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const [issue] = parsed.error.issues;
     sendError(
       res,
-      firstError.path === 'category'
+      issue.path[0] === 'category'
         ? { 
           status: 400, 
           code: 'ERR_INVALID_CATEGORY', 
@@ -89,10 +125,20 @@ export const requestClub = async (req: Request, res: Response): Promise<void> =>
         : { 
           status: 400, 
           code: 'ERR_INVALID_CLUB_REQUEST', 
-          message: firstError.message 
+          message: issue.message 
       });
     return;
   }
+
+  const { name, description, category, meeting } = parsed.data;
+  const club = new Club({
+    name,
+    description,
+    category,
+    meeting,
+    proposerId: userId,
+    status: 'PENDING',
+  });
 
   if (await findApprovedClubByName(club.name)) {
     sendError(res, {

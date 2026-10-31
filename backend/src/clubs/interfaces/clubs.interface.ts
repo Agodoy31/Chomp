@@ -1,5 +1,4 @@
 // clubs.interfaces.ts
-import type { Club } from '../model/clubModel';
 export const CLUB_CATEGORIES = ['ACADEMIC', 'CULTURAL', 'SPORTS', 'OTHER'] as const;
 export type ClubCategory = (typeof CLUB_CATEGORIES)[number]; // 'ACADEMIC' | 'CULTURAL' | 'SPORTS' | 'OTHER'
 
@@ -13,8 +12,6 @@ export interface ClubFilter {
   status: ClubStatus;
   category?: ClubCategory | { $in: ClubCategory[] };
 }
-
-export type ClubRequest = Pick<Club, 'name' | 'description' | 'category' | 'meeting'> 
 
 export interface ClientError {
   status: number;

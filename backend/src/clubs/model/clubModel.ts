@@ -2,16 +2,21 @@ import { InferSchemaType, Schema, model } from 'mongoose';
 import { CLUB_CATEGORIES, CLUB_STATUSES } from '../interfaces/clubs.interface';
 const meetingSchema = new Schema(
   {
-    day: { type: String, trim: true },
-    time: { type: String, trim: true },
-    location: { type: String, trim: true },
+    day: { type: String, trim: true, maxlength: 15 },
+    time: { type: String, trim: true, maxlength: 8 },
+    location: { type: String, trim: true, maxlength: 120 },
   },
   { _id: false }
 );
 
 const clubSchema = new Schema(
   {
-    name: { type: String, required: [true, 'Club name is required'], trim: true },
+    name: { 
+      type: String, 
+      required: [true, 'Club name is required'], 
+      trim: true,
+      maxlength: 100,
+    },
     description: { type: String, required: [true, 'Club description is required'], trim: true, maxlength: 1000},
     category: { 
       type: String, 
