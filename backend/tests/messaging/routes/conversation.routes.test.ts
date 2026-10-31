@@ -559,7 +559,7 @@ describe('GET /api/conversations/:id/messages', () => {
       },
     ]);
 
-    await deleteMessage(msgToSoftDelete._id, studentA.user._id);
+    await deleteMessage(new Types.ObjectId(groupConversationId), msgToSoftDelete._id, studentA.user._id);
 
     const res = await studentA.agent
       .get(`/api/conversations/${groupConversationId}/messages?limit=5`)
