@@ -238,7 +238,7 @@ export const createClub = async (req: Request<{ clubId: string }>, res: Response
     if (session.inTransaction()) {
       await session.abortTransaction();
     }
-    if (isDuplicateKey(error) && (await findApprovedClubByName(club.name))) {
+    if (isDuplicateKey(error)) {
       sendError(res, {
         status: 409,
         code: 'ERR_CLUB_NAME_EXISTS',
