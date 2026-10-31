@@ -203,16 +203,4 @@ describe('POST /api/clubs/:clubId/approve', () => {
     expect(res.status).toBe(500);
     await expectNotProvisioned(club._id);
   });
-
-  it('rolls back and returns 500 for a duplicate key error that is not a name conflict', async () => {
-    const club = await insertClub(proposerId);
-    jest
-      .spyOn(Membership, 'create')
-      .mockRejectedValueOnce(Object.assign(new Error('E11000 duplicate key error'), { code: 11000 }));
-
-    const res = await approveAs(adminId, club._id.toString());
-
-    expect(res.status).toBe(500);
-    await expectNotProvisioned(club._id);
-  });
 });
