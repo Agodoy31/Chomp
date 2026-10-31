@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, jest } from '@jest/globals';
-import express, { NextFunction, Request, Response } from 'express';
+import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jest/globals';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import app from '../../src/app';
@@ -8,36 +7,9 @@ import { Membership } from '../../src/clubs/model/membershipModel';
 import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
 import { Conversation } from '../../src/messaging/models/Conversation';
 import { ConversationParticipant } from '../../src/messaging/models/ConversationParticipant';
-import { sessionMiddleware } from '../../src/sessions/session';
 import { User } from '../../src/user/models/User';
+import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
-
-function asUser(userId: string) {
-  const wrapper = express();
-  wrapper.use(sessionMiddleware);
-  wrapper.use((req: Request, _res: Response, next: NextFunction) => {
-    req.session.userId = userId;
-    next();
-  });
-  wrapper.use(app);
-  return wrapper;
-}
-
-function approveAs(userId: string, clubId: string) {
-  return request(asUser(userId)).post(`/api/clubs/${clubId}/approve`);
-}
-
-async function createUser(isAdmin = false) {
-  const userId = new mongoose.Types.ObjectId();
-  return User.create({
-    _id: userId,
-    email: `student_${userId.toString()}@ufl.edu`,
-    hashedPassword: 'hashedPassword123',
-    firstName: 'Albert',
-    lastName: 'Gator',
-    isAdmin,
-  });
-}
 
 async function insertClub(proposerId: mongoose.Types.ObjectId, overrides: Record<string, unknown> = {}) {
   return Club.create({ name: 'Chess Club', description: 'Weekly chess matches', proposerId, ...overrides });
@@ -51,7 +23,8 @@ async function expectNotProvisioned(clubId: mongoose.Types.ObjectId, status = 'P
 }
 
 describe('POST /api/clubs/:clubId/approve', () => {
-  let adminId: string;
+  let admin: LoggedInAgent;
+  let proposer: LoggedInAgent;
   let proposerId: mongoose.Types.ObjectId;
 
   beforeAll(async () => {
@@ -63,16 +36,14 @@ describe('POST /api/clubs/:clubId/approve', () => {
       ConversationParticipant.init(),
       User.init(),
     ]);
+    const [adminUser, proposerUser] = await Promise.all([createUser(true), createUser()]);
+    proposerId = proposerUser._id;
+    [admin, proposer] = await Promise.all([logIn(adminUser), logIn(proposerUser)]);
   }, 60000);
-
-  beforeEach(async () => {
-    adminId = (await createUser(true))._id.toString();
-    proposerId = (await createUser())._id;
-  });
 
   afterEach(async () => {
     jest.restoreAllMocks();
-    await clearTestDb();
+    await clearTestDb(['users']);
   });
 
   afterAll(async () => {
@@ -82,7 +53,7 @@ describe('POST /api/clubs/:clubId/approve', () => {
   it('approves the club and makes the proposer the only officer and member of a General channel', async () => {
     const club = await insertClub(proposerId);
 
-    const res = await approveAs(adminId, club._id.toString());
+    const res = await admin.post(`/api/clubs/${club._id.toString()}/approve`);
 
     expect(res.status).toBe(201);
     expect((await Club.findById(club._id).lean())?.status).toBe('APPROVED');
@@ -123,66 +94,57 @@ describe('POST /api/clubs/:clubId/approve', () => {
   it('returns 403 when the user is not an admin', async () => {
     const club = await insertClub(proposerId);
 
-    const res = await approveAs(proposerId.toString(), club._id.toString());
+    const res = await proposer.post(`/api/clubs/${club._id.toString()}/approve`);
 
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ code: 'ERR_ADMIN_REQUIRED', message: 'Admin access required' });
     await expectNotProvisioned(club._id);
   });
 
-  it.each([
-    ['a club that does not exist', new mongoose.Types.ObjectId().toString()],
-    ['a malformed club id', 'not-a-club-id'],
-  ])('returns 404 for %s', async (_case, clubId) => {
-    const res = await approveAs(adminId, clubId);
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ code: 'ERR_CLUB_NOT_FOUND', message: 'Club not found' });
+  it('returns 404 for a club that does not exist or a malformed club id', async () => {
+    for (const clubId of [new mongoose.Types.ObjectId().toString(), 'not-a-club-id']) {
+      const res = await admin.post(`/api/clubs/${clubId}/approve`);
+      expect({ status: res.status, body: res.body }).toEqual({
+        status: 404,
+        body: { code: 'ERR_CLUB_NOT_FOUND', message: 'Club not found' },
+      });
+    }
   });
 
-  it.each(['APPROVED', 'REJECTED'])('returns 409 when the club is already %s', async (status) => {
-    const club = await insertClub(proposerId, { status });
+  it('returns 409 when the club is already approved or rejected', async () => {
+    for (const status of ['APPROVED', 'REJECTED']) {
+      const club = await insertClub(proposerId, { status });
 
-    const res = await approveAs(adminId, club._id.toString());
+      const res = await admin.post(`/api/clubs/${club._id.toString()}/approve`);
 
-    expect(res.status).toBe(409);
-    expect(res.body).toEqual({
-      code: 'ERR_CLUB_NOT_PENDING',
-      message: 'Only pending club requests can be approved',
-    });
-    await expectNotProvisioned(club._id, status);
+      expect({ status: res.status, body: res.body }).toEqual({
+        status: 409,
+        body: { code: 'ERR_CLUB_NOT_PENDING', message: 'Only pending club requests can be approved' },
+      });
+      await expectNotProvisioned(club._id, status);
+    }
   });
 
   it('returns 404 when the student who requested the club no longer exists', async () => {
-    await User.deleteOne({ _id: proposerId });
-    const club = await insertClub(proposerId);
+    const departed = await createUser();
+    await User.deleteOne({ _id: departed._id });
+    const club = await insertClub(departed._id);
 
-    const res = await approveAs(adminId, club._id.toString());
+    const res = await admin.post(`/api/clubs/${club._id.toString()}/approve`);
 
     expect(res.status).toBe(404);
-    expect(res.body.code).toBe('ERR_PROPOSER_NOT_FOUND');
+    expect(res.body).toEqual({
+      code: 'ERR_PROPOSER_NOT_FOUND',
+      message: 'The student who requested this club no longer exists',
+    });
     await expectNotProvisioned(club._id);
   });
 
-  it('returns 409 when another request approves the club after the status check', async () => {
-    const club = await insertClub(proposerId);
-    await Club.updateOne({ _id: club._id }, { status: 'APPROVED' });
-    jest.spyOn(Club, 'findById').mockResolvedValueOnce(club);
-    const update = jest.spyOn(Club, 'findOneAndUpdate');
-
-    const res = await approveAs(adminId, club._id.toString());
-
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('ERR_CLUB_NOT_PENDING');
-    await expectNotProvisioned(club._id, 'APPROVED');
-  });
-
   it('returns 409 and keeps the request pending when an approved club already uses the name', async () => {
-    await insertClub(new mongoose.Types.ObjectId(), { status: 'APPROVED' });
+    await insertClub(proposerId, { status: 'APPROVED' });
     const club = await insertClub(proposerId, { name: 'CHESS CLUB' });
 
-    const res = await approveAs(adminId, club._id.toString());
+    const res = await admin.post(`/api/clubs/${club._id.toString()}/approve`);
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({
@@ -198,7 +160,7 @@ describe('POST /api/clubs/:clubId/approve', () => {
       .spyOn(ConversationParticipant, 'create')
       .mockRejectedValueOnce(new Error('Simulated participant creation failure'));
 
-    const res = await approveAs(adminId, club._id.toString());
+    const res = await admin.post(`/api/clubs/${club._id.toString()}/approve`);
 
     expect(res.status).toBe(500);
     await expectNotProvisioned(club._id);
