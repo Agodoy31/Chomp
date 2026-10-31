@@ -101,9 +101,11 @@ describe('createDirectConversation service', () => {
       email: 'game.room@ufl.edu',
     });
 
-    await expect(createDirectConversation(user._id, user._id)).rejects.toThrow(
-      'Cannot start a direct message conversation with yourself'
-    );
+    await expect(createDirectConversation(user._id, user._id)).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_MESSAGE_SELF',
+      message: 'Cannot start a direct message conversation with yourself',
+    });
 
     const count = await Conversation.countDocuments().exec();
     expect(count).toBe(0);
@@ -225,15 +227,27 @@ describe('createDirectConversation service', () => {
 
     await expect(
       createDirectConversation(missingUserA, validUser._id)
-    ).rejects.toThrow('One or more users do not exist');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_USER_NOT_FOUND',
+      message: 'One or more users do not exist',
+    });
 
     await expect(
       createDirectConversation(validUser._id, missingUserA)
-    ).rejects.toThrow('One or more users do not exist');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_USER_NOT_FOUND',
+      message: 'One or more users do not exist',
+    });
 
     await expect(
       createDirectConversation(missingUserA, missingUserB)
-    ).rejects.toThrow('One or more users do not exist');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_USER_NOT_FOUND',
+      message: 'One or more users do not exist',
+    });
   });
 });
 
@@ -426,11 +440,19 @@ describe('createGroupConversation service', () => {
 
     await expect(
       createGroupConversation(creatorId, [], 'Title')
-    ).rejects.toThrow('Group conversation requires at least two distinct participants');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INSUFFICIENT_PARTICIPANTS',
+      message: 'Group conversation requires at least two distinct participants',
+    });
 
     await expect(
       createGroupConversation(creatorId, [creatorId], 'Title')
-    ).rejects.toThrow('Group conversation requires at least two distinct participants');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INSUFFICIENT_PARTICIPANTS',
+      message: 'Group conversation requires at least two distinct participants',
+    });
   });
 
   it('rolls back transaction cleanly without creating orphaned conversation if participant creation fails', async () => {
@@ -608,7 +630,11 @@ describe('createChannel service', () => {
 
     await expect(
       createChannel(nonExistentClubId, 'general')
-    ).rejects.toThrow('Club does not exist');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_CLUB_NOT_FOUND',
+      message: 'Club does not exist',
+    });
   });
 
   it('throws error when channel title is duplicate within the same club case-insensitively', async () => {
@@ -625,7 +651,11 @@ describe('createChannel service', () => {
 
     await expect(
       createChannel(club._id, 'Events')
-    ).rejects.toThrow('A channel with this title already exists in the club');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_CHANNEL_TITLE_EXISTS',
+      message: 'A channel with this title already exists in the club',
+    });
   });
 
   it('allows identical channel titles across different clubs', async () => {
@@ -659,35 +689,67 @@ describe('createChannel service', () => {
 
     await expect(
       createChannel(null as unknown as Types.ObjectId, 'general')
-    ).rejects.toThrow('Valid clubId is required');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'Valid clubId is required',
+    });
 
     await expect(
       createChannel(undefined as unknown as Types.ObjectId, 'general')
-    ).rejects.toThrow('Valid clubId is required');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'Valid clubId is required',
+    });
 
     await expect(
       createChannel('invalid-id' as unknown as Types.ObjectId, 'general')
-    ).rejects.toThrow('Valid clubId is required');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'Valid clubId is required',
+    });
 
     await expect(
       createChannel(dummyClubId, '')
-    ).rejects.toThrow('Channel title is required');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_TITLE_REQUIRED',
+      message: 'Channel title is required',
+    });
 
     await expect(
       createChannel(dummyClubId, '   ')
-    ).rejects.toThrow('Channel title is required');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_TITLE_REQUIRED',
+      message: 'Channel title is required',
+    });
 
     await expect(
       createChannel(dummyClubId, null as unknown as string)
-    ).rejects.toThrow('Channel title is required');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_TITLE_REQUIRED',
+      message: 'Channel title is required',
+    });
 
     await expect(
       createChannel(dummyClubId, 'general', null as any)
-    ).rejects.toThrow('participantIds must be an array');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'participantIds must be an array',
+    });
 
     await expect(
       createChannel(dummyClubId, 'general', 'not-an-array' as any)
-    ).rejects.toThrow('participantIds must be an array');
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_INVALID_INPUT',
+      message: 'participantIds must be an array',
+    });
 
     const creator = await createTestUser({
       firstName: 'Potato',

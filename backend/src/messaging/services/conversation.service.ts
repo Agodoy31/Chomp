@@ -19,6 +19,7 @@ import {
 } from '../interfaces/conversationParticipant.interfaces';
 import { User } from '../../user/models/User';
 import { Club } from '../../clubs/model/clubModel';
+import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 
 export const DEFAULT_GROUP_CONVERSATION_TITLE = 'Group Chat';
 
@@ -32,21 +33,33 @@ export async function createDirectConversation(
   recipientId: Types.ObjectId
 ): Promise<CreateDirectConversationResult> {
   if (!creatorId || !mongoose.isObjectIdOrHexString(creatorId)) {
-    throw new Error('Valid creatorId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid creatorId is required'
+    );
   }
 
   if (!recipientId || !mongoose.isObjectIdOrHexString(recipientId)) {
-    throw new Error('Valid recipientId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid recipientId is required'
+    );
   }
 
   if (creatorId.toString() === recipientId.toString()) {
-    throw new Error('Cannot start a direct message conversation with yourself');
+    throw new MessagingError(
+      MessagingErrorCode.MESSAGE_SELF,
+      'Cannot start a direct message conversation with yourself'
+    );
   }
 
   // Verify users exist once the user schema is merged to main
   const usersExist = await validateUsersExist([creatorId, recipientId]);
   if (!usersExist) {
-    throw new Error('One or more users do not exist');
+    throw new MessagingError(
+      MessagingErrorCode.USER_NOT_FOUND,
+      'One or more users do not exist'
+    );
   }
 
   // Sort IDs so user pairs share the exact same key regardless of who initiates
@@ -131,16 +144,25 @@ export async function createGroupConversation(
   title?: string
 ): Promise<IConversation> {
   if (!Array.isArray(participantIds)) {
-    throw new Error('participantIds must be an array');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'participantIds must be an array'
+    );
   }
 
   if (!creatorId || !mongoose.isObjectIdOrHexString(creatorId)) {
-    throw new Error('Valid creatorId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid creatorId is required'
+    );
   }
 
   for (const id of participantIds) {
     if (!id || !mongoose.isObjectIdOrHexString(id)) {
-      throw new Error('Valid participantId is required');
+      throw new MessagingError(
+        MessagingErrorCode.INVALID_INPUT,
+        'Valid participantId is required'
+      );
     }
   }
 
@@ -148,12 +170,18 @@ export async function createGroupConversation(
   const uniqueParticipants = deduplicateObjectIds(allParticipantIds);
 
   if (uniqueParticipants.length < 2) {
-    throw new Error('Group conversation requires at least two distinct participants');
+    throw new MessagingError(
+      MessagingErrorCode.INSUFFICIENT_PARTICIPANTS,
+      'Group conversation requires at least two distinct participants'
+    );
   }
 
   const usersExist = await validateUsersExist(uniqueParticipants);
   if (!usersExist) {
-    throw new Error('One or more users do not exist');
+    throw new MessagingError(
+      MessagingErrorCode.USER_NOT_FOUND,
+      'One or more users do not exist'
+    );
   }
 
   // Fall back to default title when title is omitted or blank whitespace and trim custom titles
@@ -387,20 +415,32 @@ export async function createChannel(
   externalSession?: ClientSession
 ): Promise<IConversation> {
   if (!clubId || !mongoose.isObjectIdOrHexString(clubId)) {
-    throw new Error('Valid clubId is required');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid clubId is required'
+    );
   }
 
   if (typeof title !== 'string' || title.trim().length === 0) {
-    throw new Error('Channel title is required');
+    throw new MessagingError(
+      MessagingErrorCode.TITLE_REQUIRED,
+      'Channel title is required'
+    );
   }
 
   if (!Array.isArray(participantIds)) {
-    throw new Error('participantIds must be an array');
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'participantIds must be an array'
+    );
   }
 
   const clubExists = await Club.exists({ _id: clubId });
   if (!clubExists) {
-    throw new Error('Club does not exist');
+    throw new MessagingError(
+      MessagingErrorCode.CLUB_NOT_FOUND,
+      'Club does not exist'
+    );
   }
 
   const trimmedTitle = title.trim();
@@ -430,7 +470,10 @@ export async function createChannel(
       return conversation.toObject<IConversation>();
     } catch (error: any) {
       if (error && error.code === 11000) {
-        throw new Error('A channel with this title already exists in the club', { cause: error });
+        throw new MessagingError(
+          MessagingErrorCode.CHANNEL_TITLE_EXISTS,
+          'A channel with this title already exists in the club'
+        );
       }
       throw error;
     }
@@ -450,7 +493,10 @@ export async function createChannel(
       return conversation.toObject<IConversation>();
     } catch (error: any) {
       if (error && error.code === 11000) {
-        throw new Error('A channel with this title already exists in the club', { cause: error });
+        throw new MessagingError(
+          MessagingErrorCode.CHANNEL_TITLE_EXISTS,
+          'A channel with this title already exists in the club'
+        );
       }
       throw error;
     }
@@ -486,7 +532,10 @@ export async function createChannel(
       await session.abortTransaction();
     }
     if (error && error.code === 11000) {
-      throw new Error('A channel with this title already exists in the club', { cause: error });
+      throw new MessagingError(
+        MessagingErrorCode.CHANNEL_TITLE_EXISTS,
+        'A channel with this title already exists in the club'
+      );
     }
     throw error;
   } finally {
@@ -596,7 +645,7 @@ export async function getConversationDetails(
     },
     {
       $project: {
-        _id: 1,
+        _id: 0,
         permission: 1,
         userId: {
           _id: '$user._id',

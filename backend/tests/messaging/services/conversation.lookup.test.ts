@@ -345,7 +345,6 @@ describe('getConversationDetails service', () => {
 
     expect(details?.participants).toHaveLength(2);
     for (const participant of details!.participants) {
-      expect(participant._id).toBeDefined();
       expect(participant.permission).toBe(ParticipantPermission.WRITE);
       expect(participant.userId._id).toBeDefined();
       expect(participant.userId.firstName).toBeDefined();
@@ -356,7 +355,7 @@ describe('getConversationDetails service', () => {
       expect((participant as any).updatedAt).toBeUndefined();
       expect((participant as any).joinedAt).toBeUndefined();
       const participantKeys = Object.keys(participant).sort();
-      expect(participantKeys).toEqual(['_id', 'permission', 'userId']);
+      expect(participantKeys).toEqual(['permission', 'userId']);
       const userKeys = Object.keys(participant.userId).sort();
       expect(userKeys).toEqual(['_id', 'firstName', 'lastName']);
     }
