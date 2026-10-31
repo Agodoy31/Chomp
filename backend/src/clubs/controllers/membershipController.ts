@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import mongoose, { type HydratedDocument } from 'mongoose';
+import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
+import { addParticipantsToConversation, getClubChannels } from '../../messaging/services/conversation.service';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
 import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
@@ -67,11 +68,19 @@ function reactivate(membership: MembershipRecord) {
   return membership.save();
 }
 
-async function activateMembership(userId: string, clubId: string): Promise<ActivationResult> {
-  const existing = await Membership.findOne({ userId, clubId });
+async function activateMembership(
+  userId: string,
+  clubId: string,
+  session: ClientSession
+): Promise<ActivationResult> {
+  const existing = await Membership.findOne({ userId, clubId }).session(session);
 
   if (!existing) {
-    return { membership: await Membership.create({ userId, clubId, role: 'MEMBER', status: 'ACTIVE' }) };
+    const [membership] = await Membership.create(
+      [{ userId, clubId, role: 'MEMBER', status: 'ACTIVE' }],
+      { session }
+    );
+    return { membership };
   }
 
   if (existing.status === 'INACTIVE') {
@@ -113,8 +122,24 @@ export const joinClub = async (req: Request<{ clubId: string }>, res: Response):
     return;
   }
 
+  const session = await mongoose.startSession();
   try {
-    const result = await activateMembership(userId, clubId);
+    // withTransaction retries on a write conflict, so a second simultaneous join
+    // reruns after the first commits and gets the already-member error.
+    const result = await session.withTransaction(async () => {
+      const activation = await activateMembership(userId, clubId, session);
+      if ('error' in activation) {
+        return activation;
+      }
+
+      const channels = await getClubChannels(club._id);
+      // Operations in a transaction have to run one at a time.
+      for (const channel of channels) {
+        await addParticipantsToConversation(channel._id, [new mongoose.Types.ObjectId(userId)], session);
+      }
+      return activation;
+    });
+
     if ('error' in result) {
       sendError(res, result.error);
       return;
@@ -128,5 +153,7 @@ export const joinClub = async (req: Request<{ clubId: string }>, res: Response):
     const raced = await Membership.findOne({ userId, clubId });
     if (!raced || raced.status === 'INACTIVE') throw error;
     sendError(res, rejectionForMembership(raced.status));
+  } finally {
+    await session.endSession();
   }
 };

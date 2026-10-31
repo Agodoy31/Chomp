@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jest/globals';
 import express, { NextFunction, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
+import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
+import { Conversation } from '../../src/messaging/models/Conversation';
+import { ConversationParticipant } from '../../src/messaging/models/ConversationParticipant';
 import { sessionMiddleware } from '../../src/sessions/session';
 import { User } from '../../src/user/models/User';
 import { hashPassword } from '../../src/user/utils/passwordHashing';
@@ -30,13 +33,38 @@ async function createClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVE
   });
 }
 
+async function createUser(isAdmin = false) {
+  const userId = new mongoose.Types.ObjectId();
+  return User.create({
+    _id: userId,
+    email: `student_${userId.toString()}@ufl.edu`,
+    hashedPassword: 'hashedPassword123',
+    firstName: 'Albert',
+    lastName: 'Gator',
+    isAdmin,
+  });
+}
+
+async function createClubWithChannel() {
+  const club = await createClub();
+  const channel = await Conversation.create({ type: ConversationType.CHANNEL, clubId: club._id, title: 'General' });
+  return { club, channel };
+}
+
 describe('POST /api/clubs/:clubId/join', () => {
   beforeAll(async () => {
     await connectTestDb();
-    await Promise.all([Club.init(), Membership.init()]);
+    await Promise.all([
+      Club.init(),
+      Membership.init(),
+      Conversation.init(),
+      ConversationParticipant.init(),
+      User.init(),
+    ]);
   }, 60000);
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     await clearTestDb();
   });
 
@@ -60,6 +88,53 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(stored).toHaveLength(1);
     expect(stored[0].status).toBe('ACTIVE');
     expect(stored[0].role).toBe('MEMBER');
+  });
+
+  it('adds the student to the General channel of a club approved through the API', async () => {
+    const [proposer, admin, joiner] = await Promise.all([createUser(), createUser(true), createUser()]);
+    const reqRes = await request(asUser(proposer._id.toString()))
+      .post('/api/clubs')
+      .send({ name: 'Gator Lettuce Eating Club', description: 'Eat a whole head of lettuce at Plaza' });
+    const appRes = await request(asUser(admin._id.toString())).post(`/api/clubs/${reqRes.body._id}/approve`);
+
+    const joinRes = await request(asUser(joiner._id.toString())).post(`/api/clubs/${reqRes.body._id}/join`);
+
+    expect(joinRes.status).toBe(201);
+    const participants = await ConversationParticipant.find({
+      conversationId: appRes.body.conversation._id,
+    }).lean();
+    expect(participants.map((p) => p.userId.toString()).sort()).toEqual(
+      [proposer._id.toString(), joiner._id.toString()].sort()
+    );
+  });
+
+  it('creates one membership and one channel seat when the same student joins twice at once', async () => {
+    const { club, channel } = await createClubWithChannel();
+    const student = await createUser();
+    const joinUrl = `/api/clubs/${club._id.toString()}/join`;
+
+    const responses = await Promise.all([
+      request(asUser(student._id.toString())).post(joinUrl),
+      request(asUser(student._id.toString())).post(joinUrl),
+    ]);
+
+    expect(responses.map((res) => res.status).sort((a, b) => a - b)).toEqual([201, 409]);
+    expect(await Membership.countDocuments({ userId: student._id, clubId: club._id })).toBe(1);
+    expect(await ConversationParticipant.countDocuments({ conversationId: channel._id })).toBe(1);
+  });
+
+  it('rolls back the membership when the student cannot be added to a channel', async () => {
+    const { club } = await createClubWithChannel();
+    const student = await createUser();
+    jest
+      .spyOn(ConversationParticipant, 'create')
+      .mockRejectedValueOnce(new Error('Simulated participant creation failure'));
+
+    const res = await request(asUser(student._id.toString())).post(`/api/clubs/${club._id.toString()}/join`);
+
+    expect(res.status).toBe(500);
+    expect(await Membership.countDocuments()).toBe(0);
+    expect(await ConversationParticipant.countDocuments()).toBe(0);
   });
 
   it('reactivates an inactive membership as an active member', async () => {
