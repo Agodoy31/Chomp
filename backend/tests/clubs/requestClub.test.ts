@@ -92,6 +92,22 @@ describe('POST /api/clubs', () => {
     expect(res.status).toBe(201);
   });
 
+  it('accepts club names with punctuation, accents, and plus signs', async () => {
+    const names = [
+      'Society of Women Engineers (SWE)',
+      'C++ Users Group',
+      'Women\u2019s Rugby',
+      'Habitat for Humanity @ UF',
+      'UF AI/ML Club!',
+      'Café Club',
+    ];
+
+    for (const name of names) {
+      const res = await student.post('/api/clubs').send(clubInput({ name }));
+      expect({ name, status: res.status }).toEqual({ name, status: 201 });
+    }
+  });
+
   it('ignores a status or proposerId sent in the body', async () => {
     const res = await student
       .post('/api/clubs')
@@ -162,7 +178,8 @@ describe('POST /api/clubs', () => {
         'Club name must be 100 characters or fewer',
       ],
       [{ name: 'a'.repeat(101) }, 'Club name must be 100 characters or fewer'],
-      [{ name: 'Chess Club <3' }, "Club name can only use letters, numbers, spaces, and & ' . , -"],
+      [{ name: 'Chess Club <3' }, 'Club name can only use letters, numbers, spaces, punctuation, and +'],
+      [{ name: 'Chess Club \u265f' }, 'Club name can only use letters, numbers, spaces, punctuation, and +'],
       [{ name: 42 }, 'Club name must be text'],
       [{ description: false }, 'Club description must be text'],
       [{ description: 'a'.repeat(1001) }, 'Club description must be 1000 characters or fewer'],
