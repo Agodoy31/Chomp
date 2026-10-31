@@ -256,9 +256,12 @@ export async function addParticipantsToConversation(
   userIds: Types.ObjectId[],
   requestingUserIdOrSession?: Types.ObjectId | ClientSession,
   session?: ClientSession
-): Promise<IConversationParticipant[]> {
+): Promise<IConversationParticipantSummary[]> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid conversationId is required'
+    );
   }
 
   let _requestingUserId: Types.ObjectId | undefined;
@@ -273,17 +276,26 @@ export async function addParticipantsToConversation(
     } else if (mongoose.isObjectIdOrHexString(requestingUserIdOrSession)) {
       _requestingUserId = new Types.ObjectId(requestingUserIdOrSession);
     } else {
-      throw new Error('Valid requestingUserId is required');
+      throw new MessagingError(
+        MessagingErrorCode.VALIDATION_FAILED,
+        'Valid requestingUserId is required'
+      );
     }
   }
 
   if (!Array.isArray(userIds)) {
-    throw new Error('userIds must be an array');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'userIds must be an array'
+    );
   }
 
   for (const id of userIds) {
     if (!id || !mongoose.isObjectIdOrHexString(id)) {
-      throw new Error('Valid participantId is required');
+      throw new MessagingError(
+        MessagingErrorCode.VALIDATION_FAILED,
+        'Valid participantId is required'
+      );
     }
   }
 
@@ -296,16 +308,25 @@ export async function addParticipantsToConversation(
   const conversation = await conversationQuery.exec();
 
   if (!conversation) {
-    throw new Error('Conversation does not exist');
+    throw new MessagingError(
+      MessagingErrorCode.CONVERSATION_NOT_FOUND,
+      'Conversation does not exist'
+    );
   }
 
   if (conversation.type === ConversationType.DIRECT) {
-    throw new Error('Cannot add participants to a direct conversation');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'Cannot add participants to a direct conversation'
+    );
   }
 
   if (conversation.type === ConversationType.GROUP) {
     if (!_requestingUserId) {
-      throw new Error('requestingUserId is required for group conversations');
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'requestingUserId is required for group conversations'
+      );
     }
 
     const requesterQuery = ConversationParticipant.findOne({
@@ -320,11 +341,17 @@ export async function addParticipantsToConversation(
     const requester = await requesterQuery.exec();
 
     if (!requester) {
-      throw new Error('User is not a participant in this conversation');
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'User is not a participant in this conversation'
+      );
     }
 
     if (requester.permission === ParticipantPermission.READ) {
-      throw new Error('User does not have permission to add participants');
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'User does not have permission to add participants'
+      );
     }
   }
 
@@ -335,7 +362,10 @@ export async function addParticipantsToConversation(
 
   const usersExist = await validateUsersExist(uniqueUserIds);
   if (!usersExist) {
-    throw new Error('One or more users do not exist');
+    throw new MessagingError(
+      MessagingErrorCode.USER_NOT_FOUND,
+      'One or more users do not exist'
+    );
   }
 
   const existingQuery = ConversationParticipant.find({
@@ -368,21 +398,31 @@ export async function addParticipantsToConversation(
     activeSession ? { session: activeSession, ordered: true } : { ordered: true }
   );
 
+  const usersQuery = User.find({ _id: { $in: usersToAdd } })
+    .select('firstName lastName')
+    .lean<IUserSummary[]>();
+  if (activeSession) {
+    usersQuery.session(activeSession);
+  }
+  const addedUsers = await usersQuery.exec();
+
   if (_requestingUserId) {
-    const requester = await User.findById(_requestingUserId)
+    const requesterQuery = User.findById(_requestingUserId)
       .select('firstName lastName')
-      .lean<IUserSummary>()
-      .exec();
+      .lean<IUserSummary>();
+    if (activeSession) {
+      requesterQuery.session(activeSession);
+    }
+    const requester = await requesterQuery.exec();
     const requesterName = requester
       ? `${requester.firstName} ${requester.lastName}`.trim()
       : 'Someone';
 
     let text: string;
     if (usersToAdd.length === 1) {
-      const addedUser = await User.findById(usersToAdd[0])
-        .select('firstName lastName')
-        .lean<IUserSummary>()
-        .exec();
+      const addedUser = addedUsers.find(
+        (u) => u._id.toString() === usersToAdd[0].toString()
+      );
       const addedUserName = addedUser
         ? `${addedUser.firstName} ${addedUser.lastName}`.trim()
         : 'someone';
@@ -405,7 +445,21 @@ export async function addParticipantsToConversation(
     );
   }
 
-  return created.map((doc) => doc.toObject<IConversationParticipant>());
+  const userMap = new Map<string, IUserSummary>(
+    addedUsers.map((u) => [u._id.toString(), u])
+  );
+
+  return created.map((doc) => {
+    const userSummary = userMap.get(doc.userId.toString()) || {
+      _id: doc.userId,
+      firstName: '',
+      lastName: '',
+    };
+    return {
+      userId: userSummary,
+      permission: doc.permission || ParticipantPermission.WRITE,
+    };
+  });
 }
 
 export async function createChannel(
