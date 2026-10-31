@@ -740,57 +740,127 @@ export async function updateConversationTitle(
   newTitle: string
 ): Promise<IConversation> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid conversationId is required'
+    );
   }
 
   if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
-    throw new Error('Valid requestingUserId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid requestingUserId is required'
+    );
   }
 
   if (typeof newTitle !== 'string' || newTitle.trim().length === 0) {
-    throw new Error('Valid conversation title is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid conversation title is required'
+    );
   }
 
-  const participant = await ConversationParticipant.findOne({
-    userId: requestingUserId,
-    conversationId,
-  })
-    .select('permission')
-    .lean();
-
-  if (!participant) {
-    throw new Error('User is not a participant in this conversation');
-  }
-
-  const conversation = await Conversation.findById(conversationId);
-  if (!conversation) {
-    throw new Error('Conversation not found');
-  }
-
-  if (conversation.type === ConversationType.DIRECT) {
-    throw new Error('Cannot update title of a direct conversation');
-  }
-
-  if (conversation.type === ConversationType.GROUP) {
-    if (participant.permission === ParticipantPermission.READ) {
-      throw new Error('User does not have permission to update conversation title');
-    }
-  } else if (conversation.type === ConversationType.CHANNEL) {
-    if (participant.permission !== ParticipantPermission.MODERATE) {
-      throw new Error('User does not have permission to update conversation title');
-    }
-  }
-
-  conversation.title = newTitle.trim();
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
   try {
-    await conversation.save();
+    const conversation = await Conversation.findById(conversationId).session(session);
+    if (!conversation) {
+      throw new MessagingError(
+        MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        'Conversation not found'
+      );
+    }
+
+    if (conversation.type === ConversationType.DIRECT) {
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'Cannot update title of a direct conversation'
+      );
+    }
+
+    const participant = await ConversationParticipant.findOne({
+      userId: requestingUserId,
+      conversationId,
+    })
+      .select('permission')
+      .session(session)
+      .lean();
+
+    if (!participant) {
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'User is not a participant in this conversation'
+      );
+    }
+
+    if (
+      conversation.type === ConversationType.GROUP &&
+      participant.permission === ParticipantPermission.READ
+    ) {
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'User does not have permission to update conversation title'
+      );
+    }
+
+    if (
+      conversation.type === ConversationType.CHANNEL &&
+      participant.permission !== ParticipantPermission.MODERATE
+    ) {
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'User does not have permission to update conversation title'
+      );
+    }
+
+    const oldTitle = conversation.title;
+    conversation.title = newTitle.trim();
+
+    try {
+      await conversation.save({ session });
+    } catch (saveError: any) {
+      if (saveError && saveError.code === 11000) {
+        throw new MessagingError(
+          MessagingErrorCode.CHANNEL_TITLE_EXISTS,
+          'A channel with this title already exists in the club'
+        );
+      }
+      throw saveError;
+    }
+
+    if (conversation.type === ConversationType.GROUP && oldTitle !== conversation.title) {
+      const requester = await User.findById(requestingUserId)
+        .select('firstName lastName')
+        .session(session)
+        .lean<IUserSummary>();
+      const requesterName = requester
+        ? `${requester.firstName} ${requester.lastName}`.trim()
+        : 'Someone';
+
+      await Message.create(
+        [
+          {
+            conversationId,
+            senderId: requestingUserId,
+            text: `${requesterName} changed the group title to ${conversation.title}`,
+            isAnnouncement: false,
+            isSystem: true,
+          },
+        ],
+        { session }
+      );
+    }
+
+    await session.commitTransaction();
     return conversation.toObject<IConversation>();
   } catch (error: any) {
-    if (error && error.code === 11000) {
-      throw new Error('A channel with this title already exists in the club', { cause: error });
+    if (session.inTransaction()) {
+      await session.abortTransaction();
     }
     throw error;
+  } finally {
+    await session.endSession();
   }
 }
 
