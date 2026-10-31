@@ -8,16 +8,23 @@ import { MOCK_CONVERSATIONS } from '../testData/mockConversations';
 
 export default function MessagingPage() {
   const [activeConversation, setActiveConversation] = useState<Conversation>(MOCK_CONVERSATIONS[0]);
-  const [isModalDisplayed] = useState<boolean>(false);
+  const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
 
   return (
     <div className="d-flex flex-column" style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>
       <Header />
       <div className="d-flex flex-grow-1 overflow-hidden">
         <Sidebar onSelectConversation={setActiveConversation} />
-        <MessageArea conversation={activeConversation} />
+        <MessageArea
+          conversation={activeConversation}
+          onOpenDetails={() => setIsModalDisplayed(true)}
+        />
       </div>
-      {isModalDisplayed && <ConversationDetailsModal />}
+      <ConversationDetailsModal
+        show={isModalDisplayed}
+        onHide={() => setIsModalDisplayed(false)}
+        conversation={activeConversation}
+      />
     </div>
   );
 }
