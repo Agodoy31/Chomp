@@ -309,8 +309,8 @@ export async function addParticipantsToConversation(
     }
 
     const requesterQuery = ConversationParticipant.findOne({
-      conversationId,
       userId: _requestingUserId,
+      conversationId,
     })
       .select('permission')
       .lean();
@@ -339,8 +339,8 @@ export async function addParticipantsToConversation(
   }
 
   const existingQuery = ConversationParticipant.find({
-    conversationId,
     userId: { $in: uniqueUserIds },
+    conversationId,
   })
     .select('userId')
     .lean();
@@ -572,8 +572,8 @@ export async function isUserParticipant(
   }
 
   const participantExists = await ConversationParticipant.exists({
-    conversationId,
     userId,
+    conversationId,
   });
 
   return Boolean(participantExists);
@@ -698,8 +698,8 @@ export async function updateConversationTitle(
   }
 
   const participant = await ConversationParticipant.findOne({
-    conversationId,
     userId: requestingUserId,
+    conversationId,
   })
     .select('permission')
     .lean();
@@ -808,8 +808,8 @@ async function executeRemoveParticipantFromConversation(
   }
 
   const requesterParticipant = await ConversationParticipant.findOne({
-    conversationId,
     userId: requestingUserId,
+    conversationId,
   })
     .select('permission')
     .session(session)
@@ -827,7 +827,7 @@ async function executeRemoveParticipantFromConversation(
 
   const targetParticipant = isSelf
     ? requesterParticipant
-    : await ConversationParticipant.findOne({ conversationId, userId: targetUserId })
+    : await ConversationParticipant.findOne({ userId: targetUserId, conversationId })
         .select('permission')
         .session(session)
         .lean()
@@ -860,8 +860,8 @@ async function executeRemoveParticipantFromConversation(
 
   await ConversationParticipant.deleteOne(
     {
-      conversationId,
       userId: targetUserId,
+      conversationId,
     },
     { session }
   ).exec();
@@ -907,22 +907,6 @@ async function executeRemoveParticipantFromConversation(
   );
 
   return true;
-}
-
-export async function leaveConversation(
-  conversationId: Types.ObjectId,
-  userId: Types.ObjectId,
-  session?: ClientSession
-): Promise<boolean> {
-  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
-  }
-
-  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
-    throw new Error('Valid userId is required');
-  }
-
-  return removeParticipantFromConversation(conversationId, userId, userId, session);
 }
 
 export type PermissionUpdate = [Types.ObjectId, ParticipantPermission];
@@ -1018,8 +1002,8 @@ async function executeUpdateParticipantPermissions(
   }
 
   const requesterParticipant = await ConversationParticipant.findOne({
-    conversationId,
     userId: requestingUserId,
+    conversationId,
   })
     .select('permission')
     .session(session)
@@ -1065,8 +1049,8 @@ async function executeUpdateParticipantPermissions(
 
   for (const [targetUserId, newPermission] of normalizedUpdates) {
     const targetParticipant = await ConversationParticipant.findOne({
-      conversationId,
       userId: targetUserId,
+      conversationId,
     })
       .session(session)
       .exec();
@@ -1134,22 +1118,6 @@ async function executeUpdateParticipantPermissions(
   }
 
   return updatedParticipants;
-}
-
-export async function updateParticipantPermission(
-  conversationId: Types.ObjectId,
-  requestingUserId: Types.ObjectId,
-  targetUserId: Types.ObjectId,
-  newPermission: ParticipantPermission,
-  session?: ClientSession
-): Promise<IConversationParticipant> {
-  const [updated] = await updateParticipantPermissions(
-    conversationId,
-    requestingUserId,
-    [targetUserId, newPermission],
-    session
-  );
-  return updated;
 }
 
 export async function getUserConversations(
