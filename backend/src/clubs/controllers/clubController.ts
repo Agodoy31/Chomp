@@ -6,7 +6,7 @@ import { User } from '../../user/models/User';
 import { CLUB_CATEGORIES, type ClubFilter } from '../interfaces/clubs.interface';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
-import { adminRequired, authenticationRequired, isDuplicateKey, sendError } from '../errors';
+import { adminRequired, isDuplicateKey, sendError } from '../errors';
 
 const DEFAULT_CHANNEL_TITLE = 'General';
 
@@ -105,12 +105,6 @@ export const getClubs = async (req: Request, res: Response) => {
 };
 
 export const requestClub = async (req: Request, res: Response): Promise<void> => {
-  const userId = req.session?.userId;
-  if (!userId) {
-    sendError(res, authenticationRequired());
-    return;
-  }
-
   const parsed = clubRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     const [issue] = parsed.error.issues;
@@ -136,7 +130,7 @@ export const requestClub = async (req: Request, res: Response): Promise<void> =>
     description,
     category,
     meeting,
-    proposerId: userId,
+    proposerId: req.session.userId,
     status: 'PENDING',
   });
 
@@ -154,14 +148,8 @@ export const requestClub = async (req: Request, res: Response): Promise<void> =>
 };
 
 // See Issue #31: https://github.com/Agodoy31/Chomp/issues/31
-export const createClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
-  const userId = req.session?.userId;
-  if (!userId) {
-    sendError(res, authenticationRequired());
-    return;
-  }
-
-  const isAdmin = await User.exists({ _id: userId, isAdmin: true });
+export const approveClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
+  const isAdmin = await User.exists({ _id: req.session.userId, isAdmin: true });
   if (!isAdmin) {
     sendError(res, adminRequired());
     return;
