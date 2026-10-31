@@ -2,30 +2,35 @@ import { InferSchemaType, Schema, model } from 'mongoose';
 import { CLUB_CATEGORIES, CLUB_STATUSES } from '../interfaces/clubs.interface';
 const meetingSchema = new Schema(
   {
-    day: { type: String, trim: true },
-    time: { type: String, trim: true },
-    location: { type: String, trim: true },
+    day: { type: String, trim: true, maxlength: 15 },
+    time: { type: String, trim: true, maxlength: 8 },
+    location: { type: String, trim: true, maxlength: 120 },
   },
   { _id: false }
 );
 
 const clubSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true },
-    description: { type: String, required: true, trim: true, maxlength: 1000},
+    name: { 
+      type: String, 
+      required: [true, 'Club name is required'], 
+      trim: true,
+      maxlength: 100,
+    },
+    description: { type: String, required: [true, 'Club description is required'], trim: true, maxlength: 1000},
     category: { 
       type: String, 
       enum: CLUB_CATEGORIES,
       default: 'OTHER',
-      required: true,
+      required: [true, 'Club category is required'],
     },
     meeting: { type: meetingSchema },
-    proposerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    proposerId: { type: Schema.Types.ObjectId, ref: 'User', required: [true, 'proposerId is required'] },
     status: {
       type: String,
       enum: CLUB_STATUSES,
       default: 'PENDING',
-      required: true,
+      required: [true, 'status is required'],
     },
   },
   { timestamps: true }

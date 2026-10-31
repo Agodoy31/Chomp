@@ -27,13 +27,14 @@ export const connectTestDb = async (): Promise<void> => {
 /**
  * Remove all documents across all collections in the in-memory database.
  * Use in afterEach hooks to ensure complete test isolation.
+ * Collections named in keepCollections are left alone, such as users who stay logged in for a whole file.
  */
-export const clearTestDb = async (): Promise<void> => {
+export const clearTestDb = async (keepCollections: string[] = []): Promise<void> => {
   if (mongoose.connection.readyState !== 0) {
     const collections = mongoose.connection.collections;
-    const clearPromises = Object.keys(collections).map((key) =>
-      collections[key].deleteMany({})
-    );
+    const clearPromises = Object.keys(collections)
+      .filter((key) => !keepCollections.includes(key))
+      .map((key) => collections[key].deleteMany({}));
     await Promise.all(clearPromises);
   }
 };
