@@ -8,7 +8,7 @@ import { MOCK_CONVERSATIONS } from '../testData/mockConversations';
 
 export default function MessagingPage() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(MOCK_CONVERSATIONS[0]);
-  const [isModalDisplayed] = useState<boolean>(false);
+  const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
 
   return (
     <div className="d-flex flex-column vh-100 overflow-hidden">
@@ -18,9 +18,16 @@ export default function MessagingPage() {
           activeConversationId={activeConversation?._id}
           onSelectConversation={setActiveConversation}
         />
-        <MessageArea conversation={activeConversation} />
+        <MessageArea
+          conversation={activeConversation}
+          onOpenDetails={() => setIsModalDisplayed(true)}
+        />
       </div>
-      {isModalDisplayed && <ConversationDetailsModal />}
+      <ConversationDetailsModal
+        show={isModalDisplayed}
+        onHide={() => setIsModalDisplayed(false)}
+        conversation={activeConversation}
+      />
     </div>
   );
 }
