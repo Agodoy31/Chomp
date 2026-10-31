@@ -1,22 +1,11 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll } from '@jest/globals';
-import express, { NextFunction, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
-import { sessionMiddleware } from '../../src/sessions/session';
+import { User } from '../../src/user/models/User';
+import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
-
-function asUser(userId: string) {
-  const wrapper = express();
-  wrapper.use(sessionMiddleware);
-  wrapper.use((req: Request, _res: Response, next: NextFunction) => {
-    req.session.userId = userId;
-    next();
-  });
-  wrapper.use(app);
-  return wrapper;
-}
 
 function clubInput(overrides: Record<string, unknown> = {}) {
   return {
@@ -27,15 +16,21 @@ function clubInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe('POST /api/clubs', () => {
-  const userId = new mongoose.Types.ObjectId().toString();
+  let student: LoggedInAgent;
+  let studentId: string;
+  let otherStudentId: mongoose.Types.ObjectId;
 
   beforeAll(async () => {
     await connectTestDb();
-    await Club.init();
+    await Promise.all([Club.init(), User.init()]);
+    const [user, otherUser] = await Promise.all([createUser(), createUser()]);
+    studentId = user._id.toString();
+    otherStudentId = otherUser._id;
+    student = await logIn(user);
   }, 60000);
 
   afterEach(async () => {
-    await clearTestDb();
+    await clearTestDb(['users']);
   });
 
   afterAll(async () => {
@@ -43,7 +38,7 @@ describe('POST /api/clubs', () => {
   });
 
   it('saves a pending request with trimmed fields and the logged-in student as proposer', async () => {
-    const res = await request(asUser(userId))
+    const res = await student
       .post('/api/clubs')
       .send({
         name: '  Chess Club  ',
@@ -60,15 +55,15 @@ describe('POST /api/clubs', () => {
       status: 'PENDING',
     };
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ ...expected, proposerId: userId });
+    expect(res.body).toMatchObject({ ...expected, proposerId: studentId });
 
     const stored = await Club.findById(res.body._id).lean();
     expect(stored).toMatchObject(expected);
-    expect(stored?.proposerId.toString()).toBe(userId);
+    expect(stored?.proposerId.toString()).toBe(studentId);
   });
 
   it('defaults the category to OTHER and stores no meeting when both are omitted', async () => {
-    const res = await request(asUser(userId)).post('/api/clubs').send(clubInput());
+    const res = await student.post('/api/clubs').send(clubInput());
 
     expect(res.status).toBe(201);
     expect(res.body.category).toBe('OTHER');
@@ -76,7 +71,7 @@ describe('POST /api/clubs', () => {
   });
 
   it('stores only the meeting fields that were sent', async () => {
-    const res = await request(asUser(userId))
+    const res = await student
       .post('/api/clubs')
       .send(clubInput({ meeting: { day: 'Monday' } }));
 
@@ -86,7 +81,7 @@ describe('POST /api/clubs', () => {
   });
 
   it('accepts each field at its max length', async () => {
-    const res = await request(asUser(userId))
+    const res = await student
       .post('/api/clubs')
       .send({
         name: 'a'.repeat(100),
@@ -98,28 +93,28 @@ describe('POST /api/clubs', () => {
   });
 
   it('ignores a status or proposerId sent in the body', async () => {
-    const res = await request(asUser(userId))
+    const res = await student
       .post('/api/clubs')
       .send(clubInput({ status: 'APPROVED', proposerId: new mongoose.Types.ObjectId().toString() }));
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('PENDING');
-    expect(res.body.proposerId).toBe(userId);
+    expect(res.body.proposerId).toBe(studentId);
   });
 
   it('accepts a name that another pending request already uses', async () => {
-    await Club.create({ ...clubInput(), proposerId: new mongoose.Types.ObjectId() });
+    await Club.create({ ...clubInput(), proposerId: otherStudentId });
 
-    const res = await request(asUser(userId)).post('/api/clubs').send(clubInput());
+    const res = await student.post('/api/clubs').send(clubInput());
 
     expect(res.status).toBe(201);
     expect(await Club.countDocuments({ status: 'PENDING' })).toBe(2);
   });
 
   it('returns 409 when an approved club already uses the name in any letter case', async () => {
-    await Club.create({ ...clubInput(), proposerId: new mongoose.Types.ObjectId(), status: 'APPROVED' });
+    await Club.create({ ...clubInput(), proposerId: otherStudentId, status: 'APPROVED' });
 
-    const res = await request(asUser(userId))
+    const res = await student
       .post('/api/clubs')
       .send(clubInput({ name: ' CHESS club ' }));
 
@@ -150,7 +145,7 @@ describe('POST /api/clubs', () => {
     ];
 
     for (const [body, message] of cases) {
-      const res = await request(asUser(userId)).post('/api/clubs').send(body);
+      const res = await student.post('/api/clubs').send(body);
       expect({ status: res.status, body: res.body }).toEqual({
         status: 400,
         body: { code: 'ERR_INVALID_CLUB_REQUEST', message },
@@ -182,7 +177,7 @@ describe('POST /api/clubs', () => {
     ];
 
     for (const [overrides, message] of cases) {
-      const res = await request(asUser(userId)).post('/api/clubs').send(clubInput(overrides));
+      const res = await student.post('/api/clubs').send(clubInput(overrides));
       expect({ status: res.status, body: res.body }).toEqual({
         status: 400,
         body: { code: 'ERR_INVALID_CLUB_REQUEST', message },
@@ -193,7 +188,7 @@ describe('POST /api/clubs', () => {
 
   it('returns 400 with ERR_INVALID_CATEGORY for an unknown, blank, or non-text category', async () => {
     for (const category of ['GAMING', '', '   ', 42, null]) {
-      const res = await request(asUser(userId)).post('/api/clubs').send(clubInput({ category }));
+      const res = await student.post('/api/clubs').send(clubInput({ category }));
       expect({ status: res.status, body: res.body }).toEqual({
         status: 400,
         body: { code: 'ERR_INVALID_CATEGORY', message: 'Invalid Category' },
