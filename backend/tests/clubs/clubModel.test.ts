@@ -130,6 +130,27 @@ describe('Club model', () => {
     );
   });
 
+  it('accepts a name and meeting details at their max lengths', async () => {
+    const club = await Club.create(
+      clubInput({
+        name: 'a'.repeat(100),
+        meeting: { day: 'a'.repeat(15), time: 'a'.repeat(8), location: 'a'.repeat(120) },
+      })
+    );
+
+    expect(club.name).toHaveLength(100);
+    expect(club.toObject().meeting?.location).toHaveLength(120);
+  });
+
+  it.each([
+    ['name', { name: 'a'.repeat(101) }],
+    ['meeting day', { meeting: { day: 'a'.repeat(16) } }],
+    ['meeting time', { meeting: { time: 'a'.repeat(9) } }],
+    ['meeting location', { meeting: { location: 'a'.repeat(121) } }],
+  ])('rejects a %s over its max length', async (_field, overrides) => {
+    await expect(Club.create(clubInput(overrides))).rejects.toThrow(mongoose.Error.ValidationError);
+  });
+
   it('compares approved names after trimming surrounding spaces', async () => {
     await Club.create(clubInput({ name: '  Robotics  ', status: 'APPROVED' }));
 
