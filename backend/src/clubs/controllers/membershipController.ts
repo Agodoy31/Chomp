@@ -4,8 +4,7 @@ import { addParticipantsToConversation, getClubChannels } from '../../messaging/
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
 import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
-import { 
-  sendError, isDuplicateKey, authenticationRequired } from '../errors';
+import { sendError, isDuplicateKey } from '../errors';
 
 type MembershipRecord = HydratedDocument<MembershipShape>;
 
@@ -91,12 +90,7 @@ async function activateMembership(
 }
 
 export const joinClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
-  const userId = req.session?.userId;
-  if (!userId) {
-    sendError(res, authenticationRequired()); 
-    return;
-  }
-
+  const userId = req.session.userId!;
   const clubId = req.params.clubId;
 
   if (!mongoose.isValidObjectId(clubId)) {

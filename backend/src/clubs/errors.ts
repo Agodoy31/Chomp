@@ -7,10 +7,6 @@ export function sendError(res: Response, error: ClientError): void {
 export function isDuplicateKey(error: unknown): boolean {
     return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
-//Will be replaced when user auth is implemented
-export function authenticationRequired(): ClientError {
-    return { status: 401, code: 'ERR_AUTHENTICATION_REQUIRED', message: 'Authentication required' };
-}
 export function adminRequired(): ClientError {
     return { status: 403, code: 'ERR_ADMIN_REQUIRED', message: 'Admin access required' };
 }

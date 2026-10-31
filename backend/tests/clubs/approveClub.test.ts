@@ -116,7 +116,7 @@ describe('POST /api/clubs/:clubId/approve', () => {
     const res = await request(app).post(`/api/clubs/${club._id.toString()}/approve`);
 
     expect(res.status).toBe(401);
-    expect(res.body.code).toBe('ERR_AUTHENTICATION_REQUIRED');
+    expect(res.body).toEqual({ message: 'ERR_REQUIRE_AUTH', redirectTo: '/login' });
     await expectNotProvisioned(club._id);
   });
 

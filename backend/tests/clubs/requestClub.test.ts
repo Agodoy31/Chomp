@@ -135,7 +135,7 @@ describe('POST /api/clubs', () => {
     const res = await request(app).post('/api/clubs').send(clubInput());
 
     expect(res.status).toBe(401);
-    expect(res.body.code).toBe('ERR_AUTHENTICATION_REQUIRED');
+    expect(res.body).toEqual({ message: 'ERR_REQUIRE_AUTH', redirectTo: '/login' });
     expect(await Club.countDocuments()).toBe(0);
   });
 
