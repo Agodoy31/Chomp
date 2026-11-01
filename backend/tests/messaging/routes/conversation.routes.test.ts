@@ -123,6 +123,17 @@ describe('conversation route authentication guards', () => {
       redirectTo: '/login',
     });
   });
+
+  it('rejects unauthenticated POST /api/conversations/:id/participants with 401', async () => {
+    const res = await request(app)
+      .post('/api/conversations/507f1f77bcf86cd799439011/participants')
+      .send({ userIds: ['507f1f77bcf86cd799439022'] });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
 });
 
 describe('empty conversation inbox', () => {
@@ -1015,4 +1026,126 @@ describe('PATCH /api/conversations/:id', () => {
     jest.restoreAllMocks();
   });
 });
+
+describe('POST /api/conversations/:id/participants', () => {
+  beforeAll(async () => {
+    if (!directConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'DIRECT',
+          recipientId: studentB.user._id.toString(),
+        });
+      directConversationId = res.body._id;
+    }
+
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'French Fries Monument Preservation Society',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+  });
+
+  it('allows group participant to add new members with 200 and populated summaries', async () => {
+    const newStudent = await createSignedInStudent({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
+
+    const res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [newStudent.user._id.toString()] });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].userId._id).toBe(newStudent.user._id.toString());
+    expect(res.body[0].userId.firstName).toBe('Tim');
+    expect(res.body[0].userId.lastName).toBe('Tebow');
+    expect(res.body[0].permission).toBe('WRITE');
+  });
+
+  it('rejects malformed id empty userIds or invalid userIds with 400', async () => {
+    let res = await studentA.agent
+      .post('/api/conversations/not-a-valid-hex/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('userIds');
+
+    res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: ['not-an-objectid'] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('userIds');
+  });
+
+  it('rejects adding participants to direct conversation or by non participant with 403', async () => {
+    let res = await studentA.agent
+      .post('/api/conversations/' + directConversationId + '/participants')
+      .send({ userIds: [studentC.user._id.toString()] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    const outsider = await createSignedInStudent({
+      firstName: 'Alberta',
+      lastName: 'Gator',
+      email: 'alberta@ufl.edu',
+    });
+
+    res = await outsider.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('returns 404 for missing conversation and 404 for non existent target user', async () => {
+    let res = await studentA.agent
+      .post('/api/conversations/' + new Types.ObjectId().toString() + '/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [new Types.ObjectId().toString()] });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_USER_NOT_FOUND');
+  });
+
+  it('returns 500 when service encounters an unexpected failure', async () => {
+    jest
+      .spyOn(conversationService, 'addParticipantsToConversation')
+      .mockRejectedValueOnce(new Error('Transaction lock failure'));
+
+    const errRes = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+
+    expect(errRes.status).toBe(500);
+    expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
 
