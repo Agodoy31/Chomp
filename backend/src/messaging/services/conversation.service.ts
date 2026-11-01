@@ -871,15 +871,24 @@ export async function removeParticipantFromConversation(
   externalSession?: ClientSession
 ): Promise<boolean> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid conversationId is required'
+    );
   }
 
   if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
-    throw new Error('Valid requestingUserId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid requestingUserId is required'
+    );
   }
 
   if (!targetUserId || !mongoose.isObjectIdOrHexString(targetUserId)) {
-    throw new Error('Valid targetUserId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid targetUserId is required'
+    );
   }
 
   if (externalSession) {
@@ -924,11 +933,17 @@ async function executeRemoveParticipantFromConversation(
     .lean()
     .exec();
   if (!conversation) {
-    throw new Error('Conversation not found');
+    throw new MessagingError(
+      MessagingErrorCode.CONVERSATION_NOT_FOUND,
+      'Conversation not found'
+    );
   }
 
   if (conversation.type === ConversationType.DIRECT) {
-    throw new Error('Cannot remove participants from a direct conversation');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'Cannot remove participants from a direct conversation'
+    );
   }
 
   const requesterParticipant = await ConversationParticipant.findOne({
@@ -941,12 +956,18 @@ async function executeRemoveParticipantFromConversation(
     .exec();
 
   if (!requesterParticipant) {
-    throw new Error('User is not a participant in this conversation');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'User is not a participant in this conversation'
+    );
   }
 
   const isSelf = requestingUserId.toString() === targetUserId.toString();
   if (!isSelf && requesterParticipant.permission !== ParticipantPermission.MODERATE) {
-    throw new Error('Only moderators can remove other participants');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'Only moderators can remove other participants'
+    );
   }
 
   const targetParticipant = isSelf
@@ -958,7 +979,10 @@ async function executeRemoveParticipantFromConversation(
         .exec();
 
   if (!targetParticipant) {
-    throw new Error('Target user is not a participant in this conversation');
+    throw new MessagingError(
+      MessagingErrorCode.USER_NOT_FOUND,
+      'Target user is not a participant in this conversation'
+    );
   }
 
   if (
@@ -975,7 +999,8 @@ async function executeRemoveParticipantFromConversation(
         userId: { $ne: targetUserId },
       }).session(session);
       if (remainingModerators === 0) {
-        throw new Error(
+        throw new MessagingError(
+          MessagingErrorCode.PERMISSION_DENIED,
           'Cannot remove the last moderator from a group conversation with remaining participants'
         );
       }
@@ -1046,17 +1071,26 @@ export async function updateParticipantPermissions(
   requestingUserId: Types.ObjectId,
   updates: PermissionUpdate | PermissionUpdate[],
   session?: ClientSession
-): Promise<IConversationParticipant[]> {
+): Promise<IConversationParticipantSummary[]> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
-    throw new Error('Valid conversationId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid conversationId is required'
+    );
   }
 
   if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
-    throw new Error('Valid requestingUserId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid requestingUserId is required'
+    );
   }
 
   if (!updates) {
-    throw new Error('Permission updates are required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Permission updates are required'
+    );
   }
 
   const normalizedUpdates: PermissionUpdate[] = isPermissionUpdateTuple(updates)
@@ -1069,10 +1103,16 @@ export async function updateParticipantPermissions(
 
   for (const [targetUserId, newPermission] of normalizedUpdates) {
     if (!targetUserId || !mongoose.isObjectIdOrHexString(targetUserId)) {
-      throw new Error('Valid targetUserId is required');
+      throw new MessagingError(
+        MessagingErrorCode.VALIDATION_FAILED,
+        'Valid targetUserId is required'
+      );
     }
     if (!Object.values(ParticipantPermission).includes(newPermission)) {
-      throw new Error('Valid permission is required');
+      throw new MessagingError(
+        MessagingErrorCode.VALIDATION_FAILED,
+        'Valid permission is required'
+      );
     }
   }
 
@@ -1111,18 +1151,24 @@ async function executeUpdateParticipantPermissions(
   requestingUserId: Types.ObjectId,
   normalizedUpdates: PermissionUpdate[],
   session: ClientSession
-): Promise<IConversationParticipant[]> {
+): Promise<IConversationParticipantSummary[]> {
   const conversation = await Conversation.findById(conversationId)
     .select('type')
     .session(session)
     .lean()
     .exec();
   if (!conversation) {
-    throw new Error('Conversation not found');
+    throw new MessagingError(
+      MessagingErrorCode.CONVERSATION_NOT_FOUND,
+      'Conversation not found'
+    );
   }
 
   if (conversation.type === ConversationType.DIRECT) {
-    throw new Error('Cannot update permissions in a direct conversation');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'Cannot update permissions in a direct conversation'
+    );
   }
 
   const requesterParticipant = await ConversationParticipant.findOne({
@@ -1135,11 +1181,17 @@ async function executeUpdateParticipantPermissions(
     .exec();
 
   if (!requesterParticipant) {
-    throw new Error('User is not a participant in this conversation');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'User is not a participant in this conversation'
+    );
   }
 
   if (requesterParticipant.permission !== ParticipantPermission.MODERATE) {
-    throw new Error('Only moderators can update participant permissions');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'Only moderators can update participant permissions'
+    );
   }
 
   const isBulk = normalizedUpdates.length > 1;
@@ -1167,7 +1219,10 @@ async function executeUpdateParticipantPermissions(
     }
 
     if (moderatorIds.size === 0) {
-      throw new Error('Group conversations must have at least one moderator');
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'Group conversations must have at least one moderator'
+      );
     }
   }
 
@@ -1180,7 +1235,10 @@ async function executeUpdateParticipantPermissions(
       .exec();
 
     if (!targetParticipant) {
-      throw new Error('Target user is not a participant in this conversation');
+      throw new MessagingError(
+        MessagingErrorCode.USER_NOT_FOUND,
+        'Target user is not a participant in this conversation'
+      );
     }
 
     const oldPermission = targetParticipant.permission;
@@ -1241,7 +1299,28 @@ async function executeUpdateParticipantPermissions(
     }
   }
 
-  return updatedParticipants;
+  const updatedUserIds = normalizedUpdates.map(([targetUserId]) => targetUserId);
+  const updatedUsers = await User.find({ _id: { $in: updatedUserIds } })
+    .select('firstName lastName')
+    .session(session)
+    .lean<IUserSummary[]>()
+    .exec();
+
+  const userMap = new Map<string, IUserSummary>(
+    updatedUsers.map((u) => [u._id.toString(), u])
+  );
+
+  return updatedParticipants.map((p) => {
+    const userSummary = userMap.get(p.userId.toString()) || {
+      _id: p.userId,
+      firstName: '',
+      lastName: '',
+    };
+    return {
+      userId: userSummary,
+      permission: p.permission,
+    };
+  });
 }
 
 export async function getUserConversations(
