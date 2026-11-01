@@ -135,6 +135,17 @@ describe('conversation route authentication guards', () => {
     });
   });
 
+  it('rejects unauthenticated PATCH /api/conversations/:id/participants/:userId with 401', async () => {
+    const res = await request(app)
+      .patch('/api/conversations/507f1f77bcf86cd799439011/participants/507f1f77bcf86cd799439022')
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
   it('rejects unauthenticated DELETE /api/conversations/:id/participants/:userId with 401', async () => {
     const res = await request(app)
       .delete('/api/conversations/507f1f77bcf86cd799439011/participants/507f1f77bcf86cd799439022');
@@ -830,7 +841,7 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     ]);
 
     const systemRes = await studentA.agent
-      .delete(`/api/conversations/${groupConversationId}/messages/${systemMsg._id}`)
+      .delete(`/api/conversations/${groupConversationId}/messages/${systemMsg._id.toString()}`)
       .expect(403);
 
     expect(systemRes.body).toEqual({
@@ -1282,6 +1293,133 @@ describe('DELETE /api/conversations/:id/participants/:userId', () => {
     jest.restoreAllMocks();
   });
 });
+
+describe('PATCH /api/conversations/:id/participants/:userId', () => {
+  beforeAll(async () => {
+    if (!directConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'DIRECT',
+          recipientId: studentB.user._id.toString(),
+        });
+      directConversationId = res.body._id;
+    }
+
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'Swamp Launch Rocketry',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+  });
+
+  it('allows moderator to promote or restrict member permission with 200 and populated summary', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.permission).toBe('READ');
+    expect(res.body.userId._id).toBe(studentB.user._id.toString());
+    expect(res.body.userId.firstName).toBe('Dennis');
+    expect(res.body.userId.lastName).toBe('Heckler');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'WRITE' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.permission).toBe('WRITE');
+  });
+
+  it('rejects malformed ids or invalid permission with 400 and field name', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/not-a-valid-hex/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/not-a-valid-hex')
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid userId is required',
+      field: 'userId',
+    });
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'INVALID_ROLE' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('permission');
+  });
+
+  it('rejects non moderator permission update or direct conversation with 403', async () => {
+    let res = await studentB.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentC.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + directConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('rejects sole moderator demoting themselves with 403', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentA.user._id.toString())
+      .send({ permission: 'WRITE' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('returns 404 for missing conversation and target user not in conversation', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/' + new Types.ObjectId().toString() + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + new Types.ObjectId().toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_USER_NOT_FOUND');
+  });
+
+  it('returns 500 when service encounters an unexpected failure', async () => {
+    jest
+      .spyOn(conversationService, 'updateParticipantPermissions')
+      .mockRejectedValueOnce(new Error('Database disk error'));
+
+    const errRes = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+
+    expect(errRes.status).toBe(500);
+    expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
 
 
 

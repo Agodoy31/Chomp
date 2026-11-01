@@ -37,7 +37,7 @@ export type AddParticipantsBodyInput = z.infer<typeof addParticipantsBodySchema>
 
 export const updateParticipantPermissionBodySchema = z.object({
   permission: z.nativeEnum(ParticipantPermission, {
-    errorMap: () => ({ message: 'Invalid permission value' }),
+    message: 'Invalid permission value',
   }),
 });
 
