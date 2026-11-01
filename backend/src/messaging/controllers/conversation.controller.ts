@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
 import {
+  addParticipantsBodySchema,
   createConversationBodySchema,
   updateConversationTitleBodySchema,
 } from '../validators/conversation.validator';
 import {
+  addParticipantsToConversation,
   createDirectConversation,
   createGroupConversation,
   getConversationDetails,
@@ -251,4 +253,44 @@ export async function updateConversationTitleHandler(req: Request, res: Response
   }
 }
 
+export async function addParticipantsHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+    return;
+  }
 
+  const parseResult = addParticipantsBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0];
+    const field = firstIssue?.path[0] !== undefined ? String(firstIssue.path[0]) : undefined;
+    const message = firstIssue?.message || 'Validation failed';
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message,
+      ...(field !== undefined ? { field } : {}),
+    });
+    return;
+  }
+
+  const sessionUserId = req.session?.userId;
+  if (typeof sessionUserId !== 'string' || !mongoose.isObjectIdOrHexString(sessionUserId)) {
+    res.status(401).json({ message: 'ERR_REQUIRE_AUTH' });
+    return;
+  }
+
+  try {
+    const added = await addParticipantsToConversation(
+      new Types.ObjectId(id),
+      parseResult.data.userIds.map((uid) => new Types.ObjectId(uid)),
+      new Types.ObjectId(sessionUserId)
+    );
+    res.status(200).json(added);
+  } catch (error: unknown) {
+    sendMessagingError(res, error);
+  }
+}
