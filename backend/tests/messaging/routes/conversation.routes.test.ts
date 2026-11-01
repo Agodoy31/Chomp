@@ -101,6 +101,17 @@ describe('conversation route authentication guards', () => {
       redirectTo: '/login',
     });
   });
+
+  it('rejects unauthenticated DELETE /api/conversations/:id/messages/:messageId with 401', async () => {
+    const res = await request(app).delete(
+      '/api/conversations/507f1f77bcf86cd799439011/messages/507f1f77bcf86cd799439022'
+    );
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
 });
 
 describe('empty conversation inbox', () => {
@@ -690,3 +701,136 @@ describe('GET /api/conversations', () => {
     jest.restoreAllMocks();
   });
 });
+
+describe('DELETE /api/conversations/:id/messages/:messageId', () => {
+  beforeAll(async () => {
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'French Fries Monument Preservation Society',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+  });
+
+  it('allows author and group moderator to soft delete messages with 200 and masked text', async () => {
+    const postRes1 = await studentB.agent
+      .post(`/api/conversations/${groupConversationId}/messages`)
+      .send({ text: 'Member message to delete by author' });
+    const messageId1 = postRes1.body._id;
+
+    const delRes1 = await studentB.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${messageId1}`)
+      .expect(200);
+
+    expect(delRes1.body.text).toBe('This message was deleted');
+    expect(delRes1.body.removedAt).toBeDefined();
+    const firstRemovedAt = delRes1.body.removedAt;
+
+    const postRes2 = await studentB.agent
+      .post(`/api/conversations/${groupConversationId}/messages`)
+      .send({ text: 'Member message to delete by moderator' });
+    const messageId2 = postRes2.body._id;
+
+    const delRes2 = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${messageId2}`)
+      .expect(200);
+
+    expect(delRes2.body.text).toBe('This message was deleted');
+    expect(delRes2.body.removedAt).toBeDefined();
+
+    const repeatedDelRes = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${messageId1}`)
+      .expect(200);
+
+    expect(repeatedDelRes.body.text).toBe('This message was deleted');
+    expect(repeatedDelRes.body.removedAt).toBe(firstRemovedAt);
+  });
+
+  it('rejects malformed conversation or message identifiers with 400 and field name', async () => {
+    const invalidConvRes = await studentA.agent
+      .delete('/api/conversations/invalid-id/messages/507f1f77bcf86cd799439011')
+      .expect(400);
+
+    expect(invalidConvRes.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    const invalidMsgRes = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/invalid-id`)
+      .expect(400);
+
+    expect(invalidMsgRes.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid messageId is required',
+      field: 'messageId',
+    });
+  });
+
+  it('rejects unauthorized member deletion attempts and system message deletion with 403', async () => {
+    const memberPostRes = await studentB.agent
+      .post(`/api/conversations/${groupConversationId}/messages`)
+      .send({ text: 'Member message protected from unauthorized deletion' });
+    const memberMsgId = memberPostRes.body._id;
+
+    const unauthorizedRes = await studentC.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${memberMsgId}`)
+      .expect(403);
+
+    expect(unauthorizedRes.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    const [systemMsg] = await Message.create([
+      {
+        conversationId: new Types.ObjectId(groupConversationId),
+        senderId: studentA.user._id,
+        text: 'Dennis Heckler joined the group',
+        isAnnouncement: false,
+        isSystem: true,
+      },
+    ]);
+
+    const systemRes = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${systemMsg._id}`)
+      .expect(403);
+
+    expect(systemRes.body).toEqual({
+      code: 'ERR_PERMISSION_DENIED',
+      message: 'System messages cannot be deleted',
+    });
+  });
+
+  it('returns 404 with ERR_MESSAGE_NOT_FOUND when message does not exist', async () => {
+    const missingMessageId = new Types.ObjectId().toString();
+    const res = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${missingMessageId}`)
+      .expect(404);
+
+    expect(res.body).toEqual({
+      code: 'ERR_MESSAGE_NOT_FOUND',
+      message: 'Message not found',
+    });
+  });
+
+  it('returns 500 when service encounters an unexpected failure', async () => {
+    jest.spyOn(messageService, 'deleteMessage').mockRejectedValueOnce(
+      new Error('Database disk error')
+    );
+
+    const nonExistentMessageId = new Types.ObjectId().toString();
+    const res = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${nonExistentMessageId}`)
+      .expect(500);
+
+    expect(res.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
