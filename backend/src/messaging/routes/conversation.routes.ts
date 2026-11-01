@@ -11,6 +11,7 @@ import {
   postConversationHandler,
   removeParticipantHandler,
   updateConversationTitleHandler,
+  updateParticipantPermissionHandler,
 } from '../controllers/conversation.controller';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.post('/', postConversationHandler);
 router.get('/:id', getConversationDetailsHandler);
 router.patch('/:id', updateConversationTitleHandler);
 router.post('/:id/participants', addParticipantsHandler);
+router.patch('/:id/participants/:userId', updateParticipantPermissionHandler);
 router.delete('/:id/participants/:userId', removeParticipantHandler);
 router.post('/:id/messages', postMessageHandler);
 router.get('/:id/messages', getMessageHistoryHandler);
