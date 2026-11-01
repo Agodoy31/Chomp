@@ -9,6 +9,7 @@ import {
   getConversationDetailsHandler,
   getUserConversationsHandler,
   postConversationHandler,
+  removeParticipantHandler,
   updateConversationTitleHandler,
 } from '../controllers/conversation.controller';
 
@@ -19,6 +20,7 @@ router.post('/', postConversationHandler);
 router.get('/:id', getConversationDetailsHandler);
 router.patch('/:id', updateConversationTitleHandler);
 router.post('/:id/participants', addParticipantsHandler);
+router.delete('/:id/participants/:userId', removeParticipantHandler);
 router.post('/:id/messages', postMessageHandler);
 router.get('/:id/messages', getMessageHistoryHandler);
 router.delete('/:id/messages/:messageId', deleteMessageHandler);

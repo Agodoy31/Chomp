@@ -11,6 +11,7 @@ import {
   createGroupConversation,
   getConversationDetails,
   getUserConversations,
+  removeParticipantFromConversation,
   updateConversationTitle,
 } from '../services/conversation.service';
 import { IConversationFeedItem } from '../interfaces/conversation.interfaces';
@@ -294,3 +295,43 @@ export async function addParticipantsHandler(req: Request, res: Response): Promi
     sendMessagingError(res, error);
   }
 }
+
+export async function removeParticipantHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+    return;
+  }
+
+  const targetIdRaw = req.params?.userId;
+  if (typeof targetIdRaw !== 'string' || !mongoose.isObjectIdOrHexString(targetIdRaw)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid userId is required',
+      field: 'userId',
+    });
+    return;
+  }
+
+  const sessionUserId = req.session?.userId;
+  if (typeof sessionUserId !== 'string' || !mongoose.isObjectIdOrHexString(sessionUserId)) {
+    res.status(401).json({ message: 'ERR_REQUIRE_AUTH' });
+    return;
+  }
+
+  try {
+    await removeParticipantFromConversation(
+      new Types.ObjectId(id),
+      new Types.ObjectId(sessionUserId),
+      new Types.ObjectId(targetIdRaw)
+    );
+    res.status(200).end();
+  } catch (error: unknown) {
+    sendMessagingError(res, error);
+  }
+}
+
