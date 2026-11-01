@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  deleteMessageHandler,
   getMessageHistoryHandler,
   postMessageHandler,
 } from '../controllers/message.controller';
@@ -16,6 +17,7 @@ router.post('/', postConversationHandler);
 router.get('/:id', getConversationDetailsHandler);
 router.post('/:id/messages', postMessageHandler);
 router.get('/:id/messages', getMessageHistoryHandler);
+router.delete('/:id/messages/:messageId', deleteMessageHandler);
 
 export default router;
 

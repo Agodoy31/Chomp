@@ -6,7 +6,7 @@ import {
   messageHistoryQuerySchema,
   postMessageBodySchema,
 } from '../validators/message.validator';
-import { getMessages, sendMessage } from '../services/message.service';
+import { deleteMessage, getMessages, sendMessage } from '../services/message.service';
 import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
 
@@ -124,6 +124,45 @@ export async function getMessageHistoryHandler(req: Request, res: Response): Pro
       });
       return;
     }
+    sendMessagingError(res, error);
+  }
+}
+
+export async function deleteMessageHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+    return;
+  }
+
+  const messageId = req.params?.messageId;
+  if (typeof messageId !== 'string' || !mongoose.isObjectIdOrHexString(messageId)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid messageId is required',
+      field: 'messageId',
+    });
+    return;
+  }
+
+  const userId = req.session?.userId;
+  if (typeof userId !== 'string' || !mongoose.isObjectIdOrHexString(userId)) {
+    res.status(401).json({ message: 'ERR_REQUIRE_AUTH' });
+    return;
+  }
+
+  try {
+    const deleted = await deleteMessage(
+      new Types.ObjectId(id),
+      new Types.ObjectId(messageId),
+      new Types.ObjectId(userId)
+    );
+    res.status(200).json(toMessageResponse(deleted));
+  } catch (error: unknown) {
     sendMessagingError(res, error);
   }
 }
