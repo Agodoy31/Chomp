@@ -112,6 +112,17 @@ describe('conversation route authentication guards', () => {
       redirectTo: '/login',
     });
   });
+
+  it('rejects unauthenticated PATCH /api/conversations/:id with 401', async () => {
+    const res = await request(app)
+      .patch('/api/conversations/507f1f77bcf86cd799439011')
+      .send({ title: 'Bat Houses Sunset Flight Club' });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
 });
 
 describe('empty conversation inbox', () => {
@@ -830,6 +841,177 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
       .expect(500);
 
     expect(res.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+describe('PATCH /api/conversations/:id', () => {
+  beforeAll(async () => {
+    if (!directConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'DIRECT',
+          recipientId: studentB.user._id.toString(),
+        });
+      directConversationId = res.body._id;
+    }
+
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'French Fries Monument Preservation Society',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+
+    if (!channelConversationId) {
+      const club = await Club.create({
+        name: 'Chomp Streetwear Collective',
+        description: 'Campus fashion and thrifting club',
+        proposerId: studentA.user._id,
+      });
+      clubId = club._id.toString();
+
+      const channel = await Conversation.create({
+        type: ConversationType.CHANNEL,
+        clubId: club._id,
+        title: 'announcements',
+      });
+      channelConversationId = channel._id.toString();
+
+      await ConversationParticipant.create([
+        {
+          conversationId: channel._id,
+          userId: studentA.user._id,
+          permission: ParticipantPermission.MODERATE,
+        },
+        {
+          conversationId: channel._id,
+          userId: studentB.user._id,
+          permission: ParticipantPermission.WRITE,
+        },
+      ]);
+    }
+  });
+
+  it('allows group member to rename group chat with 200 and system message', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: 'Bat Houses Sunset Flight Club' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({});
+
+    const updatedGroup = await Conversation.findById(groupConversationId);
+    expect(updatedGroup?.title).toBe('Bat Houses Sunset Flight Club');
+
+    const systemMsg = await Message.findOne({
+      conversationId: new Types.ObjectId(groupConversationId),
+      isSystem: true,
+      text: /changed the group title/,
+    }).lean();
+
+    expect(systemMsg).not.toBeNull();
+    expect(systemMsg?.isSystem).toBe(true);
+    expect(systemMsg?.text).toContain('changed the group title to Bat Houses Sunset Flight Club');
+  });
+
+  it('allows club moderator to rename club channel with 200', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + channelConversationId)
+      .send({ title: 'Newell Hall Late Night Debuggers' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({});
+
+    const updatedChannel = await Conversation.findById(channelConversationId);
+    expect(updatedChannel?.title).toBe('Newell Hall Late Night Debuggers');
+
+    const systemMsg = await Message.findOne({
+      conversationId: new Types.ObjectId(channelConversationId),
+      isSystem: true,
+      text: /changed the group title/,
+    }).lean();
+    expect(systemMsg).toBeNull();
+  });
+
+  it('rejects malformed id blank title and newline characters with 400', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/not-a-valid-hex')
+      .send({ title: 'Valid Title' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: '   ' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('title');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: 'Newell\nHall' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('title');
+  });
+
+  it('rejects direct conversation rename or non moderator channel rename with 403', async () => {
+    const directRes = await studentA.agent
+      .patch('/api/conversations/' + directConversationId)
+      .send({ title: 'New Title' });
+    expect(directRes.status).toBe(403);
+    expect(directRes.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    const memberChannelRes = await studentB.agent
+      .patch('/api/conversations/' + channelConversationId)
+      .send({ title: 'New Title' });
+    expect(memberChannelRes.status).toBe(403);
+    expect(memberChannelRes.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('returns 404 for missing conversation and 409 for duplicate channel title', async () => {
+    const missingRes = await studentA.agent
+      .patch('/api/conversations/' + new Types.ObjectId().toString())
+      .send({ title: 'Valid Title' });
+    expect(missingRes.status).toBe(404);
+    expect(missingRes.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    const [dupChannel] = await Conversation.create([
+      {
+        type: ConversationType.CHANNEL,
+        clubId: new Types.ObjectId(clubId),
+        title: 'General Announcements',
+      },
+    ]);
+    expect(dupChannel._id).toBeDefined();
+
+    const dupRes = await studentA.agent
+      .patch('/api/conversations/' + channelConversationId)
+      .send({ title: 'General Announcements' });
+    expect(dupRes.status).toBe(409);
+    expect(dupRes.body.code).toBe('ERR_CHANNEL_TITLE_EXISTS');
+
+    jest
+      .spyOn(conversationService, 'updateConversationTitle')
+      .mockRejectedValueOnce(new Error('Transaction aborted'));
+    const errRes = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: 'Error Trigger' });
+    expect(errRes.status).toBe(500);
+    expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
     jest.restoreAllMocks();
   });
 });
