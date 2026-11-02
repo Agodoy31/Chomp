@@ -18,17 +18,10 @@ function rejectionForClub(status: Exclude<ClubStatus, 'APPROVED'>): ClientError 
       message: 'This club is pending approval and cannot be joined yet' 
     };
   }
-  if (status === 'REJECTED') {
-    return { 
-      status: 403, 
-      code: 'ERR_CLUB_NOT_APPROVED', 
-      message: 'This club was rejected and cannot be joined' 
-    };
-  }
   return { 
     status: 403, 
     code: 'ERR_CLUB_NOT_APPROVED', 
-    message: 'This club is pending approval and cannot be joined yet' 
+    message: 'This club was rejected and cannot be joined' 
   };
 }
 
