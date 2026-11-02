@@ -125,21 +125,6 @@ describe('POST /api/clubs/:clubId/approve', () => {
     }
   });
 
-  it('returns 404 when the student who requested the club no longer exists', async () => {
-    const departed = await createUser();
-    await User.deleteOne({ _id: departed._id });
-    const club = await insertClub(departed._id);
-
-    const res = await admin.post(`/api/clubs/${club._id.toString()}/approve`);
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({
-      code: 'ERR_PROPOSER_NOT_FOUND',
-      message: 'The student who requested this club no longer exists',
-    });
-    await expectNotProvisioned(club._id);
-  });
-
   it('returns 409 and keeps the request pending when an approved club already uses the name', async () => {
     await insertClub(proposerId, { status: 'APPROVED' });
     const club = await insertClub(proposerId, { name: 'CHESS CLUB' });

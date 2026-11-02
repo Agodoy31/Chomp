@@ -184,16 +184,6 @@ export const approveClub = async (req: Request<{ clubId: string }>, res: Respons
     return;
   }
 
-  const proposerExists = await User.exists({ _id: club.proposerId });
-  if (!proposerExists) {
-    sendError(res, {
-      status: 404,
-      code: 'ERR_PROPOSER_NOT_FOUND',
-      message: 'The student who requested this club no longer exists',
-    });
-    return;
-  }
-
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
