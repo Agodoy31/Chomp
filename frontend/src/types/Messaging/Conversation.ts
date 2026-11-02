@@ -33,3 +33,48 @@ export interface Conversation {
   messages?: IMessage[];
   participants?: ConversationParticipant[];
 }
+
+export interface RawConversationParticipant {
+  _id?: string;
+  permission: ParticipantPermission;
+  userId?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  };
+  firstName?: string;
+  lastName?: string;
+}
+
+export interface RawConversationResponse {
+  _id: string;
+  type: ConversationType;
+  displayName: string;
+  title?: string;
+  clubId?: string;
+  lastActivityAt?: string;
+  lastMessage?: ConversationLastMessage;
+  participants?: RawConversationParticipant[];
+}
+
+export function flattenConversation(data: RawConversationResponse): Conversation {
+  const participants: ConversationParticipant[] = (data.participants || []).map(
+    (p) => ({
+      _id: p.userId?._id ? String(p.userId._id) : String(p._id || ''),
+      firstName: p.userId?.firstName ?? p.firstName ?? '',
+      lastName: p.userId?.lastName ?? p.lastName ?? '',
+      permission: p.permission,
+    })
+  );
+
+  return {
+    _id: String(data._id),
+    type: data.type,
+    displayName: data.displayName,
+    title: data.title,
+    clubId: data.clubId ? String(data.clubId) : undefined,
+    lastActivityAt: data.lastActivityAt,
+    lastMessage: data.lastMessage,
+    participants,
+  };
+}

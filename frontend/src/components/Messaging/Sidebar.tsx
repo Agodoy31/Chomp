@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { Conversation } from '../../types/Messaging/Conversation';
-import { MOCK_CONVERSATIONS } from '../../testData/mockConversations';
+import type { Conversation, RawConversationResponse } from '../../types/Messaging/Conversation';
+import { flattenConversation } from '../../types/Messaging/Conversation';
 import SidebarElement from './SidebarElement';
 
 interface SidebarProps {
@@ -9,28 +9,38 @@ interface SidebarProps {
 
 export default function Sidebar({ onSelectConversation }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeId, setActiveId] = useState<string>('conv-1');
+  const [activeId, setActiveId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     async function loadConversations() {
+      setIsLoading(true);
       try {
-        // Future implementation:
-        // const response = await fetch('/api/conversations');
-        // if (!response.ok) throw new Error('Failed to fetch conversations');
-        // const data = await response.json();
+        const response = await fetch('/api/conversations', {
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch conversations: ${response.status}`);
+        }
+        const data: RawConversationResponse[] = await response.json();
+        const flattenedData: Conversation[] = Array.isArray(data)
+          ? data.map(flattenConversation)
+          : [];
 
-        const data = await Promise.resolve(MOCK_CONVERSATIONS);
-        setConversations(data);
-        if (data.length > 0) {
-          setActiveId(data[0]._id);
+        setConversations(flattenedData);
+        if (flattenedData.length > 0) {
+          setActiveId(flattenedData[0]._id);
+          onSelectConversation?.(flattenedData[0]);
         }
       } catch (err) {
         console.error('Error loading conversations:', err);
+      } finally {
+        setIsLoading(false);
       }
     }
 
     loadConversations();
-  }, []);
+  }, [onSelectConversation]);
 
   const handleSelect = (conv: Conversation) => {
     setActiveId(conv._id);
@@ -57,14 +67,20 @@ export default function Sidebar({ onSelectConversation }: SidebarProps) {
       </h2>
 
       <div className="d-flex flex-column gap-3">
-        {conversations.map((conv) => (
-          <SidebarElement
-            key={conv._id}
-            conversation={conv}
-            isActive={conv._id === activeId}
-            onSelect={handleSelect}
-          />
-        ))}
+        {isLoading ? (
+          <div>Loading...</div>
+        ) : conversations.length === 0 ? (
+          <div>No conversations yet</div>
+        ) : (
+          conversations.map((conv) => (
+            <SidebarElement
+              key={conv._id}
+              conversation={conv}
+              isActive={conv._id === activeId}
+              onSelect={handleSelect}
+            />
+          ))
+        )}
       </div>
     </aside>
   );
