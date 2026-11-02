@@ -12,6 +12,13 @@ export interface ConversationParticipant {
   permission: ParticipantPermission;
 }
 
+export interface ChatUser {
+  _id: string;
+  firstName: string;
+  lastName?: string;
+  email?: string;
+}
+
 // The most recent message displayed in the sidebar
 export interface ConversationLastMessage {
   text: string;

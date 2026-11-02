@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Conversation } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchMessages, postMessage } from '../../api/messagingApi';
 import Message from './Message';
 
 interface MessageAreaProps {
@@ -25,22 +26,13 @@ export default function MessageArea({
   // Load messages for the selected conversation
   useEffect(() => {
     if (!conversationId) return;
+    const currentId = conversationId;
 
     async function loadMessages() {
       setIsLoading(true);
       try {
-        const response = await fetch(
-          `/api/conversations/${conversationId}/messages`,
-          {
-            credentials: 'include',
-          }
-        );
-        if (!response.ok) {
-          throw new Error(`Failed to fetch messages: ${response.status}`);
-        }
-        const data: IMessage[] = await response.json();
-        // Backend returns messages newest-first; reverse to chronological order (oldest at top, newest at bottom)
-        setMessages([...data].reverse());
+        const data = await fetchMessages(currentId);
+        setMessages(data);
       } catch (err) {
         console.error('Error loading messages:', err);
       } finally {
@@ -81,23 +73,7 @@ export default function MessageArea({
     setInputText('');
 
     try {
-      const response = await fetch(
-        `/api/conversations/${conversation._id}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({ text: textToSend }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.status}`);
-      }
-
-      const newMsg: IMessage = await response.json();
+      const newMsg = await postMessage(conversation._id, textToSend);
       setMessages((prev) => [...prev, newMsg]);
     } catch (err) {
       console.error('Error sending message:', err);
