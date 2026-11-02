@@ -61,12 +61,6 @@ function rejectionForMembership(status: Exclude<MembershipStatus, 'INACTIVE'>): 
   };
 }
 
-function reactivate(membership: MembershipRecord) {
-  membership.status = 'ACTIVE';
-  membership.role = 'MEMBER';
-  return membership.save();
-}
-
 async function activateMembership(
   userId: string,
   clubId: string,
@@ -83,7 +77,9 @@ async function activateMembership(
   }
 
   if (existing.status === 'INACTIVE') {
-    return { membership: await reactivate(existing) };
+    existing.status = 'ACTIVE';
+    existing.role = 'MEMBER';
+    return { membership: await existing.save() };
   }
 
   return { error: rejectionForMembership(existing.status) };
