@@ -240,3 +240,37 @@ export const approveClub = async (req: Request<{ clubId: string }>, res: Respons
     await session.endSession();
   }
 };
+
+export const rejectClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
+  const isAdmin = await User.exists({ _id: req.session.userId, isAdmin: true });
+  if (!isAdmin) {
+    sendError(res, adminRequired());
+    return;
+  }
+
+  const clubId = req.params.clubId;
+  if (!mongoose.isValidObjectId(clubId) || !(await Club.exists({ _id: clubId }))) {
+    sendError(res, {
+      status: 404,
+      code: 'ERR_CLUB_NOT_FOUND',
+      message: 'Club not found',
+    });
+    return;
+  }
+
+  // Filtering on PENDING keeps a simultaneous approve and reject from both succeeding.
+  const rejected = await Club.findOneAndUpdate(
+    { _id: clubId, status: 'PENDING' },
+    { status: 'REJECTED' },
+    { new: true }
+  );
+  if (!rejected) {
+    sendError(res, {
+      status: 409,
+      code: 'ERR_CLUB_NOT_PENDING',
+      message: 'Only pending club requests can be rejected',
+    });
+    return;
+  }
+  res.status(200).json({ club: rejected });
+};
