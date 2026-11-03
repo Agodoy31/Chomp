@@ -125,7 +125,7 @@ export const getClubs = async (req: Request, res: Response) => {
   res.status(200).json({ clubs });
 };
 
-export const getClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
+export const getClubById = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
   const clubId = req.params.clubId;
   const club = mongoose.isValidObjectId(clubId)
     ? await Club.findOne({ _id: clubId, status: 'APPROVED' })

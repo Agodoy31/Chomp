@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../user/utils/requireAuth';
 import {
   approveClub,
-  getClub,
+  getClubById,
   getClubs,
   getPendingClubs,
   rejectClub,
@@ -24,7 +24,7 @@ clubRoutes.get('/', getClubs);
 clubRoutes.post('/', requireAuth, requestClub);
 clubRoutes.get('/me', requireAuth, getMyClubs);
 clubRoutes.get('/pending', requireAuth, getPendingClubs);
-clubRoutes.get('/:clubId', getClub);
+clubRoutes.get('/:clubId', getClubById);
 clubRoutes.patch('/:clubId', requireAuth, updateClub);
 clubRoutes.post('/:clubId/approve', requireAuth, approveClub);
 clubRoutes.post('/:clubId/reject', requireAuth, rejectClub);
