@@ -6,7 +6,17 @@ import { User } from '../../user/models/User';
 import { CLUB_CATEGORIES, type ClientError, type ClubFilter } from '../interfaces/clubs.interface';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
-import { adminRequired, clubNotFound, isDuplicateKey, officerRequired, sendError } from '../errors';
+import {
+  adminRequired,
+  clubNameExists,
+  clubNotFound,
+  clubNotPending,
+  invalidCategory,
+  invalidClubRequest,
+  isDuplicateKey,
+  officerRequired,
+  sendError,
+} from '../errors';
 
 const DEFAULT_CHANNEL_TITLE = 'General';
 
@@ -65,23 +75,12 @@ const clubUpdateSchema = z
   .refine((fields) => Object.keys(fields).length > 0, 'Provide at least one club field to update');
 
 function clubRequestError(issue: { path: PropertyKey[]; message: string }): ClientError {
-  if (issue.path[0] === 'category') {
-    return { status: 400, code: 'ERR_INVALID_CATEGORY', message: 'Invalid Category' };
-  }
-  return { status: 400, code: 'ERR_INVALID_CLUB_REQUEST', message: issue.message };
+  return issue.path[0] === 'category' ? invalidCategory() : invalidClubRequest(issue.message);
 }
 
 function findApprovedClubByName(name: string, excludeClubId?: string) {
   const filter = excludeClubId ? { name, status: 'APPROVED', _id: { $ne: excludeClubId } } : { name, status: 'APPROVED' };
   return Club.exists(filter).collation({ locale: 'en', strength: 2 });
-}
-
-function clubNameExists(): ClientError {
-  return {
-    status: 409,
-    code: 'ERR_CLUB_NAME_EXISTS',
-    message: 'An approved club already uses this name',
-  };
 }
 
 export const getClubs = async (req: Request, res: Response) => {
@@ -90,11 +89,7 @@ export const getClubs = async (req: Request, res: Response) => {
   if (typeof queryCategory === 'string') { // in case of single category
     const match = CLUB_CATEGORIES.find((category) => category === queryCategory.trim().toUpperCase());
     if (match === undefined){
-      sendError(res, { 
-        status: 400, 
-        code: 'ERR_INVALID_CATEGORY', 
-        message: 'Invalid Category' 
-      });
+      sendError(res, invalidCategory());
       return;
     }
     filter.category = match;
@@ -106,11 +101,7 @@ export const getClubs = async (req: Request, res: Response) => {
          return CLUB_CATEGORIES.find((entry) => entry === category.trim().toUpperCase());
       });
     if (categories.some((category) => category === undefined)){
-      sendError(res, { 
-        status: 400, 
-        code: 'ERR_INVALID_CATEGORY', 
-        message: 'Invalid Category' 
-      });
+      sendError(res, invalidCategory());
       return;
     }
     filter.category = { $in: categories.filter((category) => category !== undefined) };
@@ -235,30 +226,17 @@ export const approveClub = async (req: Request<{ clubId: string }>, res: Respons
 
   const clubId = req.params.clubId;
   if (!mongoose.isValidObjectId(clubId)) {
-    sendError(res, 
-      { 
-        status: 404, 
-        code: 'ERR_CLUB_NOT_FOUND', 
-        message: 'Club not found' 
-      });
+    sendError(res, clubNotFound());
     return;
   }
 
   const club = await Club.findById(clubId);
   if (!club) {
-    sendError(res, {
-      status: 404,
-      code: 'ERR_CLUB_NOT_FOUND',
-      message: 'Club not found',
-    });
+    sendError(res, clubNotFound());
     return;
   }
   if (club.status !== 'PENDING') {
-    sendError(res, {
-      status: 409,
-      code: 'ERR_CLUB_NOT_PENDING',
-      message: 'Only pending club requests can be approved',
-    });
+    sendError(res, clubNotPending('approved'));
     return;
   }
 
@@ -274,11 +252,7 @@ export const approveClub = async (req: Request<{ clubId: string }>, res: Respons
     // Another request can approve or reject the club after the status check above.
     if (!approved) {
       await session.abortTransaction();
-      sendError(res, {
-        status: 409,
-        code: 'ERR_CLUB_NOT_PENDING',
-        message: 'Only pending club requests can be approved',
-      });
+      sendError(res, clubNotPending('approved'));
       return;
     }
 
@@ -295,11 +269,7 @@ export const approveClub = async (req: Request<{ clubId: string }>, res: Respons
       await session.abortTransaction();
     }
     if (isDuplicateKey(error)) {
-      sendError(res, {
-        status: 409,
-        code: 'ERR_CLUB_NAME_EXISTS',
-        message: 'An approved club already uses this name',
-      });
+      sendError(res, clubNameExists());
       return;
     }
     throw error;
@@ -317,11 +287,7 @@ export const rejectClub = async (req: Request<{ clubId: string }>, res: Response
 
   const clubId = req.params.clubId;
   if (!mongoose.isValidObjectId(clubId) || !(await Club.exists({ _id: clubId }))) {
-    sendError(res, {
-      status: 404,
-      code: 'ERR_CLUB_NOT_FOUND',
-      message: 'Club not found',
-    });
+    sendError(res, clubNotFound());
     return;
   }
 
@@ -332,11 +298,7 @@ export const rejectClub = async (req: Request<{ clubId: string }>, res: Response
     { new: true }
   );
   if (!rejected) {
-    sendError(res, {
-      status: 409,
-      code: 'ERR_CLUB_NOT_PENDING',
-      message: 'Only pending club requests can be rejected',
-    });
+    sendError(res, clubNotPending('rejected'));
     return;
   }
   res.status(200).json({ club: rejected });

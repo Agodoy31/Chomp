@@ -9,10 +9,19 @@ import { type MembershipStatus, type ClubStatus, type ClientError } from '../int
 import {
   sendError,
   isDuplicateKey,
+  alreadyMember,
+  cannotRemoveSelf,
   clubNotFound,
-  notActiveMember,
+  clubPendingApproval,
+  clubRejected,
+  invalidRole,
   lastOfficer,
   memberNotFound,
+  memberRemoved,
+  memberRequired,
+  membershipPending,
+  membershipRejected,
+  notActiveMember,
   officerRequired,
 } from '../errors';
 
@@ -21,47 +30,20 @@ type MembershipRecord = HydratedDocument<MembershipShape>;
 type ActivationResult = { membership: MembershipRecord } | { error: ClientError };
 
 function rejectionForClub(status: Exclude<ClubStatus, 'APPROVED'>): ClientError {
-  if (status === 'PENDING') {
-    return { 
-      status: 403, 
-      code: 'ERR_CLUB_NOT_APPROVED', 
-      message: 'This club is pending approval and cannot be joined yet' 
-    };
-  }
-  return { 
-    status: 403, 
-    code: 'ERR_CLUB_NOT_APPROVED', 
-    message: 'This club was rejected and cannot be joined' 
-  };
+  return status === 'PENDING' ? clubPendingApproval() : clubRejected();
 }
 
 function rejectionForMembership(status: Exclude<MembershipStatus, 'INACTIVE'>): ClientError {
   if (status === 'REMOVED') {
-    return { 
-      status: 403, 
-      code: 'ERR_MEMBER_REMOVED', 
-      message: 'Removed members cannot rejoin this club' 
-    };
+    return memberRemoved();
   }
   if (status === 'PENDING') {
-    return { 
-      status: 409, 
-      code: 'ERR_MEMBERSHIP_PENDING', 
-      message: 'A request to join this club is already pending' 
-    };
+    return membershipPending();
   }
   if (status === 'REJECTED') {
-    return { 
-      status: 403, 
-      code: 'ERR_MEMBERSHIP_REJECTED', 
-      message: 'Rejected members cannot rejoin this club' 
-    };
+    return membershipRejected();
   }
-  return { 
-    status: 409, 
-    code: 'ERR_ALREADY_MEMBER', 
-    message: 'Already an active member of this club' 
-  };
+  return alreadyMember();
 }
 
 async function activateMembership(
@@ -114,10 +96,7 @@ function findActiveMembership(userId: string, clubId: string) {
   return mongoose.isValidObjectId(userId) ? Membership.findOne({ userId, clubId, status: 'ACTIVE' }) : null;
 }
 
-const roleUpdateSchema = z.object(
-  { role: z.enum(['MEMBER', 'OFFICER'], { error: 'Role must be MEMBER or OFFICER' }) },
-  { error: 'Role must be MEMBER or OFFICER' }
-);
+const roleUpdateSchema = z.object({ role: z.enum(['MEMBER', 'OFFICER']) });
 
 export const getClubMembers = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
   const userId = req.session.userId!;
@@ -130,7 +109,7 @@ export const getClubMembers = async (req: Request<{ clubId: string }>, res: Resp
 
   const isMember = await Membership.exists({ userId, clubId, status: 'ACTIVE' });
   if (!isMember && !(await isAdmin(userId))) {
-    sendError(res, { status: 403, code: 'ERR_MEMBER_REQUIRED', message: 'Club membership required' });
+    sendError(res, memberRequired());
     return;
   }
 
@@ -174,7 +153,7 @@ export const updateMemberRole = async (
 
   const parsed = roleUpdateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    sendError(res, { status: 400, code: 'ERR_INVALID_ROLE', message: parsed.error.issues[0].message });
+    sendError(res, invalidRole());
     return;
   }
 
@@ -212,11 +191,7 @@ export const removeMember = async (
     return;
   }
   if (userId === requesterId) {
-    sendError(res, {
-      status: 400,
-      code: 'ERR_CANNOT_REMOVE_SELF',
-      message: 'Use leave to exit a club instead of removing yourself',
-    });
+    sendError(res, cannotRemoveSelf());
     return;
   }
 
@@ -255,21 +230,13 @@ export const joinClub = async (req: Request<{ clubId: string }>, res: Response):
   const clubId = req.params.clubId;
 
   if (!mongoose.isValidObjectId(clubId)) {
-    sendError(res, { 
-      status: 404, 
-      code: 'ERR_CLUB_NOT_FOUND', 
-      message: 'Club not found' 
-    });
+    sendError(res, clubNotFound());
     return;
   }
 
   const club = await Club.findById(clubId);
   if (!club) {
-    sendError(res, { 
-      status: 404, 
-      code: 'ERR_CLUB_NOT_FOUND', 
-      message: 'Club not found' 
-    });
+    sendError(res, clubNotFound());
     return;
   }
   if (club.status !== 'APPROVED') {
