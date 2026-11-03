@@ -78,6 +78,22 @@ async function activateMembership(
   return { error: rejectionForMembership(existing.status) };
 }
 
+export const getMyClubs = async (req: Request, res: Response): Promise<void> => {
+  const memberships = await Membership.find({ userId: req.session.userId, status: 'ACTIVE' })
+    .select('clubId role')
+    .lean()
+    .exec();
+  const roles = new Map(memberships.map((membership) => [membership.clubId.toString(), membership.role]));
+
+  const clubs = await Club.find({ _id: { $in: [...roles.keys()] }, status: 'APPROVED' })
+    .select('-proposerId -__v -status -createdAt -updatedAt')
+    .sort({ name: 1 })
+    .collation({ locale: 'en', strength: 2 })
+    .lean()
+    .exec();
+  res.status(200).json({ clubs: clubs.map((club) => ({ ...club, role: roles.get(club._id.toString()) })) });
+};
+
 export const joinClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
   const userId = req.session.userId!;
   const clubId = req.params.clubId;
