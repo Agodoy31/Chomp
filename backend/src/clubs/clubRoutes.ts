@@ -14,6 +14,7 @@ import {
   getMyClubs,
   joinClub,
   leaveClub,
+  removeMember,
   updateMemberRole,
 } from './controllers/membershipController';
 
@@ -31,5 +32,6 @@ clubRoutes.post('/:clubId/join', requireAuth, joinClub);
 clubRoutes.post('/:clubId/leave', requireAuth, leaveClub);
 clubRoutes.get('/:clubId/members', requireAuth, getClubMembers);
 clubRoutes.patch('/:clubId/members/:userId', requireAuth, updateMemberRole);
+clubRoutes.delete('/:clubId/members/:userId', requireAuth, removeMember);
 
 export default clubRoutes;

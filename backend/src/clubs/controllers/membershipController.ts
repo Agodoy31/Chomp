@@ -196,6 +196,44 @@ export const updateMemberRole = async (
   res.status(200).json(await membership.save());
 };
 
+export const removeMember = async (
+  req: Request<{ clubId: string; userId: string }>,
+  res: Response
+): Promise<void> => {
+  const requesterId = req.session.userId!;
+  const { clubId, userId } = req.params;
+
+  if (!(await approvedClubExists(clubId))) {
+    sendError(res, clubNotFound());
+    return;
+  }
+  if (!(await canManageMembers(requesterId, clubId))) {
+    sendError(res, officerRequired());
+    return;
+  }
+  if (userId === requesterId) {
+    sendError(res, {
+      status: 400,
+      code: 'ERR_CANNOT_REMOVE_SELF',
+      message: 'Use leave to exit a club instead of removing yourself',
+    });
+    return;
+  }
+
+  const membership = await findActiveMembership(userId, clubId);
+  if (!membership) {
+    sendError(res, memberNotFound());
+    return;
+  }
+  if (membership.role === 'OFFICER' && (await isLastActiveOfficer(clubId, userId))) {
+    sendError(res, lastOfficer());
+    return;
+  }
+
+  membership.status = 'REMOVED';
+  res.status(200).json(await membership.save());
+};
+
 export const getMyClubs = async (req: Request, res: Response): Promise<void> => {
   const memberships = await Membership.find({ userId: req.session.userId, status: 'ACTIVE' })
     .select('clubId role')
