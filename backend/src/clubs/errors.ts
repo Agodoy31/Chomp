@@ -16,6 +16,9 @@ export function officerRequired(): ClientError {
 export function clubNotFound(): ClientError {
     return { status: 404, code: 'ERR_CLUB_NOT_FOUND', message: 'Club not found' };
 }
+export function memberNotFound(): ClientError {
+    return { status: 404, code: 'ERR_MEMBER_NOT_FOUND', message: 'Active member not found in this club' };
+}
 export function notActiveMember(): ClientError {
     return { status: 409, code: 'ERR_NOT_MEMBER', message: 'Not an active member of this club' };
 }

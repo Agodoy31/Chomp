@@ -9,7 +9,13 @@ import {
   requestClub,
   updateClub,
 } from './controllers/clubController';
-import { getClubMembers, getMyClubs, joinClub, leaveClub } from './controllers/membershipController';
+import {
+  getClubMembers,
+  getMyClubs,
+  joinClub,
+  leaveClub,
+  updateMemberRole,
+} from './controllers/membershipController';
 
 const clubRoutes = Router();
 
@@ -24,5 +30,6 @@ clubRoutes.post('/:clubId/reject', requireAuth, rejectClub);
 clubRoutes.post('/:clubId/join', requireAuth, joinClub);
 clubRoutes.post('/:clubId/leave', requireAuth, leaveClub);
 clubRoutes.get('/:clubId/members', requireAuth, getClubMembers);
+clubRoutes.patch('/:clubId/members/:userId', requireAuth, updateMemberRole);
 
 export default clubRoutes;

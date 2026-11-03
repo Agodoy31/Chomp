@@ -1,11 +1,20 @@
 import { Request, Response } from 'express';
 import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
+import { z } from 'zod';
 import { addParticipantsToConversation, getClubChannels } from '../../messaging/services/conversation.service';
 import { User } from '../../user/models/User';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
 import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
-import { sendError, isDuplicateKey, clubNotFound, notActiveMember, lastOfficer } from '../errors';
+import {
+  sendError,
+  isDuplicateKey,
+  clubNotFound,
+  notActiveMember,
+  lastOfficer,
+  memberNotFound,
+  officerRequired,
+} from '../errors';
 
 type MembershipRecord = HydratedDocument<MembershipShape>;
 
@@ -96,6 +105,20 @@ function isAdmin(userId: string) {
   return User.exists({ _id: userId, isAdmin: true });
 }
 
+async function canManageMembers(userId: string, clubId: string): Promise<boolean> {
+  const isOfficer = await Membership.exists({ userId, clubId, role: 'OFFICER', status: 'ACTIVE' });
+  return Boolean(isOfficer) || Boolean(await isAdmin(userId));
+}
+
+function findActiveMembership(userId: string, clubId: string) {
+  return mongoose.isValidObjectId(userId) ? Membership.findOne({ userId, clubId, status: 'ACTIVE' }) : null;
+}
+
+const roleUpdateSchema = z.object(
+  { role: z.enum(['MEMBER', 'OFFICER'], { error: 'Role must be MEMBER or OFFICER' }) },
+  { error: 'Role must be MEMBER or OFFICER' }
+);
+
 export const getClubMembers = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
   const userId = req.session.userId!;
   const clubId = req.params.clubId;
@@ -131,6 +154,46 @@ export const getClubMembers = async (req: Request<{ clubId: string }>, res: Resp
         a.firstName.localeCompare(b.firstName)
     );
   res.status(200).json({ members });
+};
+
+export const updateMemberRole = async (
+  req: Request<{ clubId: string; userId: string }>,
+  res: Response
+): Promise<void> => {
+  const requesterId = req.session.userId!;
+  const { clubId, userId } = req.params;
+
+  if (!(await approvedClubExists(clubId))) {
+    sendError(res, clubNotFound());
+    return;
+  }
+  if (!(await canManageMembers(requesterId, clubId))) {
+    sendError(res, officerRequired());
+    return;
+  }
+
+  const parsed = roleUpdateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    sendError(res, { status: 400, code: 'ERR_INVALID_ROLE', message: parsed.error.issues[0].message });
+    return;
+  }
+
+  const membership = await findActiveMembership(userId, clubId);
+  if (!membership) {
+    sendError(res, memberNotFound());
+    return;
+  }
+  if (
+    membership.role === 'OFFICER' &&
+    parsed.data.role === 'MEMBER' &&
+    (await isLastActiveOfficer(clubId, userId))
+  ) {
+    sendError(res, lastOfficer());
+    return;
+  }
+
+  membership.role = parsed.data.role;
+  res.status(200).json(await membership.save());
 };
 
 export const getMyClubs = async (req: Request, res: Response): Promise<void> => {
