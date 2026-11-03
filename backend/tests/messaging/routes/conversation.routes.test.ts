@@ -955,23 +955,14 @@ describe('PATCH /api/conversations/:id', () => {
     expect(systemMsg?.text).toContain('changed the group title to Bat Houses Sunset Flight Club');
   });
 
-  it('allows club moderator to rename club channel with 200', async () => {
+  it('rejects channel conversation rename with 403', async () => {
     const res = await studentA.agent
       .patch('/api/conversations/' + channelConversationId)
       .send({ title: 'Newell Hall Late Night Debuggers' });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({});
-
-    const updatedChannel = await Conversation.findById(channelConversationId);
-    expect(updatedChannel?.title).toBe('Newell Hall Late Night Debuggers');
-
-    const systemMsg = await Message.findOne({
-      conversationId: new Types.ObjectId(channelConversationId),
-      isSystem: true,
-      text: /changed the group title/,
-    }).lean();
-    expect(systemMsg).toBeNull();
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Only group conversations can be renamed through this endpoint');
   });
 
   it('rejects malformed id blank title and newline characters with 400', async () => {
@@ -1000,41 +991,20 @@ describe('PATCH /api/conversations/:id', () => {
     expect(res.body.field).toBe('title');
   });
 
-  it('rejects direct conversation rename or non moderator channel rename with 403', async () => {
+  it('rejects direct conversation rename with 403', async () => {
     const directRes = await studentA.agent
       .patch('/api/conversations/' + directConversationId)
       .send({ title: 'New Title' });
     expect(directRes.status).toBe(403);
     expect(directRes.body.code).toBe('ERR_PERMISSION_DENIED');
-
-    const memberChannelRes = await studentB.agent
-      .patch('/api/conversations/' + channelConversationId)
-      .send({ title: 'New Title' });
-    expect(memberChannelRes.status).toBe(403);
-    expect(memberChannelRes.body.code).toBe('ERR_PERMISSION_DENIED');
   });
 
-  it('returns 404 for missing conversation and 409 for duplicate channel title', async () => {
+  it('returns 404 for missing conversation', async () => {
     const missingRes = await studentA.agent
       .patch('/api/conversations/' + new Types.ObjectId().toString())
       .send({ title: 'Valid Title' });
     expect(missingRes.status).toBe(404);
     expect(missingRes.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
-
-    const [dupChannel] = await Conversation.create([
-      {
-        type: ConversationType.CHANNEL,
-        clubId: new Types.ObjectId(clubId),
-        title: 'General Announcements',
-      },
-    ]);
-    expect(dupChannel._id).toBeDefined();
-
-    const dupRes = await studentA.agent
-      .patch('/api/conversations/' + channelConversationId)
-      .send({ title: 'General Announcements' });
-    expect(dupRes.status).toBe(409);
-    expect(dupRes.body.code).toBe('ERR_CHANNEL_TITLE_EXISTS');
 
     jest
       .spyOn(conversationService, 'updateConversationTitle')

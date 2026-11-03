@@ -300,20 +300,12 @@ describe('updateConversationTitle service', () => {
     const club = await createTestClub(creator._id);
     const channel = await createChannel(club._id, 'general', [creator._id, writeMember._id]);
 
-    await expect(
-      updateConversationTitle(channel._id, writeMember._id, 'new-general')
-    ).rejects.toThrow('User does not have permission to update conversation title');
-
-    await ConversationParticipant.updateOne(
-      { conversationId: channel._id, userId: creator._id },
-      { permission: ParticipantPermission.MODERATE }
-    );
-    const updatedChannelByMod = await updateConversationTitle(
+    const updatedChannel = await updateConversationTitle(
       channel._id,
       creator._id,
       'announcements-chat'
     );
-    expect(updatedChannelByMod.title).toBe('announcements-chat');
+    expect(updatedChannel.title).toBe('announcements-chat');
   });
 
   it('rejects direct conversations non participants and invalid title parameters', async () => {
