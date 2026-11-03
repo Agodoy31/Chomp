@@ -3,10 +3,10 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { createChannel } from '../../messaging/services/conversation.service';
 import { User } from '../../user/models/User';
-import { CLUB_CATEGORIES, type ClubFilter } from '../interfaces/clubs.interface';
+import { CLUB_CATEGORIES, type ClientError, type ClubFilter } from '../interfaces/clubs.interface';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
-import { adminRequired, clubNotFound, isDuplicateKey, sendError } from '../errors';
+import { adminRequired, clubNotFound, isDuplicateKey, officerRequired, sendError } from '../errors';
 
 const DEFAULT_CHANNEL_TITLE = 'General';
 
@@ -59,8 +59,29 @@ const clubRequestSchema = z.object(
   { error: 'Club name is required' }
 );
 
-function findApprovedClubByName(name: string) {
-  return Club.exists({ name, status: 'APPROVED' }).collation({ locale: 'en', strength: 2 });
+const clubUpdateSchema = z
+  .object(clubRequestSchema.shape, { error: 'Club details must be an object' })
+  .partial()
+  .refine((fields) => Object.keys(fields).length > 0, 'Provide at least one club field to update');
+
+function clubRequestError(issue: { path: PropertyKey[]; message: string }): ClientError {
+  if (issue.path[0] === 'category') {
+    return { status: 400, code: 'ERR_INVALID_CATEGORY', message: 'Invalid Category' };
+  }
+  return { status: 400, code: 'ERR_INVALID_CLUB_REQUEST', message: issue.message };
+}
+
+function findApprovedClubByName(name: string, excludeClubId?: string) {
+  const filter = excludeClubId ? { name, status: 'APPROVED', _id: { $ne: excludeClubId } } : { name, status: 'APPROVED' };
+  return Club.exists(filter).collation({ locale: 'en', strength: 2 });
+}
+
+function clubNameExists(): ClientError {
+  return {
+    status: 409,
+    code: 'ERR_CLUB_NAME_EXISTS',
+    message: 'An approved club already uses this name',
+  };
 }
 
 export const getClubs = async (req: Request, res: Response) => {
@@ -133,20 +154,7 @@ export const getPendingClubs = async (req: Request, res: Response): Promise<void
 export const requestClub = async (req: Request, res: Response): Promise<void> => {
   const parsed = clubRequestSchema.safeParse(req.body);
   if (!parsed.success) {
-    const [issue] = parsed.error.issues;
-    sendError(
-      res,
-      issue.path[0] === 'category'
-        ? { 
-          status: 400, 
-          code: 'ERR_INVALID_CATEGORY', 
-          message: 'Invalid Category' 
-        }
-        : { 
-          status: 400, 
-          code: 'ERR_INVALID_CLUB_REQUEST', 
-          message: issue.message 
-      });
+    sendError(res, clubRequestError(parsed.error.issues[0]));
     return;
   }
 
@@ -161,16 +169,60 @@ export const requestClub = async (req: Request, res: Response): Promise<void> =>
   });
 
   if (await findApprovedClubByName(club.name)) {
-    sendError(res, {
-      status: 409,
-      code: 'ERR_CLUB_NAME_EXISTS',
-      message: 'An approved club already uses this name',
-    });
+    sendError(res, clubNameExists());
     return;
   }
 
   await club.save();
   res.status(201).json(club);
+};
+
+export const updateClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
+  const clubId = req.params.clubId;
+  if (!mongoose.isValidObjectId(clubId) || !(await Club.exists({ _id: clubId, status: 'APPROVED' }))) {
+    sendError(res, clubNotFound());
+    return;
+  }
+
+  const isOfficer = await Membership.exists({
+    userId: req.session.userId,
+    clubId,
+    role: 'OFFICER',
+    status: 'ACTIVE',
+  });
+  if (!isOfficer) {
+    sendError(res, officerRequired());
+    return;
+  }
+
+  const parsed = clubUpdateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    sendError(res, clubRequestError(parsed.error.issues[0]));
+    return;
+  }
+
+  if (parsed.data.name !== undefined && (await findApprovedClubByName(parsed.data.name, clubId))) {
+    sendError(res, clubNameExists());
+    return;
+  }
+
+  try {
+    const club = await Club.findOneAndUpdate({ _id: clubId, status: 'APPROVED' }, { $set: parsed.data }, { new: true })
+      .select('-proposerId -__v -status -createdAt -updatedAt')
+      .lean()
+      .exec();
+    if (!club) {
+      sendError(res, clubNotFound());
+      return;
+    }
+    res.status(200).json({ club });
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      sendError(res, clubNameExists());
+      return;
+    }
+    throw error;
+  }
 };
 
 // See Issue #31: https://github.com/Agodoy31/Chomp/issues/31

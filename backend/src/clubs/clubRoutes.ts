@@ -7,6 +7,7 @@ import {
   getPendingClubs,
   rejectClub,
   requestClub,
+  updateClub,
 } from './controllers/clubController';
 import { getMyClubs, joinClub, leaveClub } from './controllers/membershipController';
 
@@ -17,6 +18,7 @@ clubRoutes.post('/', requireAuth, requestClub);
 clubRoutes.get('/me', requireAuth, getMyClubs);
 clubRoutes.get('/pending', requireAuth, getPendingClubs);
 clubRoutes.get('/:clubId', getClub);
+clubRoutes.patch('/:clubId', requireAuth, updateClub);
 clubRoutes.post('/:clubId/approve', requireAuth, approveClub);
 clubRoutes.post('/:clubId/reject', requireAuth, rejectClub);
 clubRoutes.post('/:clubId/join', requireAuth, joinClub);
