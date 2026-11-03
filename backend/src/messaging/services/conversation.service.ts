@@ -393,73 +393,94 @@ export async function addParticipantsToConversation(
     };
   });
 
-  const created = await ConversationParticipant.create(
-    docs,
-    activeSession ? { session: activeSession, ordered: true } : { ordered: true }
-  );
-
-  const usersQuery = User.find({ _id: { $in: usersToAdd } })
-    .select('firstName lastName')
-    .lean<IUserSummary[]>();
-  if (activeSession) {
-    usersQuery.session(activeSession);
+  const ownsSession = !activeSession && Boolean(_requestingUserId);
+  const effectiveSession = ownsSession ? await mongoose.startSession() : activeSession;
+  if (ownsSession && effectiveSession) {
+    effectiveSession.startTransaction();
   }
-  const addedUsers = await usersQuery.exec();
 
-  if (_requestingUserId) {
-    const requesterQuery = User.findById(_requestingUserId)
-      .select('firstName lastName')
-      .lean<IUserSummary>();
-    if (activeSession) {
-      requesterQuery.session(activeSession);
-    }
-    const requester = await requesterQuery.exec();
-    const requesterName = requester
-      ? `${requester.firstName} ${requester.lastName}`.trim()
-      : 'Someone';
-
-    let text: string;
-    if (usersToAdd.length === 1) {
-      const addedUser = addedUsers.find(
-        (u) => u._id.toString() === usersToAdd[0].toString()
-      );
-      const addedUserName = addedUser
-        ? `${addedUser.firstName} ${addedUser.lastName}`.trim()
-        : 'someone';
-      text = `${requesterName} added ${addedUserName}`;
-    } else {
-      text = `${requesterName} added ${usersToAdd.length} people`;
-    }
-
-    await Message.create(
-      [
-        {
-          conversationId,
-          senderId: _requestingUserId,
-          text,
-          isAnnouncement: false,
-          isSystem: true,
-        },
-      ],
-      activeSession ? { session: activeSession } : undefined
+  try {
+    const created = await ConversationParticipant.create(
+      docs,
+      effectiveSession ? { session: effectiveSession, ordered: true } : { ordered: true }
     );
+
+    const usersQuery = User.find({ _id: { $in: usersToAdd } })
+      .select('firstName lastName')
+      .lean<IUserSummary[]>();
+    if (effectiveSession) {
+      usersQuery.session(effectiveSession);
+    }
+    const addedUsers = await usersQuery.exec();
+
+    if (_requestingUserId) {
+      const requesterQuery = User.findById(_requestingUserId)
+        .select('firstName lastName')
+        .lean<IUserSummary>();
+      if (effectiveSession) {
+        requesterQuery.session(effectiveSession);
+      }
+      const requester = await requesterQuery.exec();
+      const requesterName = requester
+        ? `${requester.firstName} ${requester.lastName}`.trim()
+        : 'Someone';
+
+      let text: string;
+      if (usersToAdd.length === 1) {
+        const addedUser = addedUsers.find(
+          (u) => u._id.toString() === usersToAdd[0].toString()
+        );
+        const addedUserName = addedUser
+          ? `${addedUser.firstName} ${addedUser.lastName}`.trim()
+          : 'someone';
+        text = `${requesterName} added ${addedUserName}`;
+      } else {
+        text = `${requesterName} added ${usersToAdd.length} people`;
+      }
+
+      await Message.create(
+        [
+          {
+            conversationId,
+            senderId: _requestingUserId,
+            text,
+            isAnnouncement: false,
+            isSystem: true,
+          },
+        ],
+        effectiveSession ? { session: effectiveSession } : undefined
+      );
+    }
+
+    if (ownsSession && effectiveSession) {
+      await effectiveSession.commitTransaction();
+    }
+
+    const userMap = new Map<string, IUserSummary>(
+      addedUsers.map((u) => [u._id.toString(), u])
+    );
+
+    return created.map((doc) => {
+      const userSummary = userMap.get(doc.userId.toString()) || {
+        _id: doc.userId,
+        firstName: '',
+        lastName: '',
+      };
+      return {
+        userId: userSummary,
+        permission: doc.permission || ParticipantPermission.WRITE,
+      };
+    });
+  } catch (error: any) {
+    if (ownsSession && effectiveSession?.inTransaction()) {
+      await effectiveSession.abortTransaction();
+    }
+    throw error;
+  } finally {
+    if (ownsSession && effectiveSession) {
+      await effectiveSession.endSession();
+    }
   }
-
-  const userMap = new Map<string, IUserSummary>(
-    addedUsers.map((u) => [u._id.toString(), u])
-  );
-
-  return created.map((doc) => {
-    const userSummary = userMap.get(doc.userId.toString()) || {
-      _id: doc.userId,
-      firstName: '',
-      lastName: '',
-    };
-    return {
-      userId: userSummary,
-      permission: doc.permission || ParticipantPermission.WRITE,
-    };
-  });
 }
 
 export async function createChannel(
