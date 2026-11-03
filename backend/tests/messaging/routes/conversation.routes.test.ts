@@ -1247,6 +1247,15 @@ describe('DELETE /api/conversations/:id/participants/:userId', () => {
     expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
   });
 
+  it('rejects participant removal from channel conversation with 403', async () => {
+    const res = await studentA.agent
+      .delete('/api/conversations/' + channelConversationId + '/participants/' + studentB.user._id.toString());
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Participants can only be removed from group conversations');
+  });
+
   it('returns 404 for missing conversation and target user not in conversation', async () => {
     let res = await studentA.agent
       .delete('/api/conversations/' + new Types.ObjectId().toString() + '/participants/' + studentB.user._id.toString());
@@ -1360,6 +1369,16 @@ describe('PATCH /api/conversations/:id/participants/:userId', () => {
       .send({ permission: 'READ' });
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('rejects participant permission updates on channel conversation with 403', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + channelConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Participant permissions can only be updated in group conversations');
   });
 
   it('rejects sole moderator demoting themselves with 403', async () => {
