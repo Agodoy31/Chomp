@@ -10,3 +10,12 @@ export function isDuplicateKey(error: unknown): boolean {
 export function adminRequired(): ClientError {
     return { status: 403, code: 'ERR_ADMIN_REQUIRED', message: 'Admin access required' };
 }
+export function clubNotFound(): ClientError {
+    return { status: 404, code: 'ERR_CLUB_NOT_FOUND', message: 'Club not found' };
+}
+export function notActiveMember(): ClientError {
+    return { status: 409, code: 'ERR_NOT_MEMBER', message: 'Not an active member of this club' };
+}
+export function lastOfficer(): ClientError {
+    return { status: 409, code: 'ERR_LAST_OFFICER', message: 'A club must keep at least one active officer' };
+}

@@ -4,7 +4,7 @@ import { addParticipantsToConversation, getClubChannels } from '../../messaging/
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
 import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
-import { sendError, isDuplicateKey } from '../errors';
+import { sendError, isDuplicateKey, clubNotFound, notActiveMember, lastOfficer } from '../errors';
 
 type MembershipRecord = HydratedDocument<MembershipShape>;
 
@@ -71,11 +71,20 @@ async function activateMembership(
 
   if (existing.status === 'INACTIVE') {
     existing.status = 'ACTIVE';
-    existing.role = 'MEMBER';
     return { membership: await existing.save() };
   }
 
   return { error: rejectionForMembership(existing.status) };
+}
+
+async function isLastActiveOfficer(clubId: string, userId: string): Promise<boolean> {
+  const otherOfficer = await Membership.exists({
+    clubId,
+    role: 'OFFICER',
+    status: 'ACTIVE',
+    userId: { $ne: userId },
+  });
+  return !otherOfficer;
 }
 
 export const getMyClubs = async (req: Request, res: Response): Promise<void> => {
@@ -155,4 +164,27 @@ export const joinClub = async (req: Request<{ clubId: string }>, res: Response):
   } finally {
     await session.endSession();
   }
+};
+
+export const leaveClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
+  const userId = req.session.userId!;
+  const clubId = req.params.clubId;
+
+  if (!mongoose.isValidObjectId(clubId) || !(await Club.exists({ _id: clubId }))) {
+    sendError(res, clubNotFound());
+    return;
+  }
+
+  const membership = await Membership.findOne({ userId, clubId, status: 'ACTIVE' });
+  if (!membership) {
+    sendError(res, notActiveMember());
+    return;
+  }
+  if (membership.role === 'OFFICER' && (await isLastActiveOfficer(clubId, userId))) {
+    sendError(res, lastOfficer());
+    return;
+  }
+
+  membership.status = 'INACTIVE';
+  res.status(200).json(await membership.save());
 };

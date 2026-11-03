@@ -113,12 +113,12 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(await ConversationParticipant.countDocuments()).toBe(0);
   });
 
-  it('reactivates an inactive membership as an active member', async () => {
+  it.each(['MEMBER', 'OFFICER'] as const)('reactivates an inactive %s membership with the same role', async (role) => {
     const club = await insertClub();
     const inactive = await Membership.create({
       userId: studentId,
       clubId: club._id,
-      role: 'OFFICER',
+      role,
       status: 'INACTIVE',
     });
 
@@ -126,12 +126,12 @@ describe('POST /api/clubs/:clubId/join', () => {
 
     expect(res.status).toBe(201);
     expect(res.body._id).toBe(inactive._id.toString());
-    expect(res.body.role).toBe('MEMBER');
+    expect(res.body.role).toBe(role);
     expect(res.body.status).toBe('ACTIVE');
 
     const stored = await Membership.findById(inactive._id);
     expect(stored?.status).toBe('ACTIVE');
-    expect(stored?.role).toBe('MEMBER');
+    expect(stored?.role).toBe(role);
     expect(await Membership.countDocuments({ userId: studentId, clubId: club._id })).toBe(1);
   });
 
