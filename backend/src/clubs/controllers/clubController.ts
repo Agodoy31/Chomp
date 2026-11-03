@@ -6,7 +6,7 @@ import { User } from '../../user/models/User';
 import { CLUB_CATEGORIES, type ClubFilter } from '../interfaces/clubs.interface';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
-import { adminRequired, isDuplicateKey, sendError } from '../errors';
+import { adminRequired, clubNotFound, isDuplicateKey, sendError } from '../errors';
 
 const DEFAULT_CHANNEL_TITLE = 'General';
 
@@ -102,6 +102,21 @@ export const getClubs = async (req: Request, res: Response) => {
     .lean()
     .exec();
   res.status(200).json({ clubs });
+};
+
+export const getClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
+  const clubId = req.params.clubId;
+  const club = mongoose.isValidObjectId(clubId)
+    ? await Club.findOne({ _id: clubId, status: 'APPROVED' })
+        .select('-proposerId -__v -status -createdAt -updatedAt')
+        .lean()
+        .exec()
+    : null;
+  if (!club) {
+    sendError(res, clubNotFound());
+    return;
+  }
+  res.status(200).json({ club });
 };
 
 export const getPendingClubs = async (req: Request, res: Response): Promise<void> => {
