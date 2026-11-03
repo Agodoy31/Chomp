@@ -1140,6 +1140,15 @@ describe('POST /api/conversations/:id/participants', () => {
     expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
   });
 
+  it('rejects adding participants to channel conversation with 403', async () => {
+    const res = await studentA.agent
+      .post('/api/conversations/' + channelConversationId + '/participants')
+      .send({ userIds: [studentC.user._id.toString()] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Participants can only be added to group conversations');
+  });
+
   it('returns 404 for missing conversation and 404 for non existent target user', async () => {
     let res = await studentA.agent
       .post('/api/conversations/' + new Types.ObjectId().toString() + '/participants')
