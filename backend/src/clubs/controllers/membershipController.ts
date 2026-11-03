@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
 import { addParticipantsToConversation, getClubChannels } from '../../messaging/services/conversation.service';
+import { User } from '../../user/models/User';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
 import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
@@ -86,6 +87,51 @@ async function isLastActiveOfficer(clubId: string, userId: string): Promise<bool
   });
   return !otherOfficer;
 }
+
+async function approvedClubExists(clubId: string): Promise<boolean> {
+  return mongoose.isValidObjectId(clubId) && Boolean(await Club.exists({ _id: clubId, status: 'APPROVED' }));
+}
+
+function isAdmin(userId: string) {
+  return User.exists({ _id: userId, isAdmin: true });
+}
+
+export const getClubMembers = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
+  const userId = req.session.userId!;
+  const clubId = req.params.clubId;
+
+  if (!(await approvedClubExists(clubId))) {
+    sendError(res, clubNotFound());
+    return;
+  }
+
+  const isMember = await Membership.exists({ userId, clubId, status: 'ACTIVE' });
+  if (!isMember && !(await isAdmin(userId))) {
+    sendError(res, { status: 403, code: 'ERR_MEMBER_REQUIRED', message: 'Club membership required' });
+    return;
+  }
+
+  const memberships = await Membership.find({ clubId, status: 'ACTIVE' })
+    .select('userId role')
+    .populate<{ userId: { _id: mongoose.Types.ObjectId; firstName: string; lastName: string } | null }>(
+      'userId',
+      'firstName lastName'
+    )
+    .lean()
+    .exec();
+
+  const members = memberships
+    .flatMap(({ userId: user, role }) =>
+      user ? [{ userId: user._id, firstName: user.firstName, lastName: user.lastName, role }] : []
+    )
+    .sort(
+      (a, b) =>
+        Number(b.role === 'OFFICER') - Number(a.role === 'OFFICER') ||
+        a.lastName.localeCompare(b.lastName) ||
+        a.firstName.localeCompare(b.firstName)
+    );
+  res.status(200).json({ members });
+};
 
 export const getMyClubs = async (req: Request, res: Response): Promise<void> => {
   const memberships = await Membership.find({ userId: req.session.userId, status: 'ACTIVE' })
