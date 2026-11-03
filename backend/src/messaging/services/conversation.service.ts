@@ -779,39 +779,28 @@ export async function updateConversationTitle(
       );
     }
 
-    const participant = await ConversationParticipant.findOne({
-      userId: requestingUserId,
-      conversationId,
-    })
-      .select('permission')
-      .session(session)
-      .lean();
+    if (conversation.type === ConversationType.GROUP) {
+      const participant = await ConversationParticipant.findOne({
+        userId: requestingUserId,
+        conversationId,
+      })
+        .select('permission')
+        .session(session)
+        .lean();
 
-    if (!participant) {
-      throw new MessagingError(
-        MessagingErrorCode.PERMISSION_DENIED,
-        'User is not a participant in this conversation'
-      );
-    }
+      if (!participant) {
+        throw new MessagingError(
+          MessagingErrorCode.PERMISSION_DENIED,
+          'User is not a participant in this conversation'
+        );
+      }
 
-    if (
-      conversation.type === ConversationType.GROUP &&
-      participant.permission === ParticipantPermission.READ
-    ) {
-      throw new MessagingError(
-        MessagingErrorCode.PERMISSION_DENIED,
-        'User does not have permission to update conversation title'
-      );
-    }
-
-    if (
-      conversation.type === ConversationType.CHANNEL &&
-      participant.permission !== ParticipantPermission.MODERATE
-    ) {
-      throw new MessagingError(
-        MessagingErrorCode.PERMISSION_DENIED,
-        'User does not have permission to update conversation title'
-      );
+      if (participant.permission === ParticipantPermission.READ) {
+        throw new MessagingError(
+          MessagingErrorCode.PERMISSION_DENIED,
+          'User does not have permission to update conversation title'
+        );
+      }
     }
 
     const oldTitle = conversation.title;

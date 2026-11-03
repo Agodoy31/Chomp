@@ -246,6 +246,23 @@ export async function updateConversationTitleHandler(req: Request, res: Response
   }
 
   try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Only group conversations can be renamed through this endpoint',
+      });
+      return;
+    }
+
     await updateConversationTitle(
       new Types.ObjectId(id),
       new Types.ObjectId(sessionUserId),
