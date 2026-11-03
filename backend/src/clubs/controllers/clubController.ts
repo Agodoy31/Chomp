@@ -104,6 +104,17 @@ export const getClubs = async (req: Request, res: Response) => {
   res.status(200).json({ clubs });
 };
 
+export const getPendingClubs = async (req: Request, res: Response): Promise<void> => {
+  const isAdmin = await User.exists({ _id: req.session.userId, isAdmin: true });
+  if (!isAdmin) {
+    sendError(res, adminRequired());
+    return;
+  }
+
+  const clubs = await Club.find({ status: 'PENDING' }).select('-__v').sort({ createdAt: 1 }).lean().exec();
+  res.status(200).json({ clubs });
+};
+
 export const requestClub = async (req: Request, res: Response): Promise<void> => {
   const parsed = clubRequestSchema.safeParse(req.body);
   if (!parsed.success) {
