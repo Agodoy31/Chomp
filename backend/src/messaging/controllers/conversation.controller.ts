@@ -361,6 +361,23 @@ export async function removeParticipantHandler(req: Request, res: Response): Pro
   }
 
   try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Participants can only be removed from group conversations',
+      });
+      return;
+    }
+
     await removeParticipantFromConversation(
       new Types.ObjectId(id),
       new Types.ObjectId(sessionUserId),
@@ -416,6 +433,23 @@ export async function updateParticipantPermissionHandler(
   }
 
   try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Participant permissions can only be updated in group conversations',
+      });
+      return;
+    }
+
     const [updated] = await updateParticipantPermissions(
       new Types.ObjectId(id),
       new Types.ObjectId(sessionUserId),
