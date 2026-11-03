@@ -6,6 +6,7 @@ import {
   updateConversationTitleBodySchema,
   updateParticipantPermissionBodySchema,
 } from '../validators/conversation.validator';
+import { Conversation, ConversationType } from '../models/Conversation';
 import {
   addParticipantsToConversation,
   createDirectConversation,
@@ -287,6 +288,23 @@ export async function addParticipantsHandler(req: Request, res: Response): Promi
   }
 
   try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Participants can only be added to group conversations',
+      });
+      return;
+    }
+
     const added = await addParticipantsToConversation(
       new Types.ObjectId(id),
       parseResult.data.userIds.map((uid) => new Types.ObjectId(uid)),
