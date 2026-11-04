@@ -12,7 +12,7 @@ export default function App() {
       <Route path="/clubs" element={<ClubDiscovery />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
-      <Route path="/messages" element={<MessagingPage />} />
+      <Route path="/messaging" element={<MessagingPage />} />
     </Routes>
-  )
+  );
 }

@@ -11,7 +11,7 @@ export default function SidebarElement({
   isActive = false,
   onSelect,
 }: SidebarElementProps) {
-  const initial = conversation.displayName.charAt(0).toUpperCase();
+  const initial = conversation.displayName?.charAt(0)?.toUpperCase() ?? '';
 
   const previewText = conversation.lastMessage
     ? `${conversation.lastMessage.senderName}: ${conversation.lastMessage.text}`
