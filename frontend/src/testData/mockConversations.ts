@@ -106,6 +106,32 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
       text: 'Next meeting is...',
       createdAt: '2026-10-18T09:45:00.000Z',
     },
+    participants: [
+      {
+        _id: ALBERT_USER_ID,
+        firstName: 'Albert',
+        lastName: 'Gator',
+        permission: 'MODERATE',
+      },
+      {
+        _id: ALBERTA_USER_ID,
+        firstName: 'Alberta',
+        lastName: 'Gator',
+        permission: 'WRITE',
+      },
+      {
+        _id: JOHN_USER_ID,
+        firstName: 'John',
+        lastName: 'Doe',
+        permission: 'WRITE',
+      },
+      {
+        _id: CURRENT_USER_ID,
+        firstName: 'You',
+        lastName: '',
+        permission: 'WRITE',
+      },
+    ],
   },
   {
     _id: 'conv-3',
@@ -117,6 +143,20 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
       text: 'See you at the library!',
       createdAt: '2026-10-18T09:30:00.000Z',
     },
+    participants: [
+      {
+        _id: ALBERT_USER_ID,
+        firstName: 'Albert',
+        lastName: 'Gator',
+        permission: 'WRITE',
+      },
+      {
+        _id: CURRENT_USER_ID,
+        firstName: 'You',
+        lastName: '',
+        permission: 'WRITE',
+      },
+    ],
   },
   {
     _id: 'conv-4',
@@ -130,6 +170,26 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
       text: 'What should we build?',
       createdAt: '2026-10-18T09:00:00.000Z',
     },
+    participants: [
+      {
+        _id: JOHN_USER_ID,
+        firstName: 'John',
+        lastName: 'Doe',
+        permission: 'MODERATE',
+      },
+      {
+        _id: ALBERT_USER_ID,
+        firstName: 'Albert',
+        lastName: 'Gator',
+        permission: 'WRITE',
+      },
+      {
+        _id: CURRENT_USER_ID,
+        firstName: 'You',
+        lastName: '',
+        permission: 'WRITE',
+      },
+    ],
   },
   {
     _id: 'conv-5',
@@ -141,5 +201,19 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
       text: 'Are you free later today?',
       createdAt: '2026-10-18T08:15:00.000Z',
     },
+    participants: [
+      {
+        _id: JOHN_USER_ID,
+        firstName: 'John',
+        lastName: 'Doe',
+        permission: 'WRITE',
+      },
+      {
+        _id: CURRENT_USER_ID,
+        firstName: 'You',
+        lastName: '',
+        permission: 'WRITE',
+      },
+    ],
   },
 ];
