@@ -65,23 +65,32 @@ export interface RawConversationResponse {
 }
 
 export function flattenConversation(data: RawConversationResponse): Conversation {
-  const participants: ConversationParticipant[] = (data.participants || []).map(
-    (p) => ({
+  const conv: Conversation = {
+    _id: String(data._id),
+    type: data.type,
+    displayName: data.displayName,
+  };
+
+  if (data.title !== undefined) {
+    conv.title = data.title;
+  }
+  if (data.clubId !== undefined) {
+    conv.clubId = String(data.clubId);
+  }
+  if (data.lastActivityAt !== undefined) {
+    conv.lastActivityAt = data.lastActivityAt;
+  }
+  if (data.lastMessage !== undefined) {
+    conv.lastMessage = data.lastMessage;
+  }
+  if (data.participants !== undefined) {
+    conv.participants = data.participants.map((p) => ({
       _id: p.userId?._id ? String(p.userId._id) : String(p._id || ''),
       firstName: p.userId?.firstName ?? p.firstName ?? '',
       lastName: p.userId?.lastName ?? p.lastName ?? '',
       permission: p.permission,
-    })
-  );
+    }));
+  }
 
-  return {
-    _id: String(data._id),
-    type: data.type,
-    displayName: data.displayName,
-    title: data.title,
-    clubId: data.clubId ? String(data.clubId) : undefined,
-    lastActivityAt: data.lastActivityAt,
-    lastMessage: data.lastMessage,
-    participants,
-  };
+  return conv;
 }
