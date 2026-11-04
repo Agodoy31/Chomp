@@ -98,9 +98,13 @@ export default function Sidebar({
 
       <div className="d-flex flex-column gap-3">
         {isLoading ? (
-          <div>Loading...</div>
+          <div role="status" aria-live="polite" className="text-white text-center py-3">
+            Loading...
+          </div>
         ) : conversations.length === 0 ? (
-          <div>No conversations yet</div>
+          <div role="status" className="text-white text-center py-3">
+            No conversations yet
+          </div>
         ) : (
           conversations.map((conv) => (
             <SidebarElement

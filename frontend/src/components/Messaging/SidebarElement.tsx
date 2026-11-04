@@ -21,6 +21,7 @@ export default function SidebarElement({
     <button
       type="button"
       onClick={() => onSelect?.(conversation)}
+      aria-current={isActive ? 'true' : undefined}
       className="btn text-start p-3 w-100 border-0"
       style={{
         backgroundColor: isActive ? '#A7CDDF' : '#EDF0F5',
@@ -32,6 +33,7 @@ export default function SidebarElement({
       <div className="d-flex align-items-center gap-3">
         {/* Avatar circle */}
         <div
+          aria-hidden="true"
           className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold"
           style={{
             width: '44px',
@@ -52,15 +54,6 @@ export default function SidebarElement({
           >
             {conversation.displayName}
           </div>
-
-          {conversation.type === 'CHANNEL' && conversation.title && (
-            <div
-              className="fw-bold text-truncate mt-1"
-              style={{ color: '#3046C3', fontSize: '13px', lineHeight: '1.2' }}
-            >
-              # {conversation.title}
-            </div>
-          )}
 
           {previewText && (
             <div
