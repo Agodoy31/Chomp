@@ -1,11 +1,21 @@
 import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
-import { createConversationBodySchema } from '../validators/conversation.validator';
 import {
+  addParticipantsBodySchema,
+  createConversationBodySchema,
+  updateConversationTitleBodySchema,
+  updateParticipantPermissionBodySchema,
+} from '../validators/conversation.validator';
+import { Conversation, ConversationType } from '../models/Conversation';
+import {
+  addParticipantsToConversation,
   createDirectConversation,
   createGroupConversation,
   getConversationDetails,
   getUserConversations,
+  removeParticipantFromConversation,
+  updateConversationTitle,
+  updateParticipantPermissions,
 } from '../services/conversation.service';
 import { IConversationFeedItem } from '../interfaces/conversation.interfaces';
 import { MessagingErrorCode } from '../errors/messagingError';
@@ -205,4 +215,249 @@ export async function getConversationDetailsHandler(req: Request, res: Response)
   }
 }
 
+export async function updateConversationTitleHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+    return;
+  }
+
+  const parseResult = updateConversationTitleBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0];
+    const field = firstIssue?.path[0] !== undefined ? String(firstIssue.path[0]) : undefined;
+    const message = firstIssue?.message || 'Validation failed';
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message,
+      ...(field !== undefined ? { field } : {}),
+    });
+    return;
+  }
+
+  const sessionUserId = req.session?.userId;
+  if (typeof sessionUserId !== 'string' || !mongoose.isObjectIdOrHexString(sessionUserId)) {
+    res.status(401).json({ message: 'ERR_REQUIRE_AUTH' });
+    return;
+  }
+
+  try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Only group conversations can be renamed through this endpoint',
+      });
+      return;
+    }
+
+    await updateConversationTitle(
+      new Types.ObjectId(id),
+      new Types.ObjectId(sessionUserId),
+      parseResult.data.title
+    );
+    res.status(200).end();
+  } catch (error: unknown) {
+    sendMessagingError(res, error);
+  }
+}
+
+export async function addParticipantsHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+    return;
+  }
+
+  const parseResult = addParticipantsBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0];
+    const field = firstIssue?.path[0] !== undefined ? String(firstIssue.path[0]) : undefined;
+    const message = firstIssue?.message || 'Validation failed';
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message,
+      ...(field !== undefined ? { field } : {}),
+    });
+    return;
+  }
+
+  const sessionUserId = req.session?.userId;
+  if (typeof sessionUserId !== 'string' || !mongoose.isObjectIdOrHexString(sessionUserId)) {
+    res.status(401).json({ message: 'ERR_REQUIRE_AUTH' });
+    return;
+  }
+
+  try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Participants can only be added to group conversations',
+      });
+      return;
+    }
+
+    const added = await addParticipantsToConversation(
+      new Types.ObjectId(id),
+      parseResult.data.userIds.map((uid) => new Types.ObjectId(uid)),
+      new Types.ObjectId(sessionUserId)
+    );
+    res.status(200).json(added);
+  } catch (error: unknown) {
+    sendMessagingError(res, error);
+  }
+}
+
+export async function removeParticipantHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+    return;
+  }
+
+  const targetIdRaw = req.params?.userId;
+  if (typeof targetIdRaw !== 'string' || !mongoose.isObjectIdOrHexString(targetIdRaw)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid userId is required',
+      field: 'userId',
+    });
+    return;
+  }
+
+  const sessionUserId = req.session?.userId;
+  if (typeof sessionUserId !== 'string' || !mongoose.isObjectIdOrHexString(sessionUserId)) {
+    res.status(401).json({ message: 'ERR_REQUIRE_AUTH' });
+    return;
+  }
+
+  try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Participants can only be removed from group conversations',
+      });
+      return;
+    }
+
+    await removeParticipantFromConversation(
+      new Types.ObjectId(id),
+      new Types.ObjectId(sessionUserId),
+      new Types.ObjectId(targetIdRaw)
+    );
+    res.status(200).end();
+  } catch (error: unknown) {
+    sendMessagingError(res, error);
+  }
+}
+
+export async function updateParticipantPermissionHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const id = req.params?.id;
+  if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+    return;
+  }
+
+  const targetIdRaw = req.params?.userId;
+  if (typeof targetIdRaw !== 'string' || !mongoose.isObjectIdOrHexString(targetIdRaw)) {
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message: 'Valid userId is required',
+      field: 'userId',
+    });
+    return;
+  }
+
+  const parseResult = updateParticipantPermissionBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0];
+    const field = firstIssue?.path[0] !== undefined ? String(firstIssue.path[0]) : undefined;
+    const message = firstIssue?.message || 'Validation failed';
+    res.status(400).json({
+      code: MessagingErrorCode.VALIDATION_FAILED,
+      message,
+      ...(field !== undefined ? { field } : {}),
+    });
+    return;
+  }
+
+  const sessionUserId = req.session?.userId;
+  if (typeof sessionUserId !== 'string' || !mongoose.isObjectIdOrHexString(sessionUserId)) {
+    res.status(401).json({ message: 'ERR_REQUIRE_AUTH' });
+    return;
+  }
+
+  try {
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (!conversation) {
+      res.status(404).json({
+        code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        message: 'Conversation does not exist',
+      });
+      return;
+    }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      res.status(403).json({
+        code: MessagingErrorCode.PERMISSION_DENIED,
+        message: 'Participant permissions can only be updated in group conversations',
+      });
+      return;
+    }
+
+    const [updated] = await updateParticipantPermissions(
+      new Types.ObjectId(id),
+      new Types.ObjectId(sessionUserId),
+      [new Types.ObjectId(targetIdRaw), parseResult.data.permission]
+    );
+    res.status(200).json(updated);
+  } catch (error: unknown) {
+    sendMessagingError(res, error);
+  }
+}
 

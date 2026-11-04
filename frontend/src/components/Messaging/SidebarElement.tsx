@@ -11,7 +11,7 @@ export default function SidebarElement({
   isActive = false,
   onSelect,
 }: SidebarElementProps) {
-  const initial = conversation.displayName.charAt(0).toUpperCase();
+  const initial = conversation.displayName?.charAt(0)?.toUpperCase() ?? '';
 
   const previewText = conversation.lastMessage
     ? `${conversation.lastMessage.senderName}: ${conversation.lastMessage.text}`
@@ -21,6 +21,7 @@ export default function SidebarElement({
     <button
       type="button"
       onClick={() => onSelect?.(conversation)}
+      aria-current={isActive ? 'true' : undefined}
       className="btn text-start p-3 w-100 border-0"
       style={{
         backgroundColor: isActive ? '#A7CDDF' : '#EDF0F5',
@@ -32,6 +33,7 @@ export default function SidebarElement({
       <div className="d-flex align-items-center gap-3">
         {/* Avatar circle */}
         <div
+          aria-hidden="true"
           className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold"
           style={{
             width: '44px',
