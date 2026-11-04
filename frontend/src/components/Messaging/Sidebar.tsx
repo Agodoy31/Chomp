@@ -15,10 +15,7 @@ export default function Sidebar({
   activeConversationId,
 }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedId, setSelectedId] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
-
-  const activeId = activeConversationId ?? selectedId;
 
   useEffect(() => {
     async function loadConversations() {
@@ -27,7 +24,6 @@ export default function Sidebar({
         const flattenedData = await fetchConversations();
         setConversations(flattenedData);
         if (flattenedData.length > 0) {
-          setSelectedId(flattenedData[0]._id);
           onSelectConversation?.(flattenedData[0]);
         }
       } catch (err) {
@@ -41,7 +37,6 @@ export default function Sidebar({
   }, [onSelectConversation]);
 
   const handleSelect = (conv: Conversation) => {
-    setSelectedId(conv._id);
     onSelectConversation?.(conv);
   };
 
@@ -98,7 +93,11 @@ export default function Sidebar({
 
       <div className="d-flex flex-column gap-3">
         {isLoading ? (
-          <div role="status" aria-live="polite" className="text-white text-center py-3">
+          <div
+            role="status"
+            aria-live="polite"
+            className="text-white text-center py-3"
+          >
             Loading...
           </div>
         ) : conversations.length === 0 ? (
@@ -110,7 +109,7 @@ export default function Sidebar({
             <SidebarElement
               key={conv._id}
               conversation={conv}
-              isActive={conv._id === activeId}
+              isActive={conv._id === activeConversationId}
               onSelect={handleSelect}
             />
           ))
