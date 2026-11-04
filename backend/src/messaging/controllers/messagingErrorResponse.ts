@@ -5,6 +5,7 @@ export function sendMessagingError(res: Response, error: unknown): void {
   if (error instanceof MessagingError) {
     switch (error.code) {
       case MessagingErrorCode.INVALID_INPUT:
+      case MessagingErrorCode.VALIDATION_FAILED:
       case MessagingErrorCode.MESSAGE_SELF:
       case MessagingErrorCode.INSUFFICIENT_PARTICIPANTS:
       case MessagingErrorCode.TITLE_REQUIRED:
@@ -16,6 +17,7 @@ export function sendMessagingError(res: Response, error: unknown): void {
         return;
       case MessagingErrorCode.USER_NOT_FOUND:
       case MessagingErrorCode.CONVERSATION_NOT_FOUND:
+      case MessagingErrorCode.MESSAGE_NOT_FOUND:
       case MessagingErrorCode.CLUB_NOT_FOUND:
         res.status(404).json({ code: error.code, message: error.message });
         return;
