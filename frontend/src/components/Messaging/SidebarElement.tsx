@@ -55,6 +55,15 @@ export default function SidebarElement({
             {conversation.displayName}
           </div>
 
+          {conversation.type === 'CHANNEL' && conversation.title && (
+            <div
+              className="fw-bold text-truncate mt-1"
+              style={{ color: '#3046C3', fontSize: '13px', lineHeight: '1.2' }}
+            >
+              # {conversation.title}
+            </div>
+          )}
+
           {previewText && (
             <div
               className="text-truncate mt-1"

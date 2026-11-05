@@ -130,11 +130,11 @@ export async function createConversation(
 
 /**
  * Fetches available users from the server.
- * Endpoint: GET /api/users
+ * Endpoint: GET /api/search
  */
 export async function fetchUsers(): Promise<ChatUser[]> {
-  const response = await fetch('/api/users', {
-    credentials: 'include',
+  const response = await fetch('/api/search', {
+    credentials: 'include', // TODO:: pass a query
   });
 
   if (!response.ok) {

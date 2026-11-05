@@ -15,7 +15,10 @@ export default function Sidebar({
   activeConversationId,
 }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const activeId = activeConversationId ?? selectedId;
 
   useEffect(() => {
     async function loadConversations() {
@@ -24,6 +27,7 @@ export default function Sidebar({
         const flattenedData = await fetchConversations();
         setConversations(flattenedData);
         if (flattenedData.length > 0) {
+          setSelectedId(flattenedData[0]._id);
           onSelectConversation?.(flattenedData[0]);
         }
       } catch (err) {
@@ -37,6 +41,7 @@ export default function Sidebar({
   }, [onSelectConversation]);
 
   const handleSelect = (conv: Conversation) => {
+    setSelectedId(conv._id);
     onSelectConversation?.(conv);
   };
 
@@ -109,7 +114,7 @@ export default function Sidebar({
             <SidebarElement
               key={conv._id}
               conversation={conv}
-              isActive={conv._id === activeConversationId}
+              isActive={conv._id === activeId}
               onSelect={handleSelect}
             />
           ))
