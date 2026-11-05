@@ -1078,7 +1078,7 @@ function isPermissionUpdateTuple(
 
 export async function updateParticipantPermissions(
   conversationId: Types.ObjectId,
-  requestingUserId: Types.ObjectId,
+  requestingUserId: Types.ObjectId | undefined,
   updates: PermissionUpdate | PermissionUpdate[],
   session?: ClientSession
 ): Promise<IConversationParticipantSummary[]> {
@@ -1086,13 +1086,6 @@ export async function updateParticipantPermissions(
     throw new MessagingError(
       MessagingErrorCode.VALIDATION_FAILED,
       'Valid conversationId is required'
-    );
-  }
-
-  if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
-    throw new MessagingError(
-      MessagingErrorCode.VALIDATION_FAILED,
-      'Valid requestingUserId is required'
     );
   }
 
@@ -1126,211 +1119,196 @@ export async function updateParticipantPermissions(
     }
   }
 
-  if (session) {
-    return executeUpdateParticipantPermissions(
-      conversationId,
-      requestingUserId,
-      normalizedUpdates,
-      session
-    );
+  const ownsSession = !session;
+  const activeSession = ownsSession ? await mongoose.startSession() : session;
+  if (ownsSession && activeSession) {
+    activeSession.startTransaction();
   }
 
-  const internalSession = await mongoose.startSession();
   try {
-    internalSession.startTransaction();
-    const result = await executeUpdateParticipantPermissions(
-      conversationId,
-      requestingUserId,
-      normalizedUpdates,
-      internalSession
+    const conversation = await Conversation.findById(conversationId)
+      .select('type')
+      .session(activeSession)
+      .lean()
+      .exec();
+    if (!conversation) {
+      throw new MessagingError(
+        MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        'Conversation not found'
+      );
+    }
+
+    if (conversation.type === ConversationType.DIRECT) {
+      throw new MessagingError(
+        MessagingErrorCode.PERMISSION_DENIED,
+        'Cannot update permissions in a direct conversation'
+      );
+    }
+
+    const isBulk = normalizedUpdates.length > 1;
+    const isGroup = conversation.type === ConversationType.GROUP;
+    const updatedParticipants: IConversationParticipant[] = [];
+
+    if (isGroup) {
+      const requesterParticipant = await ConversationParticipant.findOne({
+        userId: requestingUserId,
+        conversationId,
+      })
+        .select('permission')
+        .session(activeSession)
+        .lean()
+        .exec();
+
+      if (!requesterParticipant) {
+        throw new MessagingError(
+          MessagingErrorCode.PERMISSION_DENIED,
+          'User is not a participant in this conversation'
+        );
+      }
+
+      if (requesterParticipant.permission !== ParticipantPermission.MODERATE) {
+        throw new MessagingError(
+          MessagingErrorCode.PERMISSION_DENIED,
+          'Only moderators can update participant permissions'
+        );
+      }
+
+      const currentModerators = await ConversationParticipant.find({
+        conversationId,
+        permission: ParticipantPermission.MODERATE,
+      })
+        .select('userId')
+        .session(activeSession)
+        .lean()
+        .exec();
+      const moderatorIds = new Set<string>(currentModerators.map((m) => m.userId.toString()));
+
+      for (const [targetUserId, newPermission] of normalizedUpdates) {
+        const targetKey = targetUserId.toString();
+        if (newPermission === ParticipantPermission.MODERATE) {
+          moderatorIds.add(targetKey);
+        } else {
+          moderatorIds.delete(targetKey);
+        }
+      }
+
+      if (moderatorIds.size === 0) {
+        throw new MessagingError(
+          MessagingErrorCode.PERMISSION_DENIED,
+          'Group conversations must have at least one moderator'
+        );
+      }
+    }
+
+    for (const [targetUserId, newPermission] of normalizedUpdates) {
+      const targetParticipant = await ConversationParticipant.findOne({
+        userId: targetUserId,
+        conversationId,
+      })
+        .session(activeSession)
+        .exec();
+
+      if (!targetParticipant) {
+        throw new MessagingError(
+          MessagingErrorCode.USER_NOT_FOUND,
+          'Target user is not a participant in this conversation'
+        );
+      }
+
+      const oldPermission = targetParticipant.permission;
+      targetParticipant.permission = newPermission;
+      await targetParticipant.save({ session: activeSession });
+      updatedParticipants.push(targetParticipant.toObject<IConversationParticipant>());
+
+      if (!isBulk && isGroup && oldPermission !== newPermission) {
+        const requester = await User.findById(requestingUserId)
+          .select('firstName lastName')
+          .session(activeSession)
+          .lean<IUserSummary>()
+          .exec();
+        const requesterName = requester
+          ? `${requester.firstName} ${requester.lastName}`.trim()
+          : 'Someone';
+
+        const targetUser = await User.findById(targetUserId)
+          .select('firstName lastName')
+          .session(activeSession)
+          .lean<IUserSummary>()
+          .exec();
+        const targetName = targetUser
+          ? `${targetUser.firstName} ${targetUser.lastName}`.trim()
+          : 'someone';
+
+        let text: string;
+        if (newPermission === ParticipantPermission.MODERATE) {
+          text = `${requesterName} made ${targetName} a moderator`;
+        } else if (
+          oldPermission === ParticipantPermission.MODERATE &&
+          newPermission === ParticipantPermission.WRITE
+        ) {
+          text = `${requesterName} removed ${targetName} as a moderator`;
+        } else if (newPermission === ParticipantPermission.READ) {
+          text = `${requesterName} set ${targetName} to read only`;
+        } else if (
+          oldPermission === ParticipantPermission.READ &&
+          newPermission === ParticipantPermission.WRITE
+        ) {
+          text = `${requesterName} allowed ${targetName} to send messages`;
+        } else {
+          text = `${requesterName} changed ${targetName} permission to ${newPermission.toLowerCase()}`;
+        }
+
+        await Message.create(
+          [
+            {
+              conversationId,
+              senderId: requestingUserId,
+              text,
+              isAnnouncement: false,
+              isSystem: true,
+            },
+          ],
+          { session: activeSession }
+        );
+      }
+    }
+
+    if (ownsSession && activeSession) {
+      await activeSession.commitTransaction();
+    }
+
+    const updatedUserIds = normalizedUpdates.map(([targetUserId]) => targetUserId);
+    const updatedUsers = await User.find({ _id: { $in: updatedUserIds } })
+      .select('firstName lastName')
+      .session(activeSession)
+      .lean<IUserSummary[]>()
+      .exec();
+
+    const userMap = new Map<string, IUserSummary>(
+      updatedUsers.map((u) => [u._id.toString(), u])
     );
-    await internalSession.commitTransaction();
-    return result;
+
+    return updatedParticipants.map((p) => {
+      const userSummary = userMap.get(p.userId.toString()) || {
+        _id: p.userId,
+        firstName: '',
+        lastName: '',
+      };
+      return {
+        userId: userSummary,
+        permission: p.permission,
+      };
+    });
   } catch (error: any) {
-    if (internalSession.inTransaction()) {
-      await internalSession.abortTransaction();
+    if (ownsSession && activeSession?.inTransaction()) {
+      await activeSession.abortTransaction();
     }
     throw error;
   } finally {
-    await internalSession.endSession();
-  }
-}
-
-async function executeUpdateParticipantPermissions(
-  conversationId: Types.ObjectId,
-  requestingUserId: Types.ObjectId,
-  normalizedUpdates: PermissionUpdate[],
-  session: ClientSession
-): Promise<IConversationParticipantSummary[]> {
-  const conversation = await Conversation.findById(conversationId)
-    .select('type')
-    .session(session)
-    .lean()
-    .exec();
-  if (!conversation) {
-    throw new MessagingError(
-      MessagingErrorCode.CONVERSATION_NOT_FOUND,
-      'Conversation not found'
-    );
-  }
-
-  if (conversation.type === ConversationType.DIRECT) {
-    throw new MessagingError(
-      MessagingErrorCode.PERMISSION_DENIED,
-      'Cannot update permissions in a direct conversation'
-    );
-  }
-
-  const requesterParticipant = await ConversationParticipant.findOne({
-    userId: requestingUserId,
-    conversationId,
-  })
-    .select('permission')
-    .session(session)
-    .lean()
-    .exec();
-
-  if (!requesterParticipant) {
-    throw new MessagingError(
-      MessagingErrorCode.PERMISSION_DENIED,
-      'User is not a participant in this conversation'
-    );
-  }
-
-  if (requesterParticipant.permission !== ParticipantPermission.MODERATE) {
-    throw new MessagingError(
-      MessagingErrorCode.PERMISSION_DENIED,
-      'Only moderators can update participant permissions'
-    );
-  }
-
-  const isBulk = normalizedUpdates.length > 1;
-  const isGroup = conversation.type === ConversationType.GROUP;
-  const updatedParticipants: IConversationParticipant[] = [];
-
-  if (isGroup) {
-    const currentModerators = await ConversationParticipant.find({
-      conversationId,
-      permission: ParticipantPermission.MODERATE,
-    })
-      .select('userId')
-      .session(session)
-      .lean()
-      .exec();
-    const moderatorIds = new Set<string>(currentModerators.map((m) => m.userId.toString()));
-
-    for (const [targetUserId, newPermission] of normalizedUpdates) {
-      const targetKey = targetUserId.toString();
-      if (newPermission === ParticipantPermission.MODERATE) {
-        moderatorIds.add(targetKey);
-      } else {
-        moderatorIds.delete(targetKey);
-      }
-    }
-
-    if (moderatorIds.size === 0) {
-      throw new MessagingError(
-        MessagingErrorCode.PERMISSION_DENIED,
-        'Group conversations must have at least one moderator'
-      );
+    if (ownsSession && activeSession) {
+      await activeSession.endSession();
     }
   }
-
-  for (const [targetUserId, newPermission] of normalizedUpdates) {
-    const targetParticipant = await ConversationParticipant.findOne({
-      userId: targetUserId,
-      conversationId,
-    })
-      .session(session)
-      .exec();
-
-    if (!targetParticipant) {
-      throw new MessagingError(
-        MessagingErrorCode.USER_NOT_FOUND,
-        'Target user is not a participant in this conversation'
-      );
-    }
-
-    const oldPermission = targetParticipant.permission;
-    targetParticipant.permission = newPermission;
-    await targetParticipant.save({ session });
-    updatedParticipants.push(targetParticipant.toObject<IConversationParticipant>());
-
-    if (!isBulk && isGroup && oldPermission !== newPermission) {
-      const requester = await User.findById(requestingUserId)
-        .select('firstName lastName')
-        .session(session)
-        .lean<IUserSummary>()
-        .exec();
-      const requesterName = requester
-        ? `${requester.firstName} ${requester.lastName}`.trim()
-        : 'Someone';
-
-      const targetUser = await User.findById(targetUserId)
-        .select('firstName lastName')
-        .session(session)
-        .lean<IUserSummary>()
-        .exec();
-      const targetName = targetUser
-        ? `${targetUser.firstName} ${targetUser.lastName}`.trim()
-        : 'someone';
-
-      let text: string;
-      if (newPermission === ParticipantPermission.MODERATE) {
-        text = `${requesterName} made ${targetName} a moderator`;
-      } else if (
-        oldPermission === ParticipantPermission.MODERATE &&
-        newPermission === ParticipantPermission.WRITE
-      ) {
-        text = `${requesterName} removed ${targetName} as a moderator`;
-      } else if (newPermission === ParticipantPermission.READ) {
-        text = `${requesterName} set ${targetName} to read only`;
-      } else if (
-        oldPermission === ParticipantPermission.READ &&
-        newPermission === ParticipantPermission.WRITE
-      ) {
-        text = `${requesterName} allowed ${targetName} to send messages`;
-      } else {
-        text = `${requesterName} changed ${targetName} permission to ${newPermission.toLowerCase()}`;
-      }
-
-      await Message.create(
-        [
-          {
-            conversationId,
-            senderId: requestingUserId,
-            text,
-            isAnnouncement: false,
-            isSystem: true,
-          },
-        ],
-        { session }
-      );
-    }
-  }
-
-  const updatedUserIds = normalizedUpdates.map(([targetUserId]) => targetUserId);
-  const updatedUsers = await User.find({ _id: { $in: updatedUserIds } })
-    .select('firstName lastName')
-    .session(session)
-    .lean<IUserSummary[]>()
-    .exec();
-
-  const userMap = new Map<string, IUserSummary>(
-    updatedUsers.map((u) => [u._id.toString(), u])
-  );
-
-  return updatedParticipants.map((p) => {
-    const userSummary = userMap.get(p.userId.toString()) || {
-      _id: p.userId,
-      firstName: '',
-      lastName: '',
-    };
-    return {
-      userId: userSummary,
-      permission: p.permission,
-    };
-  });
 }
 
 export async function getUserConversations(
