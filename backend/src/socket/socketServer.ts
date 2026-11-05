@@ -3,10 +3,11 @@ import mongoose from 'mongoose';
 import { Server } from 'socket.io';
 import { sessionMiddleware } from '../sessions/session';
 import type { SocketHandlerRegistrar } from './socket.interfaces';
+import { getConversationRoom, getUserRoom } from './rooms';
+
+export { getConversationRoom, getUserRoom };
 
 let io: Server | null = null;
-
-export const getUserRoom = (userId: string): string => `user:${userId}`;
 
 export const getIO = (): Server | null => io;
 

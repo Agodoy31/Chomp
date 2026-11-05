@@ -20,6 +20,7 @@ import {
 import { IConversationFeedItem } from '../interfaces/conversation.interfaces';
 import { MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
+import { messagingPublisher } from '../sockets/messagingPublisher';
 
 export async function postConversationHandler(req: Request, res: Response): Promise<void> {
   const body = req.body;
@@ -268,6 +269,7 @@ export async function updateConversationTitleHandler(req: Request, res: Response
       new Types.ObjectId(sessionUserId),
       parseResult.data.title
     );
+    messagingPublisher.conversationRenamed(id, parseResult.data.title);
     res.status(200).end();
   } catch (error: unknown) {
     sendMessagingError(res, error);
@@ -327,6 +329,7 @@ export async function addParticipantsHandler(req: Request, res: Response): Promi
       parseResult.data.userIds.map((uid) => new Types.ObjectId(uid)),
       new Types.ObjectId(sessionUserId)
     );
+    messagingPublisher.participantAdded(id, added);
     res.status(200).json(added);
   } catch (error: unknown) {
     sendMessagingError(res, error);
@@ -383,6 +386,7 @@ export async function removeParticipantHandler(req: Request, res: Response): Pro
       new Types.ObjectId(sessionUserId),
       new Types.ObjectId(targetIdRaw)
     );
+    messagingPublisher.participantRemoved(id, targetIdRaw);
     res.status(200).end();
   } catch (error: unknown) {
     sendMessagingError(res, error);
