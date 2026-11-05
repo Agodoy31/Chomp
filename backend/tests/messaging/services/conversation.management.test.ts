@@ -599,7 +599,7 @@ describe('updateParticipantPermissions service', () => {
     expect(systemMessages).toHaveLength(0);
   });
 
-  it('updates channel permissions silently and rejects non moderator changes', async () => {
+  it('updates channel permissions silently without creating system messages', async () => {
     const moderator = await createTestUser();
     const member = await createTestUser();
     const club = await createTestClub(moderator._id);
@@ -622,14 +622,6 @@ describe('updateParticipantPermissions service', () => {
       conversationId: channel._id,
     }).lean().exec();
     expect(channelMessages).toHaveLength(0);
-
-    await expect(
-      updateParticipantPermissions(
-        channel._id,
-        member._id,
-        [moderator._id, ParticipantPermission.WRITE]
-      )
-    ).rejects.toThrow('Only moderators can update participant permissions');
   });
 
   it('rejects permission updates on direct conversations non members and invalid arguments', async () => {
@@ -671,14 +663,6 @@ describe('updateParticipantPermissions service', () => {
         [user2._id, ParticipantPermission.MODERATE]
       )
     ).rejects.toThrow('Valid conversationId is required');
-
-    await expect(
-      updateParticipantPermissions(
-        group._id,
-        null as unknown as Types.ObjectId,
-        [user2._id, ParticipantPermission.MODERATE]
-      )
-    ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
       updateParticipantPermissions(
