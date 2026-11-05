@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
-import { IMessage } from '../interfaces/message.interfaces';
-import { IMessageResponse } from '../interfaces/message.responses';
 import {
   messageHistoryQuerySchema,
   postMessageBodySchema,
@@ -9,28 +7,7 @@ import {
 import { deleteMessage, getMessages, sendMessage } from '../services/message.service';
 import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
-
-export function toMessageResponse(message: IMessage): IMessageResponse {
-  const response: IMessageResponse = {
-    _id: message._id.toString(),
-    conversationId: message.conversationId.toString(),
-    senderId: message.senderId.toString(),
-    text: message.removedAt ? 'This message was deleted' : message.text,
-    isAnnouncement: message.isAnnouncement,
-    isSystem: message.isSystem,
-    createdAt: message.createdAt.toISOString(),
-  };
-
-  if (message.clientId) {
-    response.clientId = message.clientId;
-  }
-
-  if (message.removedAt) {
-    response.removedAt = message.removedAt.toISOString();
-  }
-
-  return response;
-}
+import { toMessageResponse } from '../serializers/messageResponse';
 
 export async function postMessageHandler(req: Request, res: Response): Promise<void> {
   const id = req.params?.id;
