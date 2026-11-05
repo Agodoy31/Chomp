@@ -2,6 +2,7 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import clubRoutes from './clubs/clubRoutes';
 import authRoutes from './user/routes/auth.routes';
+import searchRoutes from './user/routes/search.routes'
 import conversationRoutes from './messaging/routes/conversation.routes';
 import { sessionMiddleware } from './sessions/session';
 import { requireAuth } from './user/utils/requireAuth';
@@ -23,6 +24,8 @@ app.use('/api/clubs', clubRoutes);
 app.use("/api/auth", authRoutes);
 
 app.use('/api/conversations', requireAuth, conversationRoutes);
+
+app.use('/api/search', requireAuth, searchRoutes);
 
 // Hello World / Health Check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
