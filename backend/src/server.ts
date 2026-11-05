@@ -2,6 +2,7 @@ import 'dotenv/config';
 import http from 'http';
 import mongoose from 'mongoose';
 import { closeSocketServer, initSocketServer } from './socket/socketServer';
+import { registerConversationSocketHandlers } from './messaging/sockets/conversationSocket';
 import app from './app';
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -82,7 +83,7 @@ async function start(): Promise<void> {
 
   const server = http.createServer(app);
   httpServer = server;
-  initSocketServer(server, CLIENT_URL);
+  initSocketServer(server, CLIENT_URL, [registerConversationSocketHandlers]);
 
   try {
     await listen(server, port);
