@@ -8,6 +8,7 @@ import { deleteMessage, getMessages, sendMessage } from '../services/message.ser
 import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
 import { toMessageResponse } from '../serializers/messageResponse';
+import { messagingPublisher } from '../sockets/messagingPublisher';
 
 export async function postMessageHandler(req: Request, res: Response): Promise<void> {
   const id = req.params?.id;
@@ -47,6 +48,7 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
       parseResult.data.isAnnouncement
     );
 
+    messagingPublisher.messageCreated(message);
     res.status(201).json(toMessageResponse(message));
   } catch (error) {
     sendMessagingError(res, error);
@@ -138,6 +140,7 @@ export async function deleteMessageHandler(req: Request, res: Response): Promise
       new Types.ObjectId(messageId),
       new Types.ObjectId(userId)
     );
+    messagingPublisher.messageDeleted(deleted);
     res.status(200).json(toMessageResponse(deleted));
   } catch (error: unknown) {
     sendMessagingError(res, error);
