@@ -42,7 +42,7 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
 
         {/* Center */}
         <Link
-          to="/"
+          to={user && !loading ? '/clubs' : '/'}
           className="fw-bold"
           style={{
             color: 'white',
