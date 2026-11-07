@@ -9,8 +9,7 @@ import { Search, X } from 'react-bootstrap-icons';
 
 
 
-const CATEGORY_FILTERS: { value: ClubCategory | 'ALL'; label: string }[] = [
-    { value: 'ALL', label: 'None' },
+const CATEGORY_FILTERS: { value: ClubCategory; label: string }[] = [
     { value: 'ACADEMIC', label: 'Academic' },
     { value: 'CULTURAL', label: 'Cultural' },
     { value: 'SPORTS', label: 'Sports' },
@@ -33,7 +32,7 @@ export default function ClubDiscovery() {
   const [errorMsg, setErrorMsg] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [query, setQuery] = useState('')
-  const [category, setCategory] = useState<ClubCategory | 'ALL'>('ALL')
+  const [categories, setCategories] = useState<ClubCategory[]>([])
   const [searchFocused, setSearchFocused] = useState(false)
 
   useEffect(() => {
@@ -102,16 +101,28 @@ export default function ClubDiscovery() {
       setErrorMsg (err instanceof Error ? err.message : 'Failed to join club')
     }
   }
+
+  function handleCategoryToggle(cat: ClubCategory) {
+  setCategories(prev => {
+    if (prev.includes(cat)) {
+      return prev.filter(c => c !== cat);
+    } else {
+      return [...prev, cat];
+    }
+  });
+}
   
+
   //Clear filters
   function clearFilters() {
-        setQuery('')
-        setCategory('ALL')
+      setCategories([])
   }
+
+  
 
   const search = query.trim().toLowerCase()
   const visibleClubs = clubs.filter((club) => {
-      const matchesCategory = category === 'ALL' || club.category === category
+      const matchesCategory = categories.length === 0 || categories.includes(club.category)
       const matchesSearch =
           search === '' ||
           club.name.toLowerCase().includes(search) ||
@@ -191,13 +202,13 @@ export default function ClubDiscovery() {
 
                 <div className="d-flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter by category">
                     {CATEGORY_FILTERS.map((filter) => {
-                        const active = category === filter.value
+                        const active = categories.includes(filter.value)
                         return (
                             <Button
                                 key={filter.value}
                                 size="sm"
                                 aria-pressed={active}
-                                onClick={() => setCategory(filter.value)}
+                                onClick={() => handleCategoryToggle(filter.value)}
                                 className="rounded-pill px-3 fw-semibold"
                                 style={{
                                     backgroundColor: active ? '#3046C3' : '#fff',
@@ -209,6 +220,17 @@ export default function ClubDiscovery() {
                             </Button>
                         )
                     })}
+                    {categories.length > 0  && (
+                        <Button
+                            size="sm"
+                            variant="outline-secondary"
+                            onClick={clearFilters}
+                            className="rounded-pill px-3 fw-semibold ms-auto"
+                        >
+                            Clear Filters
+                        </Button>
+                    )}
+
                 </div>
             </>
         )}
@@ -250,4 +272,3 @@ export default function ClubDiscovery() {
     </div>
   );
 }
-
