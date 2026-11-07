@@ -1273,16 +1273,16 @@ export async function updateParticipantPermissions(
       }
     }
 
-    if (ownsSession && activeSession) {
-      await activeSession.commitTransaction();
-    }
-
     const updatedUserIds = normalizedUpdates.map(([targetUserId]) => targetUserId);
     const updatedUsers = await User.find({ _id: { $in: updatedUserIds } })
       .select('firstName lastName')
       .session(activeSession)
       .lean<IUserSummary[]>()
       .exec();
+
+    if (ownsSession && activeSession) {
+      await activeSession.commitTransaction();
+    }
 
     const userMap = new Map<string, IUserSummary>(
       updatedUsers.map((u) => [u._id.toString(), u])

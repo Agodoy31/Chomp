@@ -612,7 +612,7 @@ describe('updateParticipantPermissions service', () => {
 
     const [updated] = await updateParticipantPermissions(
       channel._id,
-      moderator._id,
+      undefined,
       [member._id, ParticipantPermission.READ]
     );
     expect(updated.permission).toBe(ParticipantPermission.READ);
