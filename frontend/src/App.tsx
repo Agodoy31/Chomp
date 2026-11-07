@@ -16,7 +16,7 @@ export default function App() {
 
      <Route element={<AppLayout />}>
         <Route path="/clubs" element={<ClubDiscovery />} />
-        <Route path="/myClubs" element={<ClubDiscovery />} />
+        <Route path="/myClubs" element={<ClubDiscovery />} /> //will fix once the My Clubs page is implemented
       </Route>
     </Routes>
   )
