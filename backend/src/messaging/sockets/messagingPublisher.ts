@@ -63,6 +63,11 @@ export const messagingPublisher = {
     }
   },
 
+  evictUserFromConversation(conversationId: string, userId: string): void {
+    const conversationRoom = getConversationRoom(conversationId);
+    evictUserFromRoom(userId, conversationRoom);
+  },
+
   participantRemoved(conversationId: string, userId: string): void {
     const io: Server<ClientToServerEvents, ServerToClientEvents> | null =
       getIO() as Server<ClientToServerEvents, ServerToClientEvents> | null;

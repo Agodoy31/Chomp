@@ -20,6 +20,8 @@ import {
 import { User } from '../../user/models/User';
 import { Club } from '../../clubs/model/clubModel';
 import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
+import { IMessage } from '../interfaces/message.interfaces';
+import { messagingPublisher } from '../sockets/messagingPublisher';
 
 export const DEFAULT_GROUP_CONVERSATION_TITLE = 'Group Chat';
 
@@ -225,7 +227,7 @@ export async function createGroupConversation(
       ordered: true,
     });
 
-    await Message.create(
+    const [systemMessageDoc] = await Message.create(
       [
         {
           conversationId: conversation._id,
@@ -239,6 +241,8 @@ export async function createGroupConversation(
     );
 
     await session.commitTransaction();
+
+    messagingPublisher.messageCreated(systemMessageDoc.toObject<IMessage>());
 
     return conversation.toObject<IConversation>();
   } catch (error: any) {
@@ -413,6 +417,7 @@ export async function addParticipantsToConversation(
     }
     const addedUsers = await usersQuery.exec();
 
+    let systemMessageDoc: IMessage | undefined;
     if (_requestingUserId) {
       const requesterQuery = User.findById(_requestingUserId)
         .select('firstName lastName')
@@ -438,7 +443,7 @@ export async function addParticipantsToConversation(
         text = `${requesterName} added ${usersToAdd.length} people`;
       }
 
-      await Message.create(
+      const [createdMsg] = await Message.create(
         [
           {
             conversationId,
@@ -450,10 +455,14 @@ export async function addParticipantsToConversation(
         ],
         effectiveSession ? { session: effectiveSession } : undefined
       );
+      systemMessageDoc = createdMsg.toObject<IMessage>();
     }
 
     if (ownsSession && effectiveSession) {
       await effectiveSession.commitTransaction();
+      if (systemMessageDoc) {
+        messagingPublisher.messageCreated(systemMessageDoc);
+      }
     }
 
     const userMap = new Map<string, IUserSummary>(
@@ -839,6 +848,7 @@ export async function updateConversationTitle(
       throw saveError;
     }
 
+    let systemMessageDoc: IMessage | undefined;
     if (conversation.type === ConversationType.GROUP && oldTitle !== conversation.title) {
       const requester = await User.findById(requestingUserId)
         .select('firstName lastName')
@@ -848,7 +858,7 @@ export async function updateConversationTitle(
         ? `${requester.firstName} ${requester.lastName}`.trim()
         : 'Someone';
 
-      await Message.create(
+      const [createdMsg] = await Message.create(
         [
           {
             conversationId,
@@ -860,9 +870,15 @@ export async function updateConversationTitle(
         ],
         { session }
       );
+      systemMessageDoc = createdMsg.toObject<IMessage>();
     }
 
     await session.commitTransaction();
+
+    if (systemMessageDoc) {
+      messagingPublisher.messageCreated(systemMessageDoc);
+    }
+
     return conversation.toObject<IConversation>();
   } catch (error: any) {
     if (session.inTransaction()) {
@@ -902,12 +918,13 @@ export async function removeParticipantFromConversation(
   }
 
   if (externalSession) {
-    return executeRemoveParticipantFromConversation(
+    const result = await executeRemoveParticipantFromConversation(
       conversationId,
       requestingUserId,
       targetUserId,
       externalSession
     );
+    return result.success;
   }
 
   const session = await mongoose.startSession();
@@ -920,7 +937,14 @@ export async function removeParticipantFromConversation(
       session
     );
     await session.commitTransaction();
-    return result;
+    if (result.systemMessage) {
+      messagingPublisher.evictUserFromConversation(
+        conversationId.toString(),
+        targetUserId.toString()
+      );
+      messagingPublisher.messageCreated(result.systemMessage);
+    }
+    return result.success;
   } catch (error: any) {
     if (session.inTransaction()) {
       await session.abortTransaction();
@@ -936,7 +960,7 @@ async function executeRemoveParticipantFromConversation(
   requestingUserId: Types.ObjectId,
   targetUserId: Types.ObjectId,
   session: ClientSession
-): Promise<boolean> {
+): Promise<{ success: boolean; systemMessage?: IMessage }> {
   const conversation = await Conversation.findById(conversationId)
     .select('type')
     .session(session)
@@ -1052,7 +1076,7 @@ async function executeRemoveParticipantFromConversation(
     text = `${requesterName} removed ${targetName}`;
   }
 
-  await Message.create(
+  const [createdMsg] = await Message.create(
     [
       {
         conversationId,
@@ -1065,7 +1089,7 @@ async function executeRemoveParticipantFromConversation(
     { session }
   );
 
-  return true;
+  return { success: true, systemMessage: createdMsg.toObject<IMessage>() };
 }
 
 export type PermissionUpdate = [Types.ObjectId, ParticipantPermission];
@@ -1148,6 +1172,7 @@ export async function updateParticipantPermissions(
     const isBulk = normalizedUpdates.length > 1;
     const isGroup = conversation.type === ConversationType.GROUP;
     const updatedParticipants: IConversationParticipant[] = [];
+    let systemMessageDoc: IMessage | undefined;
 
     if (isGroup) {
       const requesterParticipant = await ConversationParticipant.findOne({
@@ -1258,7 +1283,7 @@ export async function updateParticipantPermissions(
           text = `${requesterName} changed ${targetName} permission to ${newPermission.toLowerCase()}`;
         }
 
-        await Message.create(
+        const [createdMsg] = await Message.create(
           [
             {
               conversationId,
@@ -1270,6 +1295,7 @@ export async function updateParticipantPermissions(
           ],
           { session: activeSession }
         );
+        systemMessageDoc = createdMsg.toObject<IMessage>();
       }
     }
 
@@ -1282,6 +1308,9 @@ export async function updateParticipantPermissions(
 
     if (ownsSession && activeSession) {
       await activeSession.commitTransaction();
+      if (systemMessageDoc) {
+        messagingPublisher.messageCreated(systemMessageDoc);
+      }
     }
 
     const userMap = new Map<string, IUserSummary>(

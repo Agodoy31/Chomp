@@ -138,21 +138,34 @@ describe('real conversation sockets', () => {
     expect(removed.body.removedAt).toEqual(expect.any(String));
 
     const renameEvent = nextEvent(m1, 'conversation:renamed');
+    const renameMessageEvent = nextEvent(m1, 'message:created');
     await danny.agent.patch(base).send({ title: '  Lake Alice Turtle Watchers  ' }).expect(200);
     expect(await renameEvent).toEqual({ conversationId, title: 'Lake Alice Turtle Watchers' });
+    expect(await renameMessageEvent).toMatchObject({
+      conversationId,
+      isSystem: true,
+      text: 'Danny Wuerffel changed the group title to Lake Alice Turtle Watchers',
+    });
     expect((await Conversation.findById(conversationId))?.title).toBe('Lake Alice Turtle Watchers');
 
     const additionEvent = nextEvent(d, 'participant:added');
+    const additionMessageEvent = nextEvent(d, 'message:created');
     const inboxAdded = nextEvent(a, 'inbox:conversation_added');
     const addition = await danny.agent.post(`${base}/participants`)
       .send({ userIds: [albert.user._id.toString()] }).expect(200);
     expect(await additionEvent).toEqual({ conversationId, participants: addition.body });
+    expect(await additionMessageEvent).toMatchObject({
+      conversationId,
+      isSystem: true,
+      text: 'Danny Wuerffel added Albert Gator',
+    });
     expect(await inboxAdded).toEqual({ conversationId });
     expect(outsiderMessages).not.toHaveBeenCalled();
     expect(getIO()!.sockets.adapter.rooms.get(room)?.has(a.id!)).toBe(false);
     expect(await join(a, conversationId)).toEqual({ ok: true, conversationId });
 
     const removalEvent = nextEvent(d, 'participant:removed');
+    const removalMessageEvent = nextEvent(d, 'message:created');
     const inboxRemoved = [m1, m2].map((client) => nextEvent(client, 'inbox:conversation_removed'));
     const forbidden = jest.fn();
     for (const client of [m1, m2]) {
@@ -162,6 +175,11 @@ describe('real conversation sockets', () => {
     const targetId = alejandro.user._id.toString();
     await danny.agent.delete(`${base}/participants/${targetId}`).expect(200);
     expect(await removalEvent).toEqual({ conversationId, userId: targetId });
+    expect(await removalMessageEvent).toMatchObject({
+      conversationId,
+      isSystem: true,
+      text: 'Danny Wuerffel removed Alejandro Gimenez',
+    });
     expect(await Promise.all(inboxRemoved)).toEqual([{ conversationId }, { conversationId }]);
     for (const client of [m1, m2]) {
       const serverSocket = getIO()!.sockets.sockets.get(client.id!)!;
