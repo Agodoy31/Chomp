@@ -308,5 +308,18 @@ describe('real conversation sockets', () => {
         },
       },
     });
+
+    expect(await join(reitzSocket, dmId)).toEqual({ ok: true, conversationId: dmId });
+
+    const duplicateInboxSpy = jest.fn();
+    reitzSocket.on('inbox:conversation_added', duplicateInboxSpy);
+    const secondMessageEvent = nextEvent(reitzSocket, 'message:created');
+
+    await tim.agent.post(`/api/conversations/${dmId}/messages`).send({
+      text: 'Need to reserve shoes',
+    }).expect(201);
+
+    expect(await secondMessageEvent).toMatchObject({ text: 'Need to reserve shoes' });
+    expect(duplicateInboxSpy).not.toHaveBeenCalled();
   }, 60000);
 });
