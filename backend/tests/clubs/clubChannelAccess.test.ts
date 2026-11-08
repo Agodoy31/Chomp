@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterEach, afterAll } from '@jest/globals';
 import mongoose, { type ClientSession, type Types } from 'mongoose';
 import { Club } from '../../src/clubs/model/clubModel';
 import {
@@ -36,10 +36,6 @@ async function insertClubWithChannels() {
   const club = await createTestClub(officer._id);
   const general = await inTransaction((session) => createGeneralChannel(club._id, officer._id, session));
   const announcements = await conversationService.createChannel(club._id, 'Announcements', [officer._id]);
-  await ConversationParticipant.updateOne(
-    { conversationId: announcements._id, userId: officer._id },
-    { permission: MODERATE }
-  );
   return { officer, club, channelIds: [general._id.toString(), announcements._id.toString()] };
 }
 
@@ -49,7 +45,6 @@ beforeAll(async () => {
 }, 60000);
 
 afterEach(async () => {
-  jest.restoreAllMocks();
   await clearTestDb();
 });
 
@@ -133,56 +128,33 @@ describe('syncMemberChannelPermission', () => {
     await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
     await conversationService.createChannel(club._id, 'Events', [officer._id]);
 
-    await inTransaction((session) =>
-      syncMemberChannelPermission(club._id, member._id, 'OFFICER', officer._id, session)
-    );
+    await inTransaction((session) => syncMemberChannelPermission(club._id, member._id, 'OFFICER', session));
     expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: MODERATE, [channelIds[1]]: MODERATE });
 
-    await inTransaction((session) =>
-      syncMemberChannelPermission(club._id, member._id, 'MEMBER', officer._id, session)
-    );
+    await inTransaction((session) => syncMemberChannelPermission(club._id, member._id, 'MEMBER', session));
     expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: WRITE, [channelIds[1]]: WRITE });
     expect(await Message.countDocuments()).toBe(0);
   });
 
-  it('updates through an existing channel moderator when the actor has no seat', async () => {
-    const { officer, club, channelIds } = await insertClubWithChannels();
-    const [member, admin] = await Promise.all([createTestUser(), createTestUser({ isAdmin: true })]);
-    await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
-    const updateSpy = jest.spyOn(conversationService, 'updateParticipantPermissions');
-
-    await inTransaction((session) =>
-      syncMemberChannelPermission(club._id, member._id, 'OFFICER', admin._id, session)
-    );
-
-    expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: MODERATE, [channelIds[1]]: MODERATE });
-    expect(updateSpy.mock.calls.map(([, requesterId]) => requesterId.toString())).toEqual([
-      officer._id.toString(),
-      officer._id.toString(),
-    ]);
-  });
-
-  it('sets the seat directly when the channel has no moderator', async () => {
+  it('promotes the only seated member when the channel has no moderator', async () => {
     const officer = await createTestUser();
     const club = await createTestClub(officer._id);
     const member = await createTestUser();
     const general = await conversationService.createChannel(club._id, 'General', [member._id]);
 
-    await inTransaction((session) =>
-      syncMemberChannelPermission(club._id, member._id, 'OFFICER', officer._id, session)
-    );
+    await inTransaction((session) => syncMemberChannelPermission(club._id, member._id, 'OFFICER', session));
 
     expect(await seatPermissions(member._id)).toEqual({ [general._id.toString()]: MODERATE });
   });
 
   it('keeps the previous permission when the caller transaction aborts', async () => {
-    const { officer, club, channelIds } = await insertClubWithChannels();
+    const { club, channelIds } = await insertClubWithChannels();
     const member = await createTestUser();
     await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
 
     await expect(
       inTransaction(async (session) => {
-        await syncMemberChannelPermission(club._id, member._id, 'OFFICER', officer._id, session);
+        await syncMemberChannelPermission(club._id, member._id, 'OFFICER', session);
         throw new Error('Simulated role update failure');
       })
     ).rejects.toThrow('Simulated role update failure');

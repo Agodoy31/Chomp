@@ -22,12 +22,12 @@ export async function createGeneralChannel(
   session: ClientSession
 ): Promise<IConversation> {
   const channel = await createChannel(clubId, GENERAL_CHANNEL_TITLE, [proposerId], session);
-  // updateParticipantPermissions requires a moderator requester, and the proposer holds the only seat.
-  await ConversationParticipant.updateOne(
-    { conversationId: channel._id, userId: proposerId },
-    { permission: CHANNEL_PERMISSION_BY_ROLE.OFFICER },
-    { session }
-  ).exec();
+  await updateParticipantPermissions(
+    channel._id,
+    undefined,
+    [proposerId, CHANNEL_PERMISSION_BY_ROLE.OFFICER],
+    session
+  );
   return channel;
 }
 
@@ -47,7 +47,6 @@ export async function syncMemberChannelPermission(
   clubId: Types.ObjectId,
   userId: Types.ObjectId,
   role: Membership['role'],
-  actorId: Types.ObjectId,
   session: ClientSession
 ): Promise<void> {
   const permission = CHANNEL_PERMISSION_BY_ROLE[role];
@@ -63,27 +62,6 @@ export async function syncMemberChannelPermission(
       continue;
     }
 
-    const moderators = await ConversationParticipant.find({
-      conversationId: channel._id,
-      permission: ParticipantPermission.MODERATE,
-    })
-      .select('userId')
-      .session(session)
-      .lean()
-      .exec();
-    // updateParticipantPermissions only accepts a channel moderator as the requester. An admin can change
-    // a role without holding a seat, and a channel can have no moderator yet.
-    const requester =
-      moderators.find((moderator) => moderator.userId.toString() === actorId.toString()) ?? moderators.at(0);
-
-    if (requester) {
-      await updateParticipantPermissions(channel._id, requester.userId, [userId, permission], session);
-    } else {
-      await ConversationParticipant.updateOne(
-        { conversationId: channel._id, userId },
-        { permission },
-        { session }
-      ).exec();
-    }
+    await updateParticipantPermissions(channel._id, undefined, [userId, permission], session);
   }
 }
