@@ -1,5 +1,8 @@
 import type { IMessageResponse } from './message.responses';
-import type { IConversationParticipantSummary } from './conversation.interfaces';
+import type {
+  IConversationParticipantSummary,
+  IConversationFeedResponse,
+} from './conversation.interfaces';
 
 export interface JoinConversationRoomPayload {
   conversationId: string;
@@ -43,6 +46,7 @@ export interface ParticipantRemovedBroadcastPayload {
 
 export interface InboxConversationAddedPayload {
   conversationId: string;
+  conversation: IConversationFeedResponse;
 }
 
 export interface InboxConversationRemovedPayload {

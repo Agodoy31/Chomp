@@ -159,7 +159,18 @@ describe('real conversation sockets', () => {
       isSystem: true,
       text: 'Danny Wuerffel added Albert Gator',
     });
-    expect(await inboxAdded).toEqual({ conversationId });
+    expect(await inboxAdded).toMatchObject({
+      conversationId,
+      conversation: {
+        _id: conversationId,
+        type: 'GROUP',
+        displayName: 'Lake Alice Turtle Watchers',
+        lastMessage: {
+          text: 'Danny Wuerffel added Albert Gator',
+          senderName: 'Danny Wuerffel',
+        },
+      },
+    });
     expect(outsiderMessages).not.toHaveBeenCalled();
     expect(getIO()!.sockets.adapter.rooms.get(room)?.has(a.id!)).toBe(false);
     expect(await join(a, conversationId)).toEqual({ ok: true, conversationId });
@@ -204,5 +215,98 @@ describe('real conversation sockets', () => {
     const reconnected = await connect(albert);
     expect(getIO()!.sockets.sockets.get(reconnected.id!)!.rooms.has(room)).toBe(false);
     expect(await join(reconnected, conversationId)).toEqual({ ok: true, conversationId });
+  }, 60000);
+
+  test('delivers inbox conversation feed on group creation and first direct message', async () => {
+    const tim = await createSignedInStudent({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
+    const reitz = await createSignedInStudent({
+      firstName: 'Reitz',
+      lastName: 'Bowler',
+      email: 'game.room@ufl.edu',
+    });
+
+    const timSocket = await connect(tim);
+    const reitzSocket = await connect(reitz);
+
+    const timGroupInbox = nextEvent(timSocket, 'inbox:conversation_added');
+    const reitzGroupInbox = nextEvent(reitzSocket, 'inbox:conversation_added');
+
+    const createdGroup = await tim.agent.post('/api/conversations').send({
+      type: 'GROUP',
+      title: 'Plaza of the Americas Hammock Sleepers',
+      participantIds: [reitz.user._id.toString()],
+    }).expect(201);
+
+    const groupId: string = createdGroup.body._id;
+    const groupPayloadTim = await timGroupInbox;
+    const groupPayloadReitz = await reitzGroupInbox;
+
+    expect(groupPayloadTim).toMatchObject({
+      conversationId: groupId,
+      conversation: {
+        _id: groupId,
+        type: 'GROUP',
+        displayName: 'Plaza of the Americas Hammock Sleepers',
+        lastMessage: {
+          text: 'Tim Tebow created the group',
+        },
+      },
+    });
+    expect(groupPayloadReitz).toMatchObject({
+      conversationId: groupId,
+      conversation: {
+        _id: groupId,
+        type: 'GROUP',
+        displayName: 'Plaza of the Americas Hammock Sleepers',
+        lastMessage: {
+          text: 'Tim Tebow created the group',
+        },
+      },
+    });
+
+    const createdDm = await tim.agent.post('/api/conversations').send({
+      type: 'DIRECT',
+      recipientId: reitz.user._id.toString(),
+    }).expect(201);
+    const dmId: string = createdDm.body._id;
+
+    const timDmInbox = nextEvent(timSocket, 'inbox:conversation_added');
+    const reitzDmInbox = nextEvent(reitzSocket, 'inbox:conversation_added');
+
+    await tim.agent.post(`/api/conversations/${dmId}/messages`).send({
+      text: 'Are bowling lanes open tonight?',
+    }).expect(201);
+
+    const dmPayloadTim = await timDmInbox;
+    const dmPayloadReitz = await reitzDmInbox;
+
+    expect(dmPayloadTim).toMatchObject({
+      conversationId: dmId,
+      conversation: {
+        _id: dmId,
+        type: 'DIRECT',
+        displayName: 'Reitz Bowler',
+        lastMessage: {
+          text: 'Are bowling lanes open tonight?',
+          senderName: 'Tim Tebow',
+        },
+      },
+    });
+    expect(dmPayloadReitz).toMatchObject({
+      conversationId: dmId,
+      conversation: {
+        _id: dmId,
+        type: 'DIRECT',
+        displayName: 'Tim Tebow',
+        lastMessage: {
+          text: 'Are bowling lanes open tonight?',
+          senderName: 'Tim Tebow',
+        },
+      },
+    });
   }, 60000);
 });

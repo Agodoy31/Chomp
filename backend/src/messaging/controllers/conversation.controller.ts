@@ -12,15 +12,16 @@ import {
   createDirectConversation,
   createGroupConversation,
   getConversationDetails,
+  getUserConversationFeedItem,
   getUserConversations,
   removeParticipantFromConversation,
   updateConversationTitle,
   updateParticipantPermissions,
 } from '../services/conversation.service';
-import { IConversationFeedItem } from '../interfaces/conversation.interfaces';
 import { MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
 import { messagingPublisher } from '../sockets/messagingPublisher';
+import { toConversationFeedResponse } from '../serializers/conversationFeedResponse';
 
 export async function postConversationHandler(req: Request, res: Response): Promise<void> {
   const body = req.body;
@@ -118,50 +119,25 @@ export async function postConversationHandler(req: Request, res: Response): Prom
       return;
     }
 
+    const allParticipantIds = [creatorId, ...participantIds];
+    for (const pId of allParticipantIds) {
+      const feedItem = await getUserConversationFeedItem(group._id, pId);
+      if (feedItem) {
+        messagingPublisher.conversationAdded(
+          pId.toString(),
+          toConversationFeedResponse(feedItem)
+        );
+      }
+    }
+
     res.status(201).json(details);
   } catch (error: unknown) {
     sendMessagingError(res, error);
   }
 }
 
-export interface IConversationFeedResponse {
-  _id: string;
-  type: string;
-  displayName: string;
-  clubId?: string;
-  lastActivityAt: string;
-  lastMessage?: {
-    text: string;
-    senderName: string;
-    createdAt?: string;
-  };
-}
-
-export function toConversationFeedResponse(item: IConversationFeedItem): IConversationFeedResponse {
-  const response: IConversationFeedResponse = {
-    _id: item._id.toString(),
-    type: item.type,
-    displayName: item.displayName,
-    lastActivityAt: new Date(item.lastActivityAt).toISOString(),
-  };
-
-  if (item.clubId) {
-    response.clubId = item.clubId.toString();
-  }
-
-  if (item.lastMessage) {
-    const lastMessage: { text: string; senderName: string; createdAt?: string } = {
-      text: item.lastMessage.text,
-      senderName: item.lastMessage.senderName,
-    };
-    if (item.lastMessage.createdAt) {
-      lastMessage.createdAt = new Date(item.lastMessage.createdAt).toISOString();
-    }
-    response.lastMessage = lastMessage;
-  }
-
-  return response;
-}
+export type { IConversationFeedResponse } from '../interfaces/conversation.interfaces';
+export { toConversationFeedResponse } from '../serializers/conversationFeedResponse';
 
 export async function getUserConversationsHandler(req: Request, res: Response): Promise<void> {
   const sessionUserId = req.session?.userId;
@@ -330,6 +306,20 @@ export async function addParticipantsHandler(req: Request, res: Response): Promi
       new Types.ObjectId(sessionUserId)
     );
     messagingPublisher.participantAdded(id, added);
+
+    for (const p of added) {
+      const feedItem = await getUserConversationFeedItem(
+        new Types.ObjectId(id),
+        p.userId._id
+      );
+      if (feedItem) {
+        messagingPublisher.conversationAdded(
+          p.userId._id.toString(),
+          toConversationFeedResponse(feedItem)
+        );
+      }
+    }
+
     res.status(200).json(added);
   } catch (error: unknown) {
     sendMessagingError(res, error);

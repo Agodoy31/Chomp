@@ -1,6 +1,9 @@
 import type { Server } from 'socket.io';
 import type { IMessage } from '../interfaces/message.interfaces';
-import type { IConversationParticipantSummary } from '../interfaces/conversation.interfaces';
+import type {
+  IConversationParticipantSummary,
+  IConversationFeedResponse,
+} from '../interfaces/conversation.interfaces';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -42,6 +45,19 @@ export const messagingPublisher = {
     });
   },
 
+  conversationAdded(userId: string, conversation: IConversationFeedResponse): void {
+    const io: Server<ClientToServerEvents, ServerToClientEvents> | null =
+      getIO() as Server<ClientToServerEvents, ServerToClientEvents> | null;
+    if (!io) {
+      return;
+    }
+    const userRoom = getUserRoom(userId);
+    io.to(userRoom).emit('inbox:conversation_added', {
+      conversationId: conversation._id,
+      conversation,
+    });
+  },
+
   participantAdded(
     conversationId: string,
     participants: IConversationParticipantSummary[]
@@ -55,12 +71,6 @@ export const messagingPublisher = {
       conversationId,
       participants,
     });
-    for (const participant of participants) {
-      const userRoom = getUserRoom(participant.userId._id.toString());
-      io.to(userRoom).emit('inbox:conversation_added', {
-        conversationId,
-      });
-    }
   },
 
   evictUserFromConversation(conversationId: string, userId: string): void {

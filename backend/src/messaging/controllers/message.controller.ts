@@ -9,6 +9,11 @@ import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
 import { toMessageResponse } from '../serializers/messageResponse';
 import { messagingPublisher } from '../sockets/messagingPublisher';
+import { Conversation, ConversationType } from '../models/Conversation';
+import { ConversationParticipant } from '../models/ConversationParticipant';
+import { Message } from '../models/Message';
+import { getUserConversationFeedItem } from '../services/conversation.service';
+import { toConversationFeedResponse } from '../serializers/conversationFeedResponse';
 
 export async function postMessageHandler(req: Request, res: Response): Promise<void> {
   const id = req.params?.id;
@@ -49,6 +54,33 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
     );
 
     messagingPublisher.messageCreated(message);
+
+    const conversation = await Conversation.findById(id).select('type').lean();
+    if (conversation && conversation.type === ConversationType.DIRECT) {
+      const messageCount = await Message.countDocuments({
+        conversationId: new Types.ObjectId(id),
+      });
+      if (messageCount === 1) {
+        const participants = await ConversationParticipant.find({
+          conversationId: new Types.ObjectId(id),
+        })
+          .select('userId')
+          .lean();
+        for (const p of participants) {
+          const feedItem = await getUserConversationFeedItem(
+            new Types.ObjectId(id),
+            p.userId
+          );
+          if (feedItem) {
+            messagingPublisher.conversationAdded(
+              p.userId.toString(),
+              toConversationFeedResponse(feedItem)
+            );
+          }
+        }
+      }
+    }
+
     res.status(201).json(toMessageResponse(message));
   } catch (error) {
     sendMessagingError(res, error);

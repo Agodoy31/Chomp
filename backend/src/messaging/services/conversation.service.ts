@@ -1340,21 +1340,10 @@ export async function updateParticipantPermissions(
   }
 }
 
-export async function getUserConversations(
-  userId: Types.ObjectId
-): Promise<IConversationFeedItem[]> {
-  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
-    throw new Error('Valid userId is required');
-  }
-
-  const userObjectId = new Types.ObjectId(userId);
-
-  return ConversationParticipant.aggregate<IConversationFeedItem>([
-    {
-      $match: {
-        userId: userObjectId,
-      },
-    },
+function getConversationFeedAggregationStages(
+  userObjectId: Types.ObjectId
+): mongoose.PipelineStage[] {
+  return [
     {
       $lookup: {
         from: 'conversations',
@@ -1438,7 +1427,6 @@ export async function getUserConversations(
         },
       },
     },
-    // Empty group chats disappear until system messages are implemented in the messaging schema
     {
       $match: {
         latestMessage: {
@@ -1544,12 +1532,61 @@ export async function getUserConversations(
         lastMessage: '$latestMessage',
       },
     },
+  ];
+}
+
+export async function getUserConversations(
+  userId: Types.ObjectId
+): Promise<IConversationFeedItem[]> {
+  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
+    throw new Error('Valid userId is required');
+  }
+
+  const userObjectId = new Types.ObjectId(userId);
+
+  return ConversationParticipant.aggregate<IConversationFeedItem>([
+    {
+      $match: {
+        userId: userObjectId,
+      },
+    },
+    ...getConversationFeedAggregationStages(userObjectId),
     {
       $sort: {
         lastActivityAt: -1,
       },
     },
   ]).exec();
+}
+
+export async function getUserConversationFeedItem(
+  conversationId: Types.ObjectId,
+  userId: Types.ObjectId
+): Promise<IConversationFeedItem | null> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new Error('Valid conversationId is required');
+  }
+  if (!userId || !mongoose.isObjectIdOrHexString(userId)) {
+    throw new Error('Valid userId is required');
+  }
+
+  const convObjectId = new Types.ObjectId(conversationId);
+  const userObjectId = new Types.ObjectId(userId);
+
+  const results = await ConversationParticipant.aggregate<IConversationFeedItem>([
+    {
+      $match: {
+        conversationId: convObjectId,
+        userId: userObjectId,
+      },
+    },
+    ...getConversationFeedAggregationStages(userObjectId),
+    {
+      $limit: 1,
+    },
+  ]).exec();
+
+  return results[0] || null;
 }
 
 export async function getClubChannels(
