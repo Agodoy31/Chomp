@@ -16,6 +16,15 @@ const CHANNEL_PERMISSION_BY_ROLE: Record<Membership['role'], ParticipantPermissi
   MEMBER: ParticipantPermission.WRITE,
 };
 
+type ChannelSyncStatus = Extract<Membership['status'], 'ACTIVE' | 'INACTIVE' | 'REMOVED'>;
+
+function permissionFor(role: Membership['role'], status: ChannelSyncStatus): ParticipantPermission {
+  if (status !== 'ACTIVE') {
+    return ParticipantPermission.READ;
+  }
+  return CHANNEL_PERMISSION_BY_ROLE[role];
+}
+
 export async function createGeneralChannel(
   clubId: Types.ObjectId,
   proposerId: Types.ObjectId,
@@ -47,9 +56,10 @@ export async function syncMemberChannelPermission(
   clubId: Types.ObjectId,
   userId: Types.ObjectId,
   role: Membership['role'],
-  session: ClientSession
+  session: ClientSession,
+  status: ChannelSyncStatus = 'ACTIVE'
 ): Promise<void> {
-  const permission = CHANNEL_PERMISSION_BY_ROLE[role];
+  const permission = permissionFor(role, status);
   const channels = await getClubChannels(clubId);
 
   for (const channel of channels) {

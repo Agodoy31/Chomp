@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
 import { z } from 'zod';
-import { addParticipantsToConversation, getClubChannels } from '../../messaging/services/conversation.service';
+import { addMemberToClubChannels, syncMemberChannelPermission } from '../services/clubChannelAccess';
 import { User } from '../../user/models/User';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
@@ -67,6 +67,35 @@ async function activateMembership(
   }
 
   return { error: rejectionForMembership(existing.status) };
+}
+
+async function setMembershipStatus(
+  membershipId: mongoose.Types.ObjectId,
+  clubId: string,
+  userId: string,
+  status: 'INACTIVE' | 'REMOVED'
+): Promise<MembershipRecord | null> {
+  const session = await mongoose.startSession();
+  try {
+    return await session.withTransaction(async () => {
+      const current = await Membership.findOne({ _id: membershipId, status: 'ACTIVE' }).session(session);
+      if (!current) {
+        return null;
+      }
+      current.status = status;
+      await current.save({ session });
+      await syncMemberChannelPermission(
+        new mongoose.Types.ObjectId(clubId),
+        new mongoose.Types.ObjectId(userId),
+        current.role,
+        session,
+        status
+      );
+      return current;
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function isLastActiveOfficer(clubId: string, userId: string): Promise<boolean> {
@@ -205,8 +234,12 @@ export const removeMember = async (
     return;
   }
 
-  membership.status = 'REMOVED';
-  res.status(200).json(await membership.save());
+  const saved = await setMembershipStatus(membership._id, clubId, userId, 'REMOVED');
+  if (!saved) {
+    sendError(res, memberNotFound());
+    return;
+  }
+  res.status(200).json(saved);
 };
 
 export const getMyClubs = async (req: Request, res: Response): Promise<void> => {
@@ -254,11 +287,9 @@ export const joinClub = async (req: Request<{ clubId: string }>, res: Response):
         return activation;
       }
 
-      const channels = await getClubChannels(club._id);
-      // Operations in a transaction have to run one at a time.
-      for (const channel of channels) {
-        await addParticipantsToConversation(channel._id, [new mongoose.Types.ObjectId(userId)], session);
-      }
+      const userObjectId = new mongoose.Types.ObjectId(userId);
+      await addMemberToClubChannels(club._id, userObjectId, session);
+      await syncMemberChannelPermission(club._id, userObjectId, activation.membership.role, session);
       return activation;
     });
 

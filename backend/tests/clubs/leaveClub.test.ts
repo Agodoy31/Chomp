@@ -4,6 +4,9 @@ import request from 'supertest';
 import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
+import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
+import { Conversation } from '../../src/messaging/models/Conversation';
+import { ConversationParticipant, ParticipantPermission } from '../../src/messaging/models/ConversationParticipant';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
@@ -23,7 +26,7 @@ describe('POST /api/clubs/:clubId/leave', () => {
 
   beforeAll(async () => {
     await connectTestDb();
-    await Promise.all([Club.init(), Membership.init(), User.init()]);
+    await Promise.all([Club.init(), Membership.init(), Conversation.init(), ConversationParticipant.init(), User.init()]);
     const user = await createUser();
     studentId = user._id;
     student = await logIn(user);
@@ -46,6 +49,28 @@ describe('POST /api/clubs/:clubId/leave', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ _id: membership._id.toString(), status: 'INACTIVE', role: 'MEMBER' });
     expect((await Membership.findById(membership._id).lean())?.status).toBe('INACTIVE');
+  });
+
+  it('keeps the channel seat and marks it read-only', async () => {
+    const club = await insertClub();
+    await Membership.create({ userId: studentId, clubId: club._id, status: 'ACTIVE' });
+    const channel = await Conversation.create({
+      type: ConversationType.CHANNEL,
+      clubId: club._id,
+      title: 'General',
+    });
+    await ConversationParticipant.create({
+      conversationId: channel._id,
+      userId: studentId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const res = await student.post(`/api/clubs/${club._id.toString()}/leave`);
+
+    expect(res.status).toBe(200);
+    const seats = await ConversationParticipant.find({ conversationId: channel._id, userId: studentId }).lean();
+    expect(seats).toHaveLength(1);
+    expect(seats[0].permission).toBe(ParticipantPermission.READ);
   });
 
   it('lets an officer leave when another active officer remains, and rejoin as an officer', async () => {

@@ -6,7 +6,7 @@ import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
 import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
 import { Conversation } from '../../src/messaging/models/Conversation';
-import { ConversationParticipant } from '../../src/messaging/models/ConversationParticipant';
+import { ConversationParticipant, ParticipantPermission } from '../../src/messaging/models/ConversationParticipant';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
@@ -87,6 +87,45 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(participants.map((p) => p.userId.toString()).sort()).toEqual(
       [proposerUser._id.toString(), studentId.toString()].sort()
     );
+    expect(participants.find((p) => p.userId.toString() === studentId.toString())?.permission).toBe(
+      ParticipantPermission.WRITE
+    );
+  });
+
+  it('restores a read-only seat to write when an inactive member rejoins', async () => {
+    const { club, channel } = await insertClubWithChannel();
+    await Membership.create({ userId: studentId, clubId: club._id, role: 'MEMBER', status: 'INACTIVE' });
+    await ConversationParticipant.create({
+      conversationId: channel._id,
+      userId: studentId,
+      permission: ParticipantPermission.READ,
+    });
+
+    const res = await student.post(`/api/clubs/${club._id.toString()}/join`);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ status: 'ACTIVE', role: 'MEMBER' });
+    const seats = await ConversationParticipant.find({ conversationId: channel._id, userId: studentId }).lean();
+    expect(seats).toHaveLength(1);
+    expect(seats[0].permission).toBe(ParticipantPermission.WRITE);
+  });
+
+  it('restores a read-only seat to moderate when an inactive officer rejoins', async () => {
+    const { club, channel } = await insertClubWithChannel();
+    await Membership.create({ userId: studentId, clubId: club._id, role: 'OFFICER', status: 'INACTIVE' });
+    await ConversationParticipant.create({
+      conversationId: channel._id,
+      userId: studentId,
+      permission: ParticipantPermission.READ,
+    });
+
+    const res = await student.post(`/api/clubs/${club._id.toString()}/join`);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ status: 'ACTIVE', role: 'OFFICER' });
+    const seats = await ConversationParticipant.find({ conversationId: channel._id, userId: studentId }).lean();
+    expect(seats).toHaveLength(1);
+    expect(seats[0].permission).toBe(ParticipantPermission.MODERATE);
   });
 
   it('creates one membership and one channel seat when the same student joins twice at once', async () => {

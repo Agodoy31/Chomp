@@ -21,8 +21,8 @@ import {
 const DEFAULT_CHANNEL_TITLE = 'General';
 
 const clubNameRegex = /^[\p{L}\p{M}\p{N}\p{P} +]+$/u;
-const dayOfWeekRegex = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)?$/i;
-const meetingTimeRegex = /^((0?[1-9]|1[0-2]):[0-5]\d ?[AP]M)?$/i;
+const dayOfWeekRegex = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
+const meetingTimeRegex = /^(0?[1-9]|1[0-2]):[0-5]\d ?[AP]M$/i;
 
 const clubRequestSchema = z.object(
   {
@@ -59,6 +59,7 @@ const clubRequestSchema = z.object(
           location: z
             .string({ error: 'Meeting location must be text' })
             .trim()
+            .min(1, 'Meeting location cannot be blank')
             .max(120, 'Meeting location must be 120 characters or fewer')
             .optional(),
         },
@@ -181,7 +182,8 @@ export const updateClub = async (req: Request<{ clubId: string }>, res: Response
     role: 'OFFICER',
     status: 'ACTIVE',
   });
-  if (!isOfficer) {
+  const isAdmin = !isOfficer && (await User.exists({ _id: req.session.userId, isAdmin: true }));
+  if (!isOfficer && !isAdmin) {
     sendError(res, officerRequired());
     return;
   }

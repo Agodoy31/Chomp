@@ -4,6 +4,9 @@ import request from 'supertest';
 import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
+import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
+import { Conversation } from '../../src/messaging/models/Conversation';
+import { ConversationParticipant, ParticipantPermission } from '../../src/messaging/models/ConversationParticipant';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
@@ -30,7 +33,7 @@ describe('DELETE /api/clubs/:clubId/members/:userId', () => {
 
   beforeAll(async () => {
     await connectTestDb();
-    await Promise.all([Club.init(), Membership.init(), User.init()]);
+    await Promise.all([Club.init(), Membership.init(), Conversation.init(), ConversationParticipant.init(), User.init()]);
     const [adminUser, officerUser, memberUser] = await Promise.all([createUser(true), createUser(), createUser()]);
     officerId = officerUser._id;
     memberId = memberUser._id;
@@ -66,6 +69,27 @@ describe('DELETE /api/clubs/:clubId/members/:userId', () => {
     const rejoin = await member.post(`/api/clubs/${club._id.toString()}/join`);
     expect(rejoin.status).toBe(403);
     expect(rejoin.body.code).toBe('ERR_MEMBER_REMOVED');
+  });
+
+  it('keeps the channel seat and marks it read-only', async () => {
+    const club = await insertClubWithRoster();
+    const channel = await Conversation.create({
+      type: ConversationType.CHANNEL,
+      clubId: club._id,
+      title: 'General',
+    });
+    await ConversationParticipant.create({
+      conversationId: channel._id,
+      userId: memberId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const res = await officer.delete(memberUrl(club._id, memberId));
+
+    expect(res.status).toBe(200);
+    const seats = await ConversationParticipant.find({ conversationId: channel._id, userId: memberId }).lean();
+    expect(seats).toHaveLength(1);
+    expect(seats[0].permission).toBe(ParticipantPermission.READ);
   });
 
   it('lets an admin remove an officer when another active officer remains', async () => {

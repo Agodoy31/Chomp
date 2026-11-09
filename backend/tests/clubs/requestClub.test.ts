@@ -191,6 +191,12 @@ describe('POST /api/clubs', () => {
       [{ meeting: { time: '25:00' } }, 'Meeting time must look like 6:30 PM'],
       [{ meeting: { location: 404 } }, 'Meeting location must be text'],
       [{ meeting: { location: 'a'.repeat(121) } }, 'Meeting location must be 120 characters or fewer'],
+      [{ meeting: { day: '' } }, 'Meeting day must be a day of the week'],
+      [{ meeting: { day: '   ' } }, 'Meeting day must be a day of the week'],
+      [{ meeting: { time: '' } }, 'Meeting time must look like 6:30 PM'],
+      [{ meeting: { time: '   ' } }, 'Meeting time must look like 6:30 PM'],
+      [{ meeting: { location: '' } }, 'Meeting location cannot be blank'],
+      [{ meeting: { location: '   ' } }, 'Meeting location cannot be blank'],
     ];
 
     for (const [overrides, message] of cases) {

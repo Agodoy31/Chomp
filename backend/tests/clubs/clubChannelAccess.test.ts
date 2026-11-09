@@ -15,7 +15,7 @@ import { User } from '../../src/user/models/User';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 import { createTestClub, createTestUser } from '../messaging/services/conversationTestUtils';
 
-const { MODERATE, WRITE } = ParticipantPermission;
+const { MODERATE, READ, WRITE } = ParticipantPermission;
 
 async function inTransaction<T>(work: (session: ClientSession) => Promise<T>): Promise<T> {
   const session = await mongoose.startSession();
@@ -145,6 +145,28 @@ describe('syncMemberChannelPermission', () => {
     await inTransaction((session) => syncMemberChannelPermission(club._id, member._id, 'OFFICER', session));
 
     expect(await seatPermissions(member._id)).toEqual({ [general._id.toString()]: MODERATE });
+  });
+
+  it('sets an inactive or removed member to read-only and keeps the seat', async () => {
+    const { club, channelIds } = await insertClubWithChannels();
+    const member = await createTestUser();
+    await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
+
+    await inTransaction((session) =>
+      syncMemberChannelPermission(club._id, member._id, 'OFFICER', session, 'INACTIVE')
+    );
+
+    const readOnly = { [channelIds[0]]: READ, [channelIds[1]]: READ };
+    expect(await seatPermissions(member._id)).toEqual(readOnly);
+    expect(await ConversationParticipant.countDocuments({ userId: member._id })).toBe(2);
+    expect(await Message.countDocuments()).toBe(0);
+
+    await inTransaction((session) =>
+      syncMemberChannelPermission(club._id, member._id, 'MEMBER', session, 'REMOVED')
+    );
+
+    expect(await seatPermissions(member._id)).toEqual(readOnly);
+    expect(await ConversationParticipant.countDocuments({ userId: member._id })).toBe(2);
   });
 
   it('keeps the previous permission when the caller transaction aborts', async () => {

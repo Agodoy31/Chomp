@@ -117,6 +117,12 @@ describe('PATCH /api/clubs/:clubId', () => {
       [{ name: '   ' }, 'ERR_INVALID_CLUB_REQUEST', 'Club name is required'],
       [{ description: 'x'.repeat(1001) }, 'ERR_INVALID_CLUB_REQUEST', 'Club description must be 1000 characters or fewer'],
       [{ meeting: { time: 'noon' } }, 'ERR_INVALID_CLUB_REQUEST', 'Meeting time must look like 6:30 PM'],
+      [{ meeting: { day: '' } }, 'ERR_INVALID_CLUB_REQUEST', 'Meeting day must be a day of the week'],
+      [{ meeting: { day: '   ' } }, 'ERR_INVALID_CLUB_REQUEST', 'Meeting day must be a day of the week'],
+      [{ meeting: { time: '' } }, 'ERR_INVALID_CLUB_REQUEST', 'Meeting time must look like 6:30 PM'],
+      [{ meeting: { time: '   ' } }, 'ERR_INVALID_CLUB_REQUEST', 'Meeting time must look like 6:30 PM'],
+      [{ meeting: { location: '' } }, 'ERR_INVALID_CLUB_REQUEST', 'Meeting location cannot be blank'],
+      [{ meeting: { location: '   ' } }, 'ERR_INVALID_CLUB_REQUEST', 'Meeting location cannot be blank'],
       [{ category: 'GAMING' }, 'ERR_INVALID_CATEGORY', 'Invalid Category'],
     ] as const;
     for (const [body, code, message] of cases) {
@@ -124,6 +130,17 @@ describe('PATCH /api/clubs/:clubId', () => {
       expect({ status: res.status, body: res.body }).toEqual({ status: 400, body: { code, message } });
     }
     expect((await Club.findById(club._id).lean())?.description).toBe('Weekly chess matches');
+  });
+
+  it('lets an admin who is not a member edit the club', async () => {
+    const club = await insertOfficerClub();
+    const admin = await logIn(await createUser(true));
+
+    const res = await admin.patch(`/api/clubs/${club._id.toString()}`).send({ description: 'Admin edit' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.club.description).toBe('Admin edit');
+    expect((await Club.findById(club._id).lean())?.description).toBe('Admin edit');
   });
 
   it('returns 403 for a member who is not an officer and for an officer who left', async () => {
