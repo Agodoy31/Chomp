@@ -45,7 +45,7 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
   }
 
   try {
-    const message = await sendMessage(
+    const { message, isNew } = await sendMessage(
       new Types.ObjectId(id),
       new Types.ObjectId(userId),
       parseResult.data.text,
@@ -53,35 +53,37 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
       parseResult.data.isAnnouncement
     );
 
-    messagingPublisher.messageCreated(message);
+    if (isNew) {
+      messagingPublisher.messageCreated(message);
 
-    const conversation = await Conversation.findById(id).select('type').lean();
-    if (conversation && conversation.type === ConversationType.DIRECT) {
-      const messageCount = await Message.countDocuments({
-        conversationId: new Types.ObjectId(id),
-      });
-      if (messageCount === 1) {
-        const participants = await ConversationParticipant.find({
+      const conversation = await Conversation.findById(id).select('type').lean();
+      if (conversation && conversation.type === ConversationType.DIRECT) {
+        const messageCount = await Message.countDocuments({
           conversationId: new Types.ObjectId(id),
-        })
-          .select('userId')
-          .lean();
-        for (const p of participants) {
-          const feedItem = await getUserConversationFeedItem(
-            new Types.ObjectId(id),
-            p.userId
-          );
-          if (feedItem) {
-            messagingPublisher.conversationAdded(
-              p.userId.toString(),
-              toConversationFeedResponse(feedItem)
+        });
+        if (messageCount === 1) {
+          const participants = await ConversationParticipant.find({
+            conversationId: new Types.ObjectId(id),
+          })
+            .select('userId')
+            .lean();
+          for (const p of participants) {
+            const feedItem = await getUserConversationFeedItem(
+              new Types.ObjectId(id),
+              p.userId
             );
+            if (feedItem) {
+              messagingPublisher.conversationAdded(
+                p.userId.toString(),
+                toConversationFeedResponse(feedItem)
+              );
+            }
           }
         }
       }
     }
 
-    res.status(201).json(toMessageResponse(message));
+    res.status(isNew ? 201 : 200).json(toMessageResponse(message));
   } catch (error) {
     sendMessagingError(res, error);
   }
