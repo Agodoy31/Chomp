@@ -276,9 +276,11 @@ describe('real conversation sockets', () => {
 
     const timDmInbox = nextEvent(timSocket, 'inbox:conversation_added');
     const reitzDmInbox = nextEvent(reitzSocket, 'inbox:conversation_added');
+    const firstDmClientId = '0192c4a0-7c00-7000-8000-000000000099';
 
     await tim.agent.post(`/api/conversations/${dmId}/messages`).send({
       text: 'Are bowling lanes open tonight?',
+      clientId: firstDmClientId,
     }).expect(201);
 
     const dmPayloadTim = await timDmInbox;
@@ -312,7 +314,19 @@ describe('real conversation sockets', () => {
     expect(await join(reitzSocket, dmId)).toEqual({ ok: true, conversationId: dmId });
 
     const duplicateInboxSpy = jest.fn();
+    const duplicateMessageSpy = jest.fn();
     reitzSocket.on('inbox:conversation_added', duplicateInboxSpy);
+    reitzSocket.on('message:created', duplicateMessageSpy);
+
+    await tim.agent.post(`/api/conversations/${dmId}/messages`).send({
+      text: 'Are bowling lanes open tonight?',
+      clientId: firstDmClientId,
+    }).expect(200);
+
+    expect(duplicateInboxSpy).not.toHaveBeenCalled();
+    expect(duplicateMessageSpy).not.toHaveBeenCalled();
+    reitzSocket.off('message:created', duplicateMessageSpy);
+
     const secondMessageEvent = nextEvent(reitzSocket, 'message:created');
 
     await tim.agent.post(`/api/conversations/${dmId}/messages`).send({
