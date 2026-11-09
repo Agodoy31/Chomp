@@ -55,15 +55,16 @@ describe('sendMessage service', () => {
       `Meeting at Century Tower with ${ufFixtures.lakeAliceBasker.name} at ${ufFixtures.lakeAliceBasker.email}`
     );
 
-    expect(result.conversationId.toString()).toBe(conversation._id.toString());
-    expect(result.senderId.toString()).toBe(senderId.toString());
-    expect(result.text).toBe(
+    expect(result.isNew).toBe(true);
+    expect(result.message.conversationId.toString()).toBe(conversation._id.toString());
+    expect(result.message.senderId.toString()).toBe(senderId.toString());
+    expect(result.message.text).toBe(
       `Meeting at Century Tower with ${ufFixtures.lakeAliceBasker.name} at ${ufFixtures.lakeAliceBasker.email}`
     );
-    expect(result.isAnnouncement).toBe(false);
-    expect(result.isSystem).toBe(false);
-    expect((result as Record<string, unknown>).save).toBeUndefined();
-    expect((result as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect(result.message.isAnnouncement).toBe(false);
+    expect(result.message.isSystem).toBe(false);
+    expect((result.message as Record<string, unknown>).save).toBeUndefined();
+    expect((result.message as Record<string, unknown>).$isDefault).toBeUndefined();
   });
 
   it('returns existing message without duplicate error when duplicate client id is sent', async () => {
@@ -92,14 +93,16 @@ describe('sendMessage service', () => {
       clientId
     );
 
-    expect(secondCall._id.toString()).toBe(firstCall._id.toString());
-    expect(secondCall.text).toBe(
+    expect(firstCall.isNew).toBe(true);
+    expect(secondCall.isNew).toBe(false);
+    expect(secondCall.message._id.toString()).toBe(firstCall.message._id.toString());
+    expect(secondCall.message.text).toBe(
       `First submission from ${ufFixtures.timTebow.name} at ${ufFixtures.timTebow.email}`
     );
-    expect((firstCall as Record<string, unknown>).save).toBeUndefined();
-    expect((firstCall as Record<string, unknown>).$isDefault).toBeUndefined();
-    expect((secondCall as Record<string, unknown>).save).toBeUndefined();
-    expect((secondCall as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect((firstCall.message as Record<string, unknown>).save).toBeUndefined();
+    expect((firstCall.message as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect((secondCall.message as Record<string, unknown>).save).toBeUndefined();
+    expect((secondCall.message as Record<string, unknown>).$isDefault).toBeUndefined();
     const messageCount = await Message.countDocuments({
       conversationId: conversation._id,
     });
@@ -120,14 +123,16 @@ describe('sendMessage service', () => {
       permission: ParticipantPermission.MODERATE,
     });
 
-    const message = await sendMessage(
+    const result = await sendMessage(
       conversation._id,
       moderatorId,
       `General body meeting announced by ${ufFixtures.albertGator.name} at ${ufFixtures.albertGator.email}`,
       undefined,
       true
     );
+    const { message } = result;
 
+    expect(result.isNew).toBe(true);
     expect(message.isAnnouncement).toBe(true);
     expect(message.text).toBe(
       `General body meeting announced by ${ufFixtures.albertGator.name} at ${ufFixtures.albertGator.email}`
