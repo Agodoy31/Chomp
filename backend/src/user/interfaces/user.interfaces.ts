@@ -11,3 +11,28 @@ export interface IUserDocument extends Document {
     createdAt: Date;
     updatedAt: Date;
 }
+
+export interface UserProfileClubItem {
+    _id: string;
+    name: string;
+    description: string;
+    category: string;
+    role: 'MEMBER' | 'OFFICER';
+}
+
+export interface UserProfileResponse {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    bio: string;
+    clubs: UserProfileClubItem[];
+}
+
+export interface UpdateBioResponse {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    bio: string;
+}
