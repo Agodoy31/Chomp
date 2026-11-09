@@ -178,24 +178,44 @@ export async function getMessages(
 }
 
 export async function deleteMessage(
+  conversationId: Types.ObjectId,
   messageId: Types.ObjectId,
   requestingUserId: Types.ObjectId
 ): Promise<IMessage> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid conversationId is required'
+    );
+  }
+
   if (!messageId || !mongoose.isObjectIdOrHexString(messageId)) {
-    throw new Error('Valid messageId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid messageId is required'
+    );
   }
 
   if (!requestingUserId || !mongoose.isObjectIdOrHexString(requestingUserId)) {
-    throw new Error('Valid requestingUserId is required');
+    throw new MessagingError(
+      MessagingErrorCode.VALIDATION_FAILED,
+      'Valid requestingUserId is required'
+    );
   }
 
   const message = await Message.findById(messageId).exec();
-  if (!message) {
-    throw new Error('Message not found');
+  if (!message || message.conversationId.toString() !== conversationId.toString()) {
+    throw new MessagingError(
+      MessagingErrorCode.MESSAGE_NOT_FOUND,
+      'Message not found'
+    );
   }
 
   if (message.isSystem) {
-    throw new Error('System messages cannot be deleted');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'System messages cannot be deleted'
+    );
   }
 
   const requesterParticipant = await ConversationParticipant.findOne({
@@ -207,12 +227,18 @@ export async function deleteMessage(
     .exec();
 
   if (!requesterParticipant) {
-    throw new Error('User is not authorized to delete this message');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'User is not authorized to delete this message'
+    );
   }
 
   const isAuthor = message.senderId.toString() === requestingUserId.toString();
   if (!isAuthor && requesterParticipant.permission !== ParticipantPermission.MODERATE) {
-    throw new Error('User is not authorized to delete this message');
+    throw new MessagingError(
+      MessagingErrorCode.PERMISSION_DENIED,
+      'User is not authorized to delete this message'
+    );
   }
 
   if (!message.removedAt) {
