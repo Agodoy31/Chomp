@@ -2,6 +2,10 @@ import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react'
 import ClubCard from '../components/ClubCard';
 import type { Club, ClubCategory} from '../types/club';
+<<<<<<< HEAD
+=======
+import Header from '../components/Header';
+>>>>>>> ce533499a6d845470cc179c9b7dd8954ef995eca
 import Alert from 'react-bootstrap/Alert'
 import Form from 'react-bootstrap/Form'
 import Button from 'react-bootstrap/Button'
@@ -116,6 +120,10 @@ export default function ClubDiscovery() {
   //Clear filters
   function clearFilters() {
       setCategories([])
+<<<<<<< HEAD
+=======
+      setQuery('')
+>>>>>>> ce533499a6d845470cc179c9b7dd8954ef995eca
   }
 
   
@@ -126,8 +134,12 @@ export default function ClubDiscovery() {
       const matchesSearch =
           search === '' ||
           club.name.toLowerCase().includes(search) ||
+<<<<<<< HEAD
           club.description.toLowerCase().includes(search) ||
           club.category.toLowerCase().includes(search)
+=======
+          club.description.toLowerCase().includes(search) 
+>>>>>>> ce533499a6d845470cc179c9b7dd8954ef995eca
       return matchesCategory && matchesSearch
   })
   
@@ -140,6 +152,10 @@ export default function ClubDiscovery() {
 
   return (    
     <div className="min-vh-100 bg-light">
+<<<<<<< HEAD
+=======
+      <Header />
+>>>>>>> ce533499a6d845470cc179c9b7dd8954ef995eca
       <div className="container py-5">
         <h1 className="fw-bold mb-4" 
         style={{ 
@@ -174,7 +190,11 @@ export default function ClubDiscovery() {
                     <Form.Control
                         type="text"
                         size="lg"
+<<<<<<< HEAD
                         placeholder="Search Clubs by Name or Category"
+=======
+                        placeholder="Search Clubs by Name or Description"
+>>>>>>> ce533499a6d845470cc179c9b7dd8954ef995eca
                         aria-label="Search clubs"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
