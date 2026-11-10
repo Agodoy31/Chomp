@@ -1,6 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom';
 import Button from 'react-bootstrap/Button';
 import { useAuth } from '../hooks/useAuth';
+import UserProfileModal from './modals/UserProfileModal';
+import { useState } from 'react';
 
 type HeaderProps ={
     showAuthButtons?: boolean
@@ -10,6 +12,8 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
   const navigate = useNavigate()
   const { user, loading, logout } = useAuth()
 
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
   const initials = user ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase() : ''
 
   async function handleLogout() {
@@ -18,6 +22,7 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
   }
 
   return (
+    <>
     <header className="w-100 border-bottom sticky-top shadow-sm" 
       style={{
         background:"#3046C3"
@@ -71,7 +76,7 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
              Log out
             </Button>
 
-            {/* Circle with users initial*/}
+            {/* Clickable Circle with users initial*/}
             <div className= "d-flex align-items-center justify-content-center rounded-circle fw-semibold"
               
               style ={{
@@ -79,9 +84,12 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
                 height: 40,
                 backgroundColor: '#D9D9D9',
                 border: '1px solid #14246D',
-                color: '#14246d'
+                color: '#14246d',
+                cursor: 'pointer'
 
               }}
+              onClick={() => setShowProfileModal(true)}
+
             >
               {initials}
             </div>
@@ -110,5 +118,11 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
         </div>
       </div>
     </header>
+    <UserProfileModal
+      show={showProfileModal}
+      onHide={() => setShowProfileModal(false)}
+    />
+    </>
+
   );
 }
