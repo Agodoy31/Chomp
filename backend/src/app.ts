@@ -27,7 +27,7 @@ app.use("/api/auth", authRoutes);
 
 app.use('/api/conversations', requireAuth, conversationRoutes);
 
-app.use('/api/search', requireAuth, searchRoutes);
+app.use('/api/users/search', requireAuth, searchRoutes);
 
 // Hello World / Health Check endpoint
 app.get('/api/health', (req: Request, res: Response) => {

@@ -4,7 +4,6 @@ import { User } from '../models/User';
 
 const router = Router();
 
-// Regex to verify search input
 const SEARCH_ALLOWED_REGEX = /^[a-zA-Z0-9 ._\-@']+$/;
 
 const searchSchema = z.object({
@@ -16,12 +15,6 @@ const searchSchema = z.object({
     .regex(SEARCH_ALLOWED_REGEX, 'ERR_SEARCH_INVALID_CHARACTERS'),
 });
 
-// makes regex terms safe
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// GET /api/search?search=...
 router.get('/', async (req: Request, res: Response) => {
   const parsed = searchSchema.safeParse(req.query);
   if (!parsed.success) {
@@ -31,31 +24,29 @@ router.get('/', async (req: Request, res: Response) => {
     });
   }
 
-  const { search } = parsed.data;
-  const escaped = escapeRegex(search);
-  const searchRegex = new RegExp(escaped, 'i');
+  const words = parsed.data.search.split(/\s+/);
+  const wordFilters = words.map((word, index) => {
+    const pattern = index < words.length - 1 ? `\\b${word}\\b` : word;
+    const wordRegex = new RegExp(pattern, 'i');
+
+    return {
+      $or: [
+        { firstName: wordRegex },
+        { lastName: wordRegex },
+        { email: wordRegex },
+      ],
+    };
+  });
 
   try {
     const currentUserId = req.session.userId;
 
     const users = await User.find({
       _id: { $ne: currentUserId },
-      $or: [
-        { firstName: searchRegex },
-        { lastName: searchRegex },
-        { email: searchRegex },
-        {
-          $expr: {
-            $regexMatch: {
-              input: { $concat: ['$firstName', ' ', '$lastName'] },
-              regex: escaped,
-              options: 'i',
-            },
-          },
-        },
-      ],
+      $and: wordFilters,
     })
       .select('_id firstName lastName email')
+      .sort({ firstName: 1, lastName: 1, _id: 1 })
       .limit(10)
       .lean();
 
