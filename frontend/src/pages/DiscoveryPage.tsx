@@ -117,6 +117,7 @@ export default function ClubDiscovery() {
   //Clear filters
   function clearFilters() {
       setCategories([])
+      setQuery('')
   }
 
   
@@ -127,8 +128,7 @@ export default function ClubDiscovery() {
       const matchesSearch =
           search === '' ||
           club.name.toLowerCase().includes(search) ||
-          club.description.toLowerCase().includes(search) ||
-          club.category.toLowerCase().includes(search)
+          club.description.toLowerCase().includes(search) 
       return matchesCategory && matchesSearch
   })
   
@@ -176,7 +176,7 @@ export default function ClubDiscovery() {
                     <Form.Control
                         type="text"
                         size="lg"
-                        placeholder="Search Clubs by Name or Category"
+                        placeholder="Search Clubs by Name or Description"
                         aria-label="Search clubs"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
