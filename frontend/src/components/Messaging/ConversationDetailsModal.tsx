@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 interface ConversationDetailsModalProps {
   show: boolean;
   onHide: () => void;
-  conversation?: Conversation | null;
+  conversation: Conversation | null;
 }
 
 export default function ConversationDetailsModal({

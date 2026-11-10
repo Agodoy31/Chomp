@@ -1,18 +1,18 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Modal from 'react-bootstrap/Modal';
 import type {
   Conversation,
   ChatUser,
 } from '../../types/Messaging/Conversation';
 import { useAuth } from '../../hooks/useAuth';
-import { createConversation, fetchUsers } from '../../api/messagingApi';
+import { createConversation, searchUsers } from '../../api/messagingApi';
 import SelectedUserTag from './SelectedUserTag';
 import PersonListItem from './PersonListItem';
 
 interface NewChatModalProps {
   show: boolean;
   onHide: () => void;
-  onChatCreated?: (conversation: Conversation) => void;
+  onChatCreated: (conversation: Conversation) => void;
 }
 
 export default function NewChatModal({
@@ -25,47 +25,51 @@ export default function NewChatModal({
 
   const [users, setUsers] = useState<ChatUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<ChatUser[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  // Load users from the server when modal opens
+  // Debounced people search; the input handler resets results, loading, and error state
   useEffect(() => {
-    if (!show) return;
+    const query = searchQuery.trim();
+    if (!show || !query) return;
 
-    async function loadUsers() {
-      setIsLoadingUsers(true);
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
       try {
-        const data = await fetchUsers();
-        setUsers(data);
+        const data = await searchUsers(query, controller.signal);
+        if (!controller.signal.aborted) setUsers(data);
       } catch (err) {
-        console.error('Failed to load users:', err);
+        if (controller.signal.aborted) return;
+        console.error('Failed to search users:', err);
+        setSearchError('Failed to search users. Please try again.');
       } finally {
-        setIsLoadingUsers(false);
+        if (!controller.signal.aborted) setIsLoadingUsers(false);
       }
-    }
+    }, 250);
 
-    loadUsers();
-  }, [show]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchQuery, show]);
 
   // Exclude current logged-in user from selection list
-  const availableUsers = useMemo(() => {
-    return users.filter((u) => u._id !== currentUserId);
-  }, [users, currentUserId]);
+  const availableUsers = users.filter((u) => u._id !== currentUserId);
 
-  // Filter users by search query
-  const filteredUsers = useMemo(() => {
-    const query = searchQuery.toLowerCase().trim();
-    if (!query) return availableUsers;
-    return availableUsers.filter((u) => {
-      const fullName = `${u.firstName} ${u.lastName || ''}`.toLowerCase();
-      const email = (u.email || '').toLowerCase();
-      return fullName.includes(query) || email.includes(query);
-    });
-  }, [availableUsers, searchQuery]);
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextQuery = e.target.value;
+    setSearchQuery(nextQuery);
+    setUsers([]);
+    setSearchError(null);
+    setIsLoadingUsers(nextQuery.trim().length > 0);
+  };
 
   const handleToggleUser = (targetUser: ChatUser) => {
+    setCreateError(null);
     setSelectedUsers((prev) => {
       const exists = prev.some((u) => u._id === targetUser._id);
       if (exists) {
@@ -77,7 +81,11 @@ export default function NewChatModal({
 
   const handleClose = () => {
     setSearchQuery('');
+    setUsers([]);
     setSelectedUsers([]);
+    setIsLoadingUsers(false);
+    setSearchError(null);
+    setCreateError(null);
     onHide();
   };
 
@@ -85,6 +93,7 @@ export default function NewChatModal({
     if (selectedUsers.length === 0 || isCreating) return;
 
     setIsCreating(true);
+    setCreateError(null);
 
     try {
       const isDirect = selectedUsers.length === 1;
@@ -101,10 +110,11 @@ export default function NewChatModal({
             }
       );
 
-      onChatCreated?.(newConversation);
+      onChatCreated(newConversation);
       handleClose();
     } catch (err) {
       console.error('Error creating chat:', err);
+      setCreateError('Failed to create chat. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -186,7 +196,7 @@ export default function NewChatModal({
             className="form-control border-0 p-0 shadow-none bg-transparent"
             placeholder="Search by name/email"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchChange}
             style={{ fontSize: '14px', color: '#1E293B' }}
           />
         </div>
@@ -218,15 +228,19 @@ export default function NewChatModal({
             style={{ maxHeight: '240px' }}
           >
             {isLoadingUsers ? (
-              <div className="text-secondary small py-2">Loading users...</div>
-            ) : filteredUsers.length === 0 ? (
+              <div className="text-secondary small py-2">Searching users...</div>
+            ) : searchQuery.trim() === '' ? (
               <div className="text-secondary small py-2">
-                {users.length === 0
-                  ? 'The server did not respond with users.'
-                  : 'No people found'}
+                Type a name or email to search for people.
               </div>
+            ) : searchError ? (
+              <div className="text-danger small py-2" role="alert">
+                {searchError}
+              </div>
+            ) : availableUsers.length === 0 ? (
+              <div className="text-secondary small py-2">No people found</div>
             ) : (
-              filteredUsers.map((u) => {
+              availableUsers.map((u) => {
                 const isSelected = selectedUsers.some(
                   (sel) => sel._id === u._id
                 );
@@ -242,6 +256,12 @@ export default function NewChatModal({
             )}
           </div>
         </div>
+
+        {createError && (
+          <div className="text-danger small mt-2" role="alert">
+            {createError}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="d-flex align-items-center justify-content-between pt-3 mt-4 border-top">

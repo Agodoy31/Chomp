@@ -5,14 +5,24 @@ import { useAuth } from '../../hooks/useAuth';
 import { fetchMessages, postMessage } from '../../api/messagingApi';
 import Message from './Message';
 
+// Combine message lists by ID so history and sends can overlap without duplicates
+function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
+  const byId = new Map([...current, ...incoming].map((m) => [m._id, m]));
+  return [...byId.values()].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
+  );
+}
+
 interface MessageAreaProps {
-  conversation?: Conversation | null;
-  onOpenDetails?: () => void;
+  conversation: Conversation | null;
+  onOpenDetails: () => void;
+  onMessageSent: (conversation: Conversation, message: IMessage) => void;
 }
 
 export default function MessageArea({
   conversation,
   onOpenDetails,
+  onMessageSent,
 }: MessageAreaProps) {
   const { user } = useAuth();
   const currentUserId = user?.id || '';
@@ -23,24 +33,28 @@ export default function MessageArea({
 
   const conversationId = conversation?._id;
 
-  // Load messages for the selected conversation
+  // Load messages for the selected conversation, ignoring responses after unmount/switch
   useEffect(() => {
     if (!conversationId) return;
     const currentId = conversationId;
+    let ignore = false;
 
     async function loadMessages() {
       setIsLoading(true);
       try {
         const data = await fetchMessages(currentId);
-        setMessages(data);
+        if (!ignore) setMessages((prev) => mergeMessages(data, prev));
       } catch (err) {
         console.error('Error loading messages:', err);
       } finally {
-        setIsLoading(false);
+        if (!ignore) setIsLoading(false);
       }
     }
 
     loadMessages();
+    return () => {
+      ignore = true;
+    };
   }, [conversationId]);
 
   if (!conversation) {
@@ -74,7 +88,8 @@ export default function MessageArea({
 
     try {
       const newMsg = await postMessage(conversation._id, textToSend);
-      setMessages((prev) => [...prev, newMsg]);
+      setMessages((prev) => mergeMessages(prev, [newMsg]));
+      onMessageSent(conversation, newMsg);
     } catch (err) {
       console.error('Error sending message:', err);
     }

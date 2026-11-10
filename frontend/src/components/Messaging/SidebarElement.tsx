@@ -2,13 +2,13 @@ import type { Conversation } from '../../types/Messaging/Conversation';
 
 interface SidebarElementProps {
   conversation: Conversation;
-  isActive?: boolean;
-  onSelect?: (conversation: Conversation) => void;
+  isActive: boolean;
+  onSelect: (conversation: Conversation) => void;
 }
 
 export default function SidebarElement({
   conversation,
-  isActive = false,
+  isActive,
   onSelect,
 }: SidebarElementProps) {
   const initial = conversation.displayName?.charAt(0)?.toUpperCase() ?? '';
@@ -20,7 +20,7 @@ export default function SidebarElement({
   return (
     <button
       type="button"
-      onClick={() => onSelect?.(conversation)}
+      onClick={() => onSelect(conversation)}
       aria-current={isActive ? 'true' : undefined}
       className="btn text-start p-3 w-100 border-0"
       style={{

@@ -1,50 +1,21 @@
-import { useState, useEffect } from 'react';
 import type { Conversation } from '../../types/Messaging/Conversation';
-import { fetchConversations } from '../../api/messagingApi';
 import SidebarElement from './SidebarElement';
 
 interface SidebarProps {
-  onSelectConversation?: (conversation: Conversation) => void;
-  onOpenNewChat?: () => void;
-  activeConversationId?: string;
+  conversations: Conversation[];
+  isLoading: boolean;
+  onSelectConversation: (conversation: Conversation) => void;
+  onOpenNewChat: () => void;
+  activeConversationId: string | undefined;
 }
 
 export default function Sidebar({
+  conversations,
+  isLoading,
   onSelectConversation,
   onOpenNewChat,
   activeConversationId,
 }: SidebarProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedId, setSelectedId] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-
-  const activeId = activeConversationId ?? selectedId;
-
-  useEffect(() => {
-    async function loadConversations() {
-      setIsLoading(true);
-      try {
-        const flattenedData = await fetchConversations();
-        setConversations(flattenedData);
-        if (flattenedData.length > 0) {
-          setSelectedId(flattenedData[0]._id);
-          onSelectConversation?.(flattenedData[0]);
-        }
-      } catch (err) {
-        console.error('Error loading conversations:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadConversations();
-  }, [onSelectConversation]);
-
-  const handleSelect = (conv: Conversation) => {
-    setSelectedId(conv._id);
-    onSelectConversation?.(conv);
-  };
-
   return (
     <aside
       className="d-flex flex-column flex-shrink-0 p-3"
@@ -114,8 +85,8 @@ export default function Sidebar({
             <SidebarElement
               key={conv._id}
               conversation={conv}
-              isActive={conv._id === activeId}
-              onSelect={handleSelect}
+              isActive={conv._id === activeConversationId}
+              onSelect={onSelectConversation}
             />
           ))
         )}

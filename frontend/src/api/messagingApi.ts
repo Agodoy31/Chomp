@@ -129,12 +129,22 @@ export async function createConversation(
 }
 
 /**
- * Fetches available users from the server.
- * Endpoint: GET /api/search
+ * Searches users from the server.
+ * Endpoint: GET /api/users/search?search=...
  */
-export async function fetchUsers(): Promise<ChatUser[]> {
-  const response = await fetch('/api/search', {
-    credentials: 'include', // TODO:: pass a query
+export async function searchUsers(
+  search: string,
+  signal?: AbortSignal
+): Promise<ChatUser[]> {
+  const trimmed = search.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const params = new URLSearchParams({ search: trimmed });
+  const response = await fetch(`/api/users/search?${params.toString()}`, {
+    credentials: 'include',
+    signal,
   });
 
   if (!response.ok) {
