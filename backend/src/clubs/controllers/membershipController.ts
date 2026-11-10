@@ -330,6 +330,10 @@ export const leaveClub = async (req: Request<{ clubId: string }>, res: Response)
     return;
   }
 
-  membership.status = 'INACTIVE';
-  res.status(200).json(await membership.save());
+  const saved = await setMembershipStatus(membership._id, clubId, userId, 'INACTIVE');
+  if (!saved) {
+    sendError(res, notActiveMember());
+    return;
+  }
+  res.status(200).json(saved);
 };
