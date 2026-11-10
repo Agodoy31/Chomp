@@ -19,6 +19,7 @@ app.use(
 );
 app.use(express.json());
 app.use(sessionMiddleware);
+app.use('/api/users/search', requireAuth, searchRoutes);
 app.use('/api/users', userRouter);
 app.use('/api/clubs', clubRoutes);
 
@@ -26,8 +27,6 @@ app.use('/api/clubs', clubRoutes);
 app.use("/api/auth", authRoutes);
 
 app.use('/api/conversations', requireAuth, conversationRoutes);
-
-app.use('/api/users/search', requireAuth, searchRoutes);
 
 // Hello World / Health Check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
