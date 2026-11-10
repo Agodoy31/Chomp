@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
-import { IMessage } from '../interfaces/message.interfaces';
-import { IMessageResponse } from '../interfaces/message.responses';
 import {
   messageHistoryQuerySchema,
   postMessageBodySchema,
@@ -9,28 +7,13 @@ import {
 import { deleteMessage, getMessages, sendMessage } from '../services/message.service';
 import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 import { sendMessagingError } from './messagingErrorResponse';
-
-export function toMessageResponse(message: IMessage): IMessageResponse {
-  const response: IMessageResponse = {
-    _id: message._id.toString(),
-    conversationId: message.conversationId.toString(),
-    senderId: message.senderId.toString(),
-    text: message.removedAt ? 'This message was deleted' : message.text,
-    isAnnouncement: message.isAnnouncement,
-    isSystem: message.isSystem,
-    createdAt: message.createdAt.toISOString(),
-  };
-
-  if (message.clientId) {
-    response.clientId = message.clientId;
-  }
-
-  if (message.removedAt) {
-    response.removedAt = message.removedAt.toISOString();
-  }
-
-  return response;
-}
+import { toMessageResponse } from '../serializers/messageResponse';
+import { messagingPublisher } from '../sockets/messagingPublisher';
+import { Conversation, ConversationType } from '../models/Conversation';
+import { ConversationParticipant } from '../models/ConversationParticipant';
+import { Message } from '../models/Message';
+import { getUserConversationFeedItem } from '../services/conversation.service';
+import { toConversationFeedResponse } from '../serializers/conversationFeedResponse';
 
 export async function postMessageHandler(req: Request, res: Response): Promise<void> {
   const id = req.params?.id;
@@ -62,7 +45,7 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
   }
 
   try {
-    const message = await sendMessage(
+    const { message, isNew } = await sendMessage(
       new Types.ObjectId(id),
       new Types.ObjectId(userId),
       parseResult.data.text,
@@ -70,7 +53,37 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
       parseResult.data.isAnnouncement
     );
 
-    res.status(201).json(toMessageResponse(message));
+    if (isNew) {
+      messagingPublisher.messageCreated(message);
+
+      const conversation = await Conversation.findById(id).select('type').lean();
+      if (conversation && conversation.type === ConversationType.DIRECT) {
+        const messageCount = await Message.countDocuments({
+          conversationId: new Types.ObjectId(id),
+        });
+        if (messageCount === 1) {
+          const participants = await ConversationParticipant.find({
+            conversationId: new Types.ObjectId(id),
+          })
+            .select('userId')
+            .lean();
+          for (const p of participants) {
+            const feedItem = await getUserConversationFeedItem(
+              new Types.ObjectId(id),
+              p.userId
+            );
+            if (feedItem) {
+              messagingPublisher.conversationAdded(
+                p.userId.toString(),
+                toConversationFeedResponse(feedItem)
+              );
+            }
+          }
+        }
+      }
+    }
+
+    res.status(isNew ? 201 : 200).json(toMessageResponse(message));
   } catch (error) {
     sendMessagingError(res, error);
   }
@@ -161,6 +174,7 @@ export async function deleteMessageHandler(req: Request, res: Response): Promise
       new Types.ObjectId(messageId),
       new Types.ObjectId(userId)
     );
+    messagingPublisher.messageDeleted(deleted);
     res.status(200).json(toMessageResponse(deleted));
   } catch (error: unknown) {
     sendMessagingError(res, error);
