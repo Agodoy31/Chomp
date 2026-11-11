@@ -9,12 +9,13 @@ import Button from 'react-bootstrap/Button';
 import { Search, X } from 'react-bootstrap-icons';
 import './ClubDiscovery.css';
 
+
 const CATEGORY_FILTERS: { value: ClubCategory; label: string }[] = [
-  { value: 'ACADEMIC', label: 'Academic' },
-  { value: 'CULTURAL', label: 'Cultural' },
-  { value: 'SPORTS', label: 'Sports' },
-  { value: 'OTHER', label: 'Other' },
-];
+    { value: 'ACADEMIC', label: 'Academic' },
+    { value: 'CULTURAL', label: 'Cultural' },
+    { value: 'SPORTS', label: 'Sports' },
+    { value: 'OTHER', label: 'Other' },
+]
 
 async function readJson(response: Response) {
   try {

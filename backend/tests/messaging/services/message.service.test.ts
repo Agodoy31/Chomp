@@ -55,15 +55,16 @@ describe('sendMessage service', () => {
       `Meeting at Century Tower with ${ufFixtures.lakeAliceBasker.name} at ${ufFixtures.lakeAliceBasker.email}`
     );
 
-    expect(result.conversationId.toString()).toBe(conversation._id.toString());
-    expect(result.senderId.toString()).toBe(senderId.toString());
-    expect(result.text).toBe(
+    expect(result.isNew).toBe(true);
+    expect(result.message.conversationId.toString()).toBe(conversation._id.toString());
+    expect(result.message.senderId.toString()).toBe(senderId.toString());
+    expect(result.message.text).toBe(
       `Meeting at Century Tower with ${ufFixtures.lakeAliceBasker.name} at ${ufFixtures.lakeAliceBasker.email}`
     );
-    expect(result.isAnnouncement).toBe(false);
-    expect(result.isSystem).toBe(false);
-    expect((result as Record<string, unknown>).save).toBeUndefined();
-    expect((result as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect(result.message.isAnnouncement).toBe(false);
+    expect(result.message.isSystem).toBe(false);
+    expect((result.message as Record<string, unknown>).save).toBeUndefined();
+    expect((result.message as Record<string, unknown>).$isDefault).toBeUndefined();
   });
 
   it('returns existing message without duplicate error when duplicate client id is sent', async () => {
@@ -92,14 +93,16 @@ describe('sendMessage service', () => {
       clientId
     );
 
-    expect(secondCall._id.toString()).toBe(firstCall._id.toString());
-    expect(secondCall.text).toBe(
+    expect(firstCall.isNew).toBe(true);
+    expect(secondCall.isNew).toBe(false);
+    expect(secondCall.message._id.toString()).toBe(firstCall.message._id.toString());
+    expect(secondCall.message.text).toBe(
       `First submission from ${ufFixtures.timTebow.name} at ${ufFixtures.timTebow.email}`
     );
-    expect((firstCall as Record<string, unknown>).save).toBeUndefined();
-    expect((firstCall as Record<string, unknown>).$isDefault).toBeUndefined();
-    expect((secondCall as Record<string, unknown>).save).toBeUndefined();
-    expect((secondCall as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect((firstCall.message as Record<string, unknown>).save).toBeUndefined();
+    expect((firstCall.message as Record<string, unknown>).$isDefault).toBeUndefined();
+    expect((secondCall.message as Record<string, unknown>).save).toBeUndefined();
+    expect((secondCall.message as Record<string, unknown>).$isDefault).toBeUndefined();
     const messageCount = await Message.countDocuments({
       conversationId: conversation._id,
     });
@@ -120,14 +123,16 @@ describe('sendMessage service', () => {
       permission: ParticipantPermission.MODERATE,
     });
 
-    const message = await sendMessage(
+    const result = await sendMessage(
       conversation._id,
       moderatorId,
       `General body meeting announced by ${ufFixtures.albertGator.name} at ${ufFixtures.albertGator.email}`,
       undefined,
       true
     );
+    const { message } = result;
 
+    expect(result.isNew).toBe(true);
     expect(message.isAnnouncement).toBe(true);
     expect(message.text).toBe(
       `General body meeting announced by ${ufFixtures.albertGator.name} at ${ufFixtures.albertGator.email}`
@@ -497,7 +502,7 @@ describe('deleteMessage service', () => {
       isSystem: false,
     });
 
-    const objectIdResult = await deleteMessage(objectIdMessage._id, authorId);
+    const objectIdResult = await deleteMessage(conversation._id, objectIdMessage._id, authorId);
 
     expect(objectIdResult._id.toString()).toBe(objectIdMessage._id.toString());
     expect(objectIdResult.removedAt).toBeDefined();
@@ -535,17 +540,17 @@ describe('deleteMessage service', () => {
       isSystem: false,
     });
 
-    const firstResult = await deleteMessage(message._id, authorId);
+    const firstResult = await deleteMessage(conversation._id, message._id, authorId);
     const initialTimestamp = firstResult.removedAt;
     expect(initialTimestamp).toBeDefined();
     expect(firstResult.text).toBe('This message was deleted');
 
-    const secondResult = await deleteMessage(message._id, authorId);
+    const secondResult = await deleteMessage(conversation._id, message._id, authorId);
     expect(secondResult.removedAt).toEqual(initialTimestamp);
     expect(secondResult.removedBy?.toString()).toBe(authorId.toString());
     expect(secondResult.text).toBe('This message was deleted');
 
-    const moderatorResult = await deleteMessage(message._id, moderatorId);
+    const moderatorResult = await deleteMessage(conversation._id, message._id, moderatorId);
     expect(moderatorResult.removedAt).toEqual(initialTimestamp);
     expect(moderatorResult.removedBy?.toString()).toBe(authorId.toString());
 
@@ -587,7 +592,7 @@ describe('deleteMessage service', () => {
       isSystem: false,
     });
 
-    const groupResult = await deleteMessage(groupMessage._id, groupModeratorId);
+    const groupResult = await deleteMessage(groupConversation._id, groupMessage._id, groupModeratorId);
     expect(groupResult._id.toString()).toBe(groupMessage._id.toString());
     expect(groupResult.removedAt).toBeDefined();
     expect(groupResult.removedBy?.toString()).toBe(groupModeratorId.toString());
@@ -624,7 +629,7 @@ describe('deleteMessage service', () => {
       isSystem: false,
     });
 
-    const channelResult = await deleteMessage(channelMessage._id, channelModeratorId);
+    const channelResult = await deleteMessage(channelConversation._id, channelMessage._id, channelModeratorId);
     expect(channelResult._id.toString()).toBe(channelMessage._id.toString());
     expect(channelResult.removedAt).toBeDefined();
     expect(channelResult.removedBy?.toString()).toBe(channelModeratorId.toString());
@@ -663,11 +668,11 @@ describe('deleteMessage service', () => {
     });
 
     await expect(
-      deleteMessage(systemMessage._id, authorId)
+      deleteMessage(conversation._id, systemMessage._id, authorId)
     ).rejects.toThrow('System messages cannot be deleted');
 
     await expect(
-      deleteMessage(systemMessage._id, moderatorId)
+      deleteMessage(conversation._id, systemMessage._id, moderatorId)
     ).rejects.toThrow('System messages cannot be deleted');
 
     const persisted = await Message.findById(systemMessage._id).lean().exec();
@@ -720,37 +725,37 @@ describe('deleteMessage service', () => {
     });
 
     await expect(
-      deleteMessage(message._id, nonModeratorId)
+      deleteMessage(conversationOne._id, message._id, nonModeratorId)
     ).rejects.toThrow('User is not authorized to delete this message');
 
     await expect(
-      deleteMessage(message._id, readOnlyId)
+      deleteMessage(conversationOne._id, message._id, readOnlyId)
     ).rejects.toThrow('User is not authorized to delete this message');
 
     await expect(
-      deleteMessage(message._id, outsiderId)
+      deleteMessage(conversationOne._id, message._id, outsiderId)
     ).rejects.toThrow('User is not authorized to delete this message');
 
     await expect(
-      deleteMessage(message._id, crossModeratorId)
+      deleteMessage(conversationOne._id, message._id, crossModeratorId)
     ).rejects.toThrow('User is not authorized to delete this message');
 
-    await deleteMessage(message._id, authorId);
+    await deleteMessage(conversationOne._id, message._id, authorId);
 
     await expect(
-      deleteMessage(message._id, outsiderId)
-    ).rejects.toThrow('User is not authorized to delete this message');
-
-    await expect(
-      deleteMessage(message._id, nonModeratorId)
+      deleteMessage(conversationOne._id, message._id, outsiderId)
     ).rejects.toThrow('User is not authorized to delete this message');
 
     await expect(
-      deleteMessage(message._id, readOnlyId)
+      deleteMessage(conversationOne._id, message._id, nonModeratorId)
     ).rejects.toThrow('User is not authorized to delete this message');
 
     await expect(
-      deleteMessage(message._id, crossModeratorId)
+      deleteMessage(conversationOne._id, message._id, readOnlyId)
+    ).rejects.toThrow('User is not authorized to delete this message');
+
+    await expect(
+      deleteMessage(conversationOne._id, message._id, crossModeratorId)
     ).rejects.toThrow('User is not authorized to delete this message');
 
     const persisted = await Message.findById(message._id).lean().exec();
@@ -789,7 +794,7 @@ describe('deleteMessage service', () => {
     });
 
     await expect(
-      deleteMessage(message._id, authorId)
+      deleteMessage(conversation._id, message._id, authorId)
     ).rejects.toThrow('User is not authorized to delete this message');
   });
 
@@ -798,31 +803,43 @@ describe('deleteMessage service', () => {
     const nonExistentMessageId = new Types.ObjectId();
 
     await expect(
-      deleteMessage('', validId)
+      deleteMessage('', validId, validId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      deleteMessage('   ', validId, validId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      deleteMessage('invalid-id', validId, validId)
+    ).rejects.toThrow('Valid conversationId is required');
+
+    await expect(
+      deleteMessage(validId, '', validId)
     ).rejects.toThrow('Valid messageId is required');
 
     await expect(
-      deleteMessage('   ', validId)
+      deleteMessage(validId, '   ', validId)
     ).rejects.toThrow('Valid messageId is required');
 
     await expect(
-      deleteMessage('invalid-id', validId)
+      deleteMessage(validId, 'invalid-id', validId)
     ).rejects.toThrow('Valid messageId is required');
 
     await expect(
-      deleteMessage(validId, '')
+      deleteMessage(validId, validId, '')
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
-      deleteMessage(validId, '   ')
+      deleteMessage(validId, validId, '   ')
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
-      deleteMessage(validId, 'invalid-id')
+      deleteMessage(validId, validId, 'invalid-id')
     ).rejects.toThrow('Valid requestingUserId is required');
 
     await expect(
-      deleteMessage(nonExistentMessageId, validId)
+      deleteMessage(validId, nonExistentMessageId, validId)
     ).rejects.toThrow('Message not found');
   });
 });

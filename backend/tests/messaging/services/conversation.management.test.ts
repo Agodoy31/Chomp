@@ -13,10 +13,8 @@ import {
   createGroupConversation,
   getConversationParticipants,
   isUserParticipant,
-  leaveConversation,
   removeParticipantFromConversation,
   updateConversationTitle,
-  updateParticipantPermission,
   updateParticipantPermissions,
 } from '../../../src/messaging/services/conversation.service';
 import { ParticipantPermission } from '../../../src/messaging/interfaces/conversationParticipant.interfaces';
@@ -67,6 +65,10 @@ describe('addParticipantsToConversation service', () => {
     expect(added).toHaveLength(2);
     expect(added[0] instanceof ConversationParticipant).toBe(false);
     expect((added[0] as any).save).toBeUndefined();
+    expect(added[0].userId._id.toString()).toBe(user3._id.toString());
+    expect(added[0].userId.firstName).toBe('Danny');
+    expect(added[0].userId.lastName).toBe('Wuerffel');
+    expect(added[0].permission).toBe(ParticipantPermission.WRITE);
 
     const secondAdd = await addParticipantsToConversation(group._id, [user1._id, user3._id], user1._id);
     expect(secondAdd).toHaveLength(0);
@@ -152,22 +154,20 @@ describe('addParticipantsToConversation service', () => {
       addParticipantsToConversation(group._id, [candidate._id], outsideUser._id)
     ).rejects.toThrow('User is not a participant in this conversation');
 
-    await updateParticipantPermission(
+    await updateParticipantPermissions(
       group._id,
       creator._id,
-      writeMember._id,
-      ParticipantPermission.READ
+      [writeMember._id, ParticipantPermission.READ]
     );
 
     await expect(
       addParticipantsToConversation(group._id, [candidate._id], writeMember._id)
     ).rejects.toThrow('User does not have permission to add participants');
 
-    await updateParticipantPermission(
+    await updateParticipantPermissions(
       group._id,
       creator._id,
-      writeMember._id,
-      ParticipantPermission.WRITE
+      [writeMember._id, ParticipantPermission.WRITE]
     );
 
     const addedByWrite = await addParticipantsToConversation(
@@ -240,6 +240,14 @@ describe('updateConversationTitle service', () => {
     const updatedGroup = await updateConversationTitle(group._id, user1._id, '   Reitz Union Smash Bros   ');
     expect(updatedGroup.title).toBe('Reitz Union Smash Bros');
 
+    const groupSysMessage = await Message.findOne({
+      conversationId: group._id,
+      isSystem: true,
+    }).lean().exec();
+    expect(groupSysMessage).not.toBeNull();
+    expect(groupSysMessage?.text).toBe('Potato Sculpture changed the group title to Reitz Union Smash Bros');
+    expect(groupSysMessage?.isSystem).toBe(true);
+
     const club = await createTestClub(user1._id);
     const channel = await createChannel(club._id, 'announcements', [user1._id]);
     await ConversationParticipant.updateOne(
@@ -248,6 +256,12 @@ describe('updateConversationTitle service', () => {
     );
     const updatedChannel = await updateConversationTitle(channel._id, user1._id, 'general');
     expect(updatedChannel.title).toBe('general');
+
+    const channelSysMessage = await Message.findOne({
+      conversationId: channel._id,
+      isSystem: true,
+    }).lean().exec();
+    expect(channelSysMessage).toBeNull();
   });
 
   it('enforces caller permissions when updating titles on groups and channels', async () => {
@@ -274,11 +288,10 @@ describe('updateConversationTitle service', () => {
     );
     expect(updatedByWrite.title).toBe('Lake Alice Turtle Watchers');
 
-    await updateParticipantPermission(
+    await updateParticipantPermissions(
       group._id,
       creator._id,
-      writeMember._id,
-      ParticipantPermission.READ
+      [writeMember._id, ParticipantPermission.READ]
     );
     await expect(
       updateConversationTitle(group._id, writeMember._id, 'Muted Member Title')
@@ -287,20 +300,12 @@ describe('updateConversationTitle service', () => {
     const club = await createTestClub(creator._id);
     const channel = await createChannel(club._id, 'general', [creator._id, writeMember._id]);
 
-    await expect(
-      updateConversationTitle(channel._id, writeMember._id, 'new-general')
-    ).rejects.toThrow('User does not have permission to update conversation title');
-
-    await ConversationParticipant.updateOne(
-      { conversationId: channel._id, userId: creator._id },
-      { permission: ParticipantPermission.MODERATE }
-    );
-    const updatedChannelByMod = await updateConversationTitle(
+    const updatedChannel = await updateConversationTitle(
       channel._id,
       creator._id,
       'announcements-chat'
     );
-    expect(updatedChannelByMod.title).toBe('announcements-chat');
+    expect(updatedChannel.title).toBe('announcements-chat');
   });
 
   it('rejects direct conversations non participants and invalid title parameters', async () => {
@@ -325,6 +330,11 @@ describe('updateConversationTitle service', () => {
       updateConversationTitle(group._id, outsider._id, 'Hacked Title')
     ).rejects.toThrow('User is not a participant in this conversation');
 
+    const nonExistentId = new Types.ObjectId();
+    await expect(
+      updateConversationTitle(nonExistentId, user1._id, 'Title')
+    ).rejects.toThrow('Conversation not found');
+
     await expect(
       updateConversationTitle(null as unknown as Types.ObjectId, user1._id, 'Title')
     ).rejects.toThrow('Valid conversationId is required');
@@ -343,7 +353,7 @@ describe('updateConversationTitle service', () => {
   });
 });
 
-describe('removeParticipantFromConversation and leaveConversation services', () => {
+describe('removeParticipantFromConversation service', () => {
   it('removes member when requested by moderator or when participant leaves with system messages', async () => {
     const moderator = await createTestUser({
       firstName: 'Potato',
@@ -375,7 +385,7 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     expect(removeMsg).not.toBeNull();
     expect(removeMsg?.text).toBe('Potato Sculpture removed GatorCorner Survivor');
 
-    const leaveResult = await leaveConversation(group._id, member2._id);
+    const leaveResult = await removeParticipantFromConversation(group._id, member2._id, member2._id);
     expect(leaveResult).toBe(true);
     expect(await isUserParticipant(group._id, member2._id)).toBe(false);
 
@@ -385,7 +395,7 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
 
     const club = await createTestClub(moderator._id);
     const channel = await createChannel(club._id, 'announcements', [moderator._id, member1._id]);
-    await leaveConversation(channel._id, member1._id);
+    await removeParticipantFromConversation(channel._id, member1._id, member1._id);
 
     const channelLeaveMsg = await Message.findOne({ conversationId: channel._id, text: /left the channel/ }).lean().exec();
     expect(channelLeaveMsg).not.toBeNull();
@@ -397,8 +407,8 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     const user2 = await createTestUser();
     const group = await createGroupConversation(user1._id, [user2._id], 'Empty After Leave Group');
 
-    await leaveConversation(group._id, user2._id);
-    await leaveConversation(group._id, user1._id);
+    await removeParticipantFromConversation(group._id, user2._id, user2._id);
+    await removeParticipantFromConversation(group._id, user1._id, user1._id);
 
     const participants = await getConversationParticipants(group._id);
     expect(participants).toHaveLength(0);
@@ -425,12 +435,6 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     );
 
     await expect(
-      leaveConversation(group._id, moderator._id)
-    ).rejects.toThrow(
-      'Cannot remove the last moderator from a group conversation with remaining participants'
-    );
-
-    await expect(
       removeParticipantFromConversation(group._id, moderator._id, moderator._id)
     ).rejects.toThrow(
       'Cannot remove the last moderator from a group conversation with remaining participants'
@@ -454,8 +458,8 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
       'Marston Basement Study Group'
     );
 
-    await leaveConversation(group._id, member._id);
-    const result = await leaveConversation(group._id, creator._id);
+    await removeParticipantFromConversation(group._id, member._id, member._id);
+    const result = await removeParticipantFromConversation(group._id, creator._id, creator._id);
     expect(result).toBe(true);
 
     const remaining = await getConversationParticipants(group._id);
@@ -506,14 +510,6 @@ describe('removeParticipantFromConversation and leaveConversation services', () 
     await expect(
       removeParticipantFromConversation(fakeId, validId, validId)
     ).rejects.toThrow('Conversation not found');
-
-    await expect(
-      leaveConversation(null as unknown as Types.ObjectId, validId)
-    ).rejects.toThrow('Valid conversationId is required');
-
-    await expect(
-      leaveConversation(validId, null as unknown as Types.ObjectId)
-    ).rejects.toThrow('Valid userId is required');
   });
 });
 
@@ -536,29 +532,29 @@ describe('updateParticipantPermissions service', () => {
       'Chomp Streetwear Collective'
     );
 
-    const promoted = await updateParticipantPermission(
+    const [promoted] = await updateParticipantPermissions(
       group._id,
       moderator._id,
-      member._id,
-      ParticipantPermission.MODERATE
+      [member._id, ParticipantPermission.MODERATE]
     );
     expect(promoted.permission).toBe(ParticipantPermission.MODERATE);
+    expect(promoted.userId._id.toString()).toBe(member._id.toString());
 
-    const demoted = await updateParticipantPermission(
+    const [demoted] = await updateParticipantPermissions(
       group._id,
       moderator._id,
-      member._id,
-      ParticipantPermission.WRITE
+      [member._id, ParticipantPermission.WRITE]
     );
     expect(demoted.permission).toBe(ParticipantPermission.WRITE);
+    expect(demoted.userId._id.toString()).toBe(member._id.toString());
 
-    const restricted = await updateParticipantPermission(
+    const [restricted] = await updateParticipantPermissions(
       group._id,
       moderator._id,
-      member._id,
-      ParticipantPermission.READ
+      [member._id, ParticipantPermission.READ]
     );
     expect(restricted.permission).toBe(ParticipantPermission.READ);
+    expect(restricted.userId._id.toString()).toBe(member._id.toString());
 
     const systemMessages = await Message.find({
       conversationId: group._id,
@@ -603,7 +599,7 @@ describe('updateParticipantPermissions service', () => {
     expect(systemMessages).toHaveLength(0);
   });
 
-  it('updates channel permissions silently and rejects non moderator changes', async () => {
+  it('updates channel permissions silently without creating system messages', async () => {
     const moderator = await createTestUser();
     const member = await createTestUser();
     const club = await createTestClub(moderator._id);
@@ -614,27 +610,18 @@ describe('updateParticipantPermissions service', () => {
       { permission: ParticipantPermission.MODERATE }
     );
 
-    const updated = await updateParticipantPermission(
+    const [updated] = await updateParticipantPermissions(
       channel._id,
-      moderator._id,
-      member._id,
-      ParticipantPermission.READ
+      undefined,
+      [member._id, ParticipantPermission.READ]
     );
     expect(updated.permission).toBe(ParticipantPermission.READ);
+    expect(updated.userId._id.toString()).toBe(member._id.toString());
 
     const channelMessages = await Message.find({
       conversationId: channel._id,
     }).lean().exec();
     expect(channelMessages).toHaveLength(0);
-
-    await expect(
-      updateParticipantPermission(
-        channel._id,
-        member._id,
-        moderator._id,
-        ParticipantPermission.WRITE
-      )
-    ).rejects.toThrow('Only moderators can update participant permissions');
   });
 
   it('rejects permission updates on direct conversations non members and invalid arguments', async () => {
@@ -646,56 +633,42 @@ describe('updateParticipantPermissions service', () => {
     const fakeId = new Types.ObjectId();
 
     await expect(
-      updateParticipantPermission(
+      updateParticipantPermissions(
         direct.conversation._id,
         user1._id,
-        user2._id,
-        ParticipantPermission.MODERATE
+        [user2._id, ParticipantPermission.MODERATE]
       )
     ).rejects.toThrow('Cannot update permissions in a direct conversation');
 
     await expect(
-      updateParticipantPermission(
+      updateParticipantPermissions(
         group._id,
         outsider._id,
-        user2._id,
-        ParticipantPermission.MODERATE
+        [user2._id, ParticipantPermission.MODERATE]
       )
     ).rejects.toThrow('User is not a participant in this conversation');
 
     await expect(
-      updateParticipantPermission(
+      updateParticipantPermissions(
         group._id,
         user1._id,
-        outsider._id,
-        ParticipantPermission.MODERATE
+        [outsider._id, ParticipantPermission.MODERATE]
       )
     ).rejects.toThrow('Target user is not a participant in this conversation');
 
     await expect(
-      updateParticipantPermission(
+      updateParticipantPermissions(
         null as unknown as Types.ObjectId,
         user1._id,
-        user2._id,
-        ParticipantPermission.MODERATE
+        [user2._id, ParticipantPermission.MODERATE]
       )
     ).rejects.toThrow('Valid conversationId is required');
 
     await expect(
-      updateParticipantPermission(
-        group._id,
-        null as unknown as Types.ObjectId,
-        user2._id,
-        ParticipantPermission.MODERATE
-      )
-    ).rejects.toThrow('Valid requestingUserId is required');
-
-    await expect(
-      updateParticipantPermission(
+      updateParticipantPermissions(
         fakeId,
         user1._id,
-        user2._id,
-        ParticipantPermission.MODERATE
+        [user2._id, ParticipantPermission.MODERATE]
       )
     ).rejects.toThrow('Conversation not found');
   });
@@ -718,11 +691,10 @@ describe('updateParticipantPermissions service', () => {
     );
 
     await expect(
-      updateParticipantPermission(
+      updateParticipantPermissions(
         group._id,
         moderator._id,
-        moderator._id,
-        ParticipantPermission.WRITE
+        [moderator._id, ParticipantPermission.WRITE]
       )
     ).rejects.toThrow('Group conversations must have at least one moderator');
   });
@@ -754,8 +726,8 @@ describe('updateParticipantPermissions service', () => {
     );
 
     expect(updatedList).toHaveLength(2);
-    const mod1Updated = updatedList.find((p) => p.userId.toString() === mod1._id.toString());
-    const memberUpdated = updatedList.find((p) => p.userId.toString() === member._id.toString());
+    const mod1Updated = updatedList.find((p) => p.userId._id.toString() === mod1._id.toString());
+    const memberUpdated = updatedList.find((p) => p.userId._id.toString() === member._id.toString());
     expect(mod1Updated?.permission).toBe(ParticipantPermission.WRITE);
     expect(memberUpdated?.permission).toBe(ParticipantPermission.MODERATE);
   });

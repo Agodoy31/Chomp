@@ -101,6 +101,60 @@ describe('conversation route authentication guards', () => {
       redirectTo: '/login',
     });
   });
+
+  it('rejects unauthenticated DELETE /api/conversations/:id/messages/:messageId with 401', async () => {
+    const res = await request(app).delete(
+      '/api/conversations/507f1f77bcf86cd799439011/messages/507f1f77bcf86cd799439022'
+    );
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated PATCH /api/conversations/:id with 401', async () => {
+    const res = await request(app)
+      .patch('/api/conversations/507f1f77bcf86cd799439011')
+      .send({ title: 'Bat Houses Sunset Flight Club' });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated POST /api/conversations/:id/participants with 401', async () => {
+    const res = await request(app)
+      .post('/api/conversations/507f1f77bcf86cd799439011/participants')
+      .send({ userIds: ['507f1f77bcf86cd799439022'] });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated PATCH /api/conversations/:id/participants/:userId with 401', async () => {
+    const res = await request(app)
+      .patch('/api/conversations/507f1f77bcf86cd799439011/participants/507f1f77bcf86cd799439022')
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
+
+  it('rejects unauthenticated DELETE /api/conversations/:id/participants/:userId with 401', async () => {
+    const res = await request(app)
+      .delete('/api/conversations/507f1f77bcf86cd799439011/participants/507f1f77bcf86cd799439022');
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      message: 'ERR_REQUIRE_AUTH',
+      redirectTo: '/login',
+    });
+  });
 });
 
 describe('empty conversation inbox', () => {
@@ -379,18 +433,20 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(res.body.removedBy).toBeUndefined();
   });
 
-  it('deduplicates sends with identical client id and does not create second document', async () => {
+  it('deduplicates sends with identical client id returning 200 and does not create second document', async () => {
     const clientId = '0192c4a0-7c00-7000-8000-000000000002';
 
     const first = await studentA.agent
       .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Anyone have spare coffee?', clientId });
     expect(first.status).toBe(201);
+    expect(first.body.isNew).toBeUndefined();
 
     const second = await studentA.agent
       .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Altered duplicate request body', clientId });
-    expect(second.status).toBe(201);
+    expect(second.status).toBe(200);
+    expect(second.body.isNew).toBeUndefined();
     expect(second.body._id).toBe(first.body._id);
     expect(second.body.text).toBe('Anyone have spare coffee?');
   });
@@ -559,7 +615,7 @@ describe('GET /api/conversations/:id/messages', () => {
       },
     ]);
 
-    await deleteMessage(msgToSoftDelete._id, studentA.user._id);
+    await deleteMessage(new Types.ObjectId(groupConversationId), msgToSoftDelete._id, studentA.user._id);
 
     const res = await studentA.agent
       .get(`/api/conversations/${groupConversationId}/messages?limit=5`)
@@ -690,3 +746,680 @@ describe('GET /api/conversations', () => {
     jest.restoreAllMocks();
   });
 });
+
+describe('DELETE /api/conversations/:id/messages/:messageId', () => {
+  beforeAll(async () => {
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'French Fries Monument Preservation Society',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+  });
+
+  it('allows author and group moderator to soft delete messages with 200 and masked text', async () => {
+    const postRes1 = await studentB.agent
+      .post(`/api/conversations/${groupConversationId}/messages`)
+      .send({ text: 'Member message to delete by author' });
+    const messageId1 = postRes1.body._id;
+
+    const delRes1 = await studentB.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${messageId1}`)
+      .expect(200);
+
+    expect(delRes1.body.text).toBe('This message was deleted');
+    expect(delRes1.body.removedAt).toBeDefined();
+    const firstRemovedAt = delRes1.body.removedAt;
+
+    const postRes2 = await studentB.agent
+      .post(`/api/conversations/${groupConversationId}/messages`)
+      .send({ text: 'Member message to delete by moderator' });
+    const messageId2 = postRes2.body._id;
+
+    const delRes2 = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${messageId2}`)
+      .expect(200);
+
+    expect(delRes2.body.text).toBe('This message was deleted');
+    expect(delRes2.body.removedAt).toBeDefined();
+
+    const repeatedDelRes = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${messageId1}`)
+      .expect(200);
+
+    expect(repeatedDelRes.body.text).toBe('This message was deleted');
+    expect(repeatedDelRes.body.removedAt).toBe(firstRemovedAt);
+  });
+
+  it('rejects malformed conversation or message identifiers with 400 and field name', async () => {
+    const invalidConvRes = await studentA.agent
+      .delete('/api/conversations/invalid-id/messages/507f1f77bcf86cd799439011')
+      .expect(400);
+
+    expect(invalidConvRes.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    const invalidMsgRes = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/invalid-id`)
+      .expect(400);
+
+    expect(invalidMsgRes.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid messageId is required',
+      field: 'messageId',
+    });
+  });
+
+  it('rejects unauthorized member deletion attempts and system message deletion with 403', async () => {
+    const memberPostRes = await studentB.agent
+      .post(`/api/conversations/${groupConversationId}/messages`)
+      .send({ text: 'Member message protected from unauthorized deletion' });
+    const memberMsgId = memberPostRes.body._id;
+
+    const unauthorizedRes = await studentC.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${memberMsgId}`)
+      .expect(403);
+
+    expect(unauthorizedRes.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    const [systemMsg] = await Message.create([
+      {
+        conversationId: new Types.ObjectId(groupConversationId),
+        senderId: studentA.user._id,
+        text: 'Dennis Heckler joined the group',
+        isAnnouncement: false,
+        isSystem: true,
+      },
+    ]);
+
+    const systemRes = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${systemMsg._id.toString()}`)
+      .expect(403);
+
+    expect(systemRes.body).toEqual({
+      code: 'ERR_PERMISSION_DENIED',
+      message: 'System messages cannot be deleted',
+    });
+  });
+
+  it('returns 404 with ERR_MESSAGE_NOT_FOUND when message does not exist', async () => {
+    const missingMessageId = new Types.ObjectId().toString();
+    const res = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${missingMessageId}`)
+      .expect(404);
+
+    expect(res.body).toEqual({
+      code: 'ERR_MESSAGE_NOT_FOUND',
+      message: 'Message not found',
+    });
+  });
+
+  it('returns 500 when service encounters an unexpected failure', async () => {
+    jest.spyOn(messageService, 'deleteMessage').mockRejectedValueOnce(
+      new Error('Database disk error')
+    );
+
+    const nonExistentMessageId = new Types.ObjectId().toString();
+    const res = await studentA.agent
+      .delete(`/api/conversations/${groupConversationId}/messages/${nonExistentMessageId}`)
+      .expect(500);
+
+    expect(res.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+describe('PATCH /api/conversations/:id', () => {
+  beforeAll(async () => {
+    if (!directConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'DIRECT',
+          recipientId: studentB.user._id.toString(),
+        });
+      directConversationId = res.body._id;
+    }
+
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'French Fries Monument Preservation Society',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+
+    if (!channelConversationId) {
+      const club = await Club.create({
+        name: 'Chomp Streetwear Collective',
+        description: 'Campus fashion and thrifting club',
+        proposerId: studentA.user._id,
+      });
+      clubId = club._id.toString();
+
+      const channel = await Conversation.create({
+        type: ConversationType.CHANNEL,
+        clubId: club._id,
+        title: 'announcements',
+      });
+      channelConversationId = channel._id.toString();
+
+      await ConversationParticipant.create([
+        {
+          conversationId: channel._id,
+          userId: studentA.user._id,
+          permission: ParticipantPermission.MODERATE,
+        },
+        {
+          conversationId: channel._id,
+          userId: studentB.user._id,
+          permission: ParticipantPermission.WRITE,
+        },
+      ]);
+    }
+  });
+
+  it('allows group member to rename group chat with 200 and system message', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: 'Bat Houses Sunset Flight Club' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({});
+
+    const updatedGroup = await Conversation.findById(groupConversationId);
+    expect(updatedGroup?.title).toBe('Bat Houses Sunset Flight Club');
+
+    const systemMsg = await Message.findOne({
+      conversationId: new Types.ObjectId(groupConversationId),
+      isSystem: true,
+      text: /changed the group title/,
+    }).lean();
+
+    expect(systemMsg).not.toBeNull();
+    expect(systemMsg?.isSystem).toBe(true);
+    expect(systemMsg?.text).toContain('changed the group title to Bat Houses Sunset Flight Club');
+  });
+
+  it('rejects channel conversation rename with 403', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + channelConversationId)
+      .send({ title: 'Newell Hall Late Night Debuggers' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Only group conversations can be renamed through this endpoint');
+  });
+
+  it('rejects malformed id blank title and newline characters with 400', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/not-a-valid-hex')
+      .send({ title: 'Valid Title' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: '   ' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('title');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: 'Newell\nHall' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('title');
+  });
+
+  it('rejects direct conversation rename with 403', async () => {
+    const directRes = await studentA.agent
+      .patch('/api/conversations/' + directConversationId)
+      .send({ title: 'New Title' });
+    expect(directRes.status).toBe(403);
+    expect(directRes.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('returns 404 for missing conversation', async () => {
+    const missingRes = await studentA.agent
+      .patch('/api/conversations/' + new Types.ObjectId().toString())
+      .send({ title: 'Valid Title' });
+    expect(missingRes.status).toBe(404);
+    expect(missingRes.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    jest
+      .spyOn(conversationService, 'updateConversationTitle')
+      .mockRejectedValueOnce(new Error('Transaction aborted'));
+    const errRes = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId)
+      .send({ title: 'Error Trigger' });
+    expect(errRes.status).toBe(500);
+    expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+describe('POST /api/conversations/:id/participants', () => {
+  beforeAll(async () => {
+    if (!directConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'DIRECT',
+          recipientId: studentB.user._id.toString(),
+        });
+      directConversationId = res.body._id;
+    }
+
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'French Fries Monument Preservation Society',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+  });
+
+  it('allows group participant to add new members with 200 and populated summaries', async () => {
+    const newStudent = await createSignedInStudent({
+      firstName: 'Tim',
+      lastName: 'Tebow',
+      email: 'ttebow15@ufl.edu',
+    });
+
+    const res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [newStudent.user._id.toString()] });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].userId._id).toBe(newStudent.user._id.toString());
+    expect(res.body[0].userId.firstName).toBe('Tim');
+    expect(res.body[0].userId.lastName).toBe('Tebow');
+    expect(res.body[0].permission).toBe('WRITE');
+  });
+
+  it('rejects malformed id empty userIds or invalid userIds with 400', async () => {
+    let res = await studentA.agent
+      .post('/api/conversations/not-a-valid-hex/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('userIds');
+
+    res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: ['not-an-objectid'] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('userIds');
+  });
+
+  it('rejects adding participants to direct conversation or by non participant with 403', async () => {
+    let res = await studentA.agent
+      .post('/api/conversations/' + directConversationId + '/participants')
+      .send({ userIds: [studentC.user._id.toString()] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    const outsider = await createSignedInStudent({
+      firstName: 'Alberta',
+      lastName: 'Gator',
+      email: 'alberta@ufl.edu',
+    });
+
+    res = await outsider.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('rejects adding participants to channel conversation with 403', async () => {
+    const res = await studentA.agent
+      .post('/api/conversations/' + channelConversationId + '/participants')
+      .send({ userIds: [studentC.user._id.toString()] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Participants can only be added to group conversations');
+  });
+
+  it('returns 404 for missing conversation and 404 for non existent target user', async () => {
+    let res = await studentA.agent
+      .post('/api/conversations/' + new Types.ObjectId().toString() + '/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    res = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [new Types.ObjectId().toString()] });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_USER_NOT_FOUND');
+  });
+
+  it('returns 500 when service encounters an unexpected failure', async () => {
+    jest
+      .spyOn(conversationService, 'addParticipantsToConversation')
+      .mockRejectedValueOnce(new Error('Transaction lock failure'));
+
+    const errRes = await studentA.agent
+      .post('/api/conversations/' + groupConversationId + '/participants')
+      .send({ userIds: [studentB.user._id.toString()] });
+
+    expect(errRes.status).toBe(500);
+    expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+describe('DELETE /api/conversations/:id/participants/:userId', () => {
+  beforeAll(async () => {
+    if (!directConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'DIRECT',
+          recipientId: studentB.user._id.toString(),
+        });
+      directConversationId = res.body._id;
+    }
+
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'Swamp Launch Rocketry',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+  });
+
+  it('allows member self departure and moderator removing another member with 200', async () => {
+    const member1 = await createSignedInStudent({
+      firstName: 'Broward',
+      lastName: 'Freshman',
+      email: 'broward.dining@ufl.edu',
+    });
+    const member2 = await createSignedInStudent({
+      firstName: 'Albert',
+      lastName: 'Gator',
+      email: 'albert@ufl.edu',
+    });
+
+    const createRes = await studentA.agent
+      .post('/api/conversations')
+      .send({
+        type: 'GROUP',
+        title: 'Norman Hall Coffee Club',
+        participantIds: [
+          member1.user._id.toString(),
+          member2.user._id.toString(),
+        ],
+      });
+    const testGroupId = createRes.body._id;
+
+    const leaveRes = await member1.agent
+      .delete('/api/conversations/' + testGroupId + '/participants/' + member1.user._id.toString())
+      .expect(200);
+    expect(leaveRes.body).toEqual({});
+
+    const kickRes = await studentA.agent
+      .delete('/api/conversations/' + testGroupId + '/participants/' + member2.user._id.toString())
+      .expect(200);
+    expect(kickRes.body).toEqual({});
+  });
+
+  it('rejects malformed conversation or user identifiers with 400 and field name', async () => {
+    let res = await studentA.agent
+      .delete('/api/conversations/not-a-valid-hex/participants/' + studentB.user._id.toString());
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    res = await studentA.agent
+      .delete('/api/conversations/' + groupConversationId + '/participants/not-a-valid-hex');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid userId is required',
+      field: 'userId',
+    });
+  });
+
+  it('rejects non moderator member removal last moderator departure or direct conversation with 403', async () => {
+    let res = await studentB.agent
+      .delete('/api/conversations/' + groupConversationId + '/participants/' + studentC.user._id.toString());
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    res = await studentA.agent
+      .delete('/api/conversations/' + groupConversationId + '/participants/' + studentA.user._id.toString());
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    res = await studentA.agent
+      .delete('/api/conversations/' + directConversationId + '/participants/' + studentB.user._id.toString());
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('rejects participant removal from channel conversation with 403', async () => {
+    const res = await studentA.agent
+      .delete('/api/conversations/' + channelConversationId + '/participants/' + studentB.user._id.toString());
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Participants can only be removed from group conversations');
+  });
+
+  it('returns 404 for missing conversation and target user not in conversation', async () => {
+    let res = await studentA.agent
+      .delete('/api/conversations/' + new Types.ObjectId().toString() + '/participants/' + studentB.user._id.toString());
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    res = await studentA.agent
+      .delete('/api/conversations/' + groupConversationId + '/participants/' + new Types.ObjectId().toString());
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_USER_NOT_FOUND');
+  });
+
+  it('returns 500 when service encounters an unexpected failure', async () => {
+    jest
+      .spyOn(conversationService, 'removeParticipantFromConversation')
+      .mockRejectedValueOnce(new Error('Database disk error'));
+
+    const errRes = await studentA.agent
+      .delete('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString());
+
+    expect(errRes.status).toBe(500);
+    expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+describe('PATCH /api/conversations/:id/participants/:userId', () => {
+  beforeAll(async () => {
+    if (!directConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'DIRECT',
+          recipientId: studentB.user._id.toString(),
+        });
+      directConversationId = res.body._id;
+    }
+
+    if (!groupConversationId) {
+      const res = await studentA.agent
+        .post('/api/conversations')
+        .send({
+          type: 'GROUP',
+          title: 'Swamp Launch Rocketry',
+          participantIds: [
+            studentB.user._id.toString(),
+            studentC.user._id.toString(),
+          ],
+        });
+      groupConversationId = res.body._id;
+    }
+  });
+
+  it('allows moderator to promote or restrict member permission with 200 and populated summary', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.permission).toBe('READ');
+    expect(res.body.userId._id).toBe(studentB.user._id.toString());
+    expect(res.body.userId.firstName).toBe('Dennis');
+    expect(res.body.userId.lastName).toBe('Heckler');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'WRITE' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.permission).toBe('WRITE');
+  });
+
+  it('rejects malformed ids or invalid permission with 400 and field name', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/not-a-valid-hex/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid conversationId is required',
+      field: 'id',
+    });
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/not-a-valid-hex')
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      code: 'ERR_VALIDATION_FAILED',
+      message: 'Valid userId is required',
+      field: 'userId',
+    });
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'INVALID_ROLE' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ERR_VALIDATION_FAILED');
+    expect(res.body.field).toBe('permission');
+  });
+
+  it('rejects non moderator permission update or direct conversation with 403', async () => {
+    let res = await studentB.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentC.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + directConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('rejects participant permission updates on channel conversation with 403', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + channelConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+    expect(res.body.message).toBe('Participant permissions can only be updated in group conversations');
+  });
+
+  it('rejects sole moderator demoting themselves with 403', async () => {
+    const res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentA.user._id.toString())
+      .send({ permission: 'WRITE' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ERR_PERMISSION_DENIED');
+  });
+
+  it('returns 404 for missing conversation and target user not in conversation', async () => {
+    let res = await studentA.agent
+      .patch('/api/conversations/' + new Types.ObjectId().toString() + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    res = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + new Types.ObjectId().toString())
+      .send({ permission: 'READ' });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('ERR_USER_NOT_FOUND');
+  });
+
+  it('returns 500 when service encounters an unexpected failure', async () => {
+    jest
+      .spyOn(conversationService, 'updateParticipantPermissions')
+      .mockRejectedValueOnce(new Error('Database disk error'));
+
+    const errRes = await studentA.agent
+      .patch('/api/conversations/' + groupConversationId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+
+    expect(errRes.status).toBe(500);
+    expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
+    jest.restoreAllMocks();
+  });
+});
+
+
+
+
