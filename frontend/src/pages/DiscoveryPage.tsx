@@ -30,6 +30,7 @@ export default function ClubDiscovery() {
   const navigate = useNavigate();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasAnyClubs, setHasAnyClubs] = useState(false);
   
   const [loadError, setLoadError] = useState('');
   const [joinError, setJoinError] = useState('');
@@ -64,7 +65,12 @@ export default function ClubDiscovery() {
           throw new Error(data?.message || `Could not load clubs (error ${response.status}).`);
         }
 
-        setClubs(data?.clubs ?? []);
+        const fetchedClubs = data?.clubs ?? [];
+        setClubs(fetchedClubs);
+
+        if (fetchedClubs.length > 0) {
+          setHasAnyClubs(true);
+        }   
       } catch (err: unknown) {
         if (!(err instanceof Error && err.name === 'AbortError')) {
           setLoadError(err instanceof Error ? err.message : 'An error occurred while fetching clubs.');
@@ -161,13 +167,13 @@ export default function ClubDiscovery() {
     return matchesSearch;
   });
 
-
+  
   const hasActiveFilters = Boolean(query.trim() || categories.length > 0);
-  const showControls = !loading && !loadError && (hasActiveFilters || clubs.length > 0);
-  const showEmpty = !loading && !loadError && clubs.length === 0;
-  const showNoMatches = showControls && visibleClubs.length === 0;
+  const showControls = !loading && hasAnyClubs;
+  const showEmpty = !loading && !loadError && !hasAnyClubs;
+  const showNoMatches = showControls && !loadError && visibleClubs.length === 0 && hasActiveFilters;
 
-  const resultsAnnouncement = showControls
+  const resultsAnnouncement = showControls && !loadError
     ? visibleClubs.length === 0
       ? 'No clubs match your search.'
       : `${visibleClubs.length} ${visibleClubs.length === 1 ? 'club' : 'clubs'} found.`
@@ -291,7 +297,7 @@ export default function ClubDiscovery() {
           </div>
         )}
 
-        {visibleClubs.length > 0 && (
+        {!loadError && visibleClubs.length > 0 && (
           <div className="row g-4">
             {visibleClubs.map((club) => (
               <div key={club._id} className="col-12 col-md-6 col-lg-4">
