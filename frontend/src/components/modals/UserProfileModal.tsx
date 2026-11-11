@@ -37,7 +37,7 @@ export default function UserProfileModal({
   const isOwnProfile = profileId === authUser?.id;
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -195,6 +195,7 @@ export default function UserProfileModal({
         </div>
         
         {loadError && <p className="text-center my-4">{loadError}</p>}
+        {loading && !loadError && <p className="text-center my-4 text-white-50">Loading profile...</p>}
 
         {profile && (
           <>
