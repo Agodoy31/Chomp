@@ -10,6 +10,7 @@ import { Search, X } from 'react-bootstrap-icons';
 import './ClubDiscovery.css';
 
 
+
 const CATEGORY_FILTERS: { value: ClubCategory; label: string }[] = [
     { value: 'ACADEMIC', label: 'Academic' },
     { value: 'CULTURAL', label: 'Cultural' },
@@ -64,8 +65,8 @@ export default function ClubDiscovery() {
         }
 
         setClubs(data?.clubs ?? []);
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
+      } catch (err: unknown) {
+        if (!(err instanceof Error && err.name === 'AbortError')) {
           setLoadError(err instanceof Error ? err.message : 'An error occurred while fetching clubs.');
         }
       } finally {
