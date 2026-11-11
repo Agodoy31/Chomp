@@ -26,6 +26,8 @@ function upsertConversation(list: Conversation[], incoming: Conversation): Conve
 export default function MessagingPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
@@ -49,6 +51,8 @@ export default function MessagingPage() {
     let ignore = false;
 
     async function loadConversations() {
+      setIsLoadingConversations(true);
+      setLoadError(null);
       try {
         const feed = await fetchConversations();
         if (ignore) return;
@@ -67,7 +71,11 @@ export default function MessagingPage() {
           loadDetails(feed[0]._id);
         }
       } catch (err) {
+        if (ignore) return;
         console.error('Error loading conversations:', err);
+        setLoadError(
+          err instanceof Error ? err.message : 'Failed to load conversations'
+        );
       } finally {
         if (!ignore) setIsLoadingConversations(false);
       }
@@ -77,7 +85,7 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [loadDetails]);
+  }, [loadDetails, reloadKey]);
 
   const handleChatCreated = (newConv: Conversation) => {
     setIsNewChatModalOpen(false);
@@ -118,6 +126,8 @@ export default function MessagingPage() {
         <Sidebar
           conversations={conversations}
           isLoading={isLoadingConversations}
+          loadError={loadError}
+          onRetry={() => setReloadKey((key) => key + 1)}
           onSelectConversation={handleSelectConversation}
           onOpenNewChat={() => setIsNewChatModalOpen(true)}
           activeConversationId={activeConversation?._id}

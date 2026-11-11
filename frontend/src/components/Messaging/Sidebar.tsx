@@ -4,6 +4,8 @@ import SidebarElement from './SidebarElement';
 interface SidebarProps {
   conversations: Conversation[];
   isLoading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
   onSelectConversation: (conversation: Conversation) => void;
   onOpenNewChat: () => void;
   activeConversationId: string | undefined;
@@ -12,6 +14,8 @@ interface SidebarProps {
 export default function Sidebar({
   conversations,
   isLoading,
+  loadError,
+  onRetry,
   onSelectConversation,
   onOpenNewChat,
   activeConversationId,
@@ -75,6 +79,17 @@ export default function Sidebar({
             className="text-white text-center py-3"
           >
             Loading...
+          </div>
+        ) : loadError ? (
+          <div role="alert" className="text-white text-center py-3">
+            <div>{loadError}</div>
+            <button
+              type="button"
+              className="btn btn-light btn-sm mt-2"
+              onClick={onRetry}
+            >
+              Retry
+            </button>
           </div>
         ) : conversations.length === 0 ? (
           <div role="status" className="text-white text-center py-3">
