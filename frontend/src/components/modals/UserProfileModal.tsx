@@ -76,9 +76,7 @@ export default function UserProfileModal({
           if (data?.code === 'ERR_USER_NOT_FOUND') {
             setLoadError('User not found.');
           } 
-          else if (data?.code === 'ERR_INVALID_INPUT') {
-            setLoadError('This profile link is not valid.');
-          } 
+         
           else {
             setLoadError('Could not load this profile. Please try again.');
           }
@@ -110,16 +108,13 @@ export default function UserProfileModal({
   }, [show, profileId, setUser]);
 
   if (!profileId) return null;
-  const clubs = profile?.clubs ?? [];
-  const initials = profile ? `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase() : '';
+  const shownProfile = profile?.id === profileId ? profile : null;
+  const clubs = shownProfile?.clubs ?? [];
+  const initials = shownProfile ? `${shownProfile.firstName.charAt(0)}${shownProfile.lastName.charAt(0)}`.toUpperCase() : '';
   const displayedClubs =  showAllClubs ? clubs : clubs.slice(0, 3);
 
   async function handleSaveBio() {
     setBioError('');
-    if(bioText.trim().length > BIO_MAX_LENGTH) {
-      setBioError(`Bio cannot exceed ${BIO_MAX_LENGTH} characters.`);
-      return;
-    }
 
     setSavingBio(true);
     try {
@@ -129,19 +124,25 @@ export default function UserProfileModal({
         credentials: 'include',
         body: JSON.stringify({ bio: bioText.trim() })
       });
-      const data = await readJson(response);
-      if (!response.ok){
-        setBioError(
-          data?.code === 'ERR_INVALID_INPUT' ? `Bio cannot exceed ${BIO_MAX_LENGTH} characters.` 
-          : 'Could not save bio. Please try again.'
-        );
+
+      if (response.status === 401) {
+        setUser(null);
+        setBioError('Your session expired. Please log in again.');
+        navigate('/login');
         return;
       }
 
-      setProfile(current => (current ? { ...current, bio: data.bio } : current));
+      const data = await readJson(response);
+      if (!response.ok){
+        setBioError(data?.message || 'Could not save bio. Please try again.');
+        return;
+      }
+
+      const savedBio: string = data?.bio ?? bioText.trim();
+      setProfile(current => (current ? { ...current, bio: savedBio } : current));
 
       if(authUser) {
-        setUser({ ...authUser, bio: data.bio });
+        setUser({ ...authUser, bio: savedBio });
       }
       setIsEditingBio(false);
     } 
@@ -168,7 +169,7 @@ export default function UserProfileModal({
         {/* Header Icons */}
         <div className="d-flex justify-content-between align-items-center mb-2">
           <h4 className="fw-bold m-0" style={{ fontSize: '24px' }}>
-            {isOwnProfile ? 'User Profile' : profile ? `${profile.firstName}'s Profile` : 'Profile'}
+            {isOwnProfile ? 'User Profile' : shownProfile ? `${shownProfile.firstName}'s Profile` : 'Profile'}
           </h4>
           <div className="d-flex align-items-center gap-3">
             {isOwnProfile && (
@@ -179,8 +180,9 @@ export default function UserProfileModal({
                   /* Settings routing */
                 }}
                 title="Settings"
+                aria-label="Settings"
               >
-                <Gear size={22} />
+                <Gear size={22} aria-hidden="true" focusable="false" />
               </button>
             )}
             <button
@@ -188,16 +190,17 @@ export default function UserProfileModal({
               className="btn btn-link text-white p-0 border-0"
               onClick={onHide}
               title="Close"
+              aria-label="Close Profile"
             >
-              <X size={30} />
+              <X size={30} aria-hidden="true" focusable="false" />
             </button>
           </div>
         </div>
         
-        {loadError && <p className="text-center my-4">{loadError}</p>}
-        {loading && !loadError && <p className="text-center my-4 text-white-50">Loading profile...</p>}
+        {loadError && <p className="text-center my-4 text-danger" role="alert">{loadError}</p>}
+        {loading && !loadError && <p className="text-center my-4 text-white-50" role="status">Loading profile...</p>}
 
-        {profile && (
+        {shownProfile && (
           <>
 
           {/* Centered Avatar & Name */}
@@ -214,9 +217,9 @@ export default function UserProfileModal({
               {initials}
             </div>
             <h4 className="fw-bold mb-0 text-center">
-              {profile.firstName} {profile.lastName}
+              {shownProfile.firstName} {shownProfile.lastName}
             </h4>
-            <div className="small text-white-50">{profile.email}</div>
+            <div className="small text-white-50">{shownProfile.email}</div>
           </div>
 
           {/* Biography Section */}
@@ -227,13 +230,14 @@ export default function UserProfileModal({
                 <button
                   type="button"
                   className="btn btn-link text-white p-0 border-0 d-flex align-items-center"
+                  aria-label="Edit Biography"
                   onClick={() => {
-                    setBioText(profile.bio || '');
+                    setBioText(shownProfile.bio || '');
                     setBioError('');
                     setIsEditingBio(true);
                   }}
                 >
-                  <PencilSquare size={18} />
+                  <PencilSquare size={18} aria-hidden="true" focusable="false" />
                 </button>
               )}
             </div>
@@ -253,7 +257,7 @@ export default function UserProfileModal({
                     value={bioText}
                     onChange={(e) => setBioText(e.target.value)}
                     maxLength={BIO_MAX_LENGTH}
-                    placeholder="Bio not made yet!"
+                    placeholder="Write your bio here..."
                     className="bg-white text-dark mb-2 border-0"
                     style={{ fontSize: '16px' }}
                   />
@@ -290,7 +294,7 @@ export default function UserProfileModal({
                 </div>
               ) : (
                 <p className="mb-0 text-white fs-6">
-                  {profile.bio || 'Bio not made yet!'}
+                  {shownProfile.bio || 'Bio not made yet!'}
                 </p>
               )}
             </div>
