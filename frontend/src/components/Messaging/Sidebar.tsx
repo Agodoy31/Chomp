@@ -16,25 +16,41 @@ export default function Sidebar({
 }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadConversations() {
       setIsLoading(true);
+      setLoadError(null);
       try {
         const flattenedData = await fetchConversations();
+        if (cancelled) return;
         setConversations(flattenedData);
-        if (flattenedData.length > 0) {
+        if (flattenedData.length > 0 && activeConversationId === undefined) {
           onSelectConversation?.(flattenedData[0]);
         }
       } catch (err) {
+        if (cancelled) return;
         console.error('Error loading conversations:', err);
+        setLoadError(
+          err instanceof Error ? err.message : 'Failed to load conversations'
+        );
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
 
     loadConversations();
-  }, [onSelectConversation]);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
 
   const handleSelect = (conv: Conversation) => {
     onSelectConversation?.(conv);
@@ -99,6 +115,17 @@ export default function Sidebar({
             className="text-white text-center py-3"
           >
             Loading...
+          </div>
+        ) : loadError ? (
+          <div role="alert" className="text-white text-center py-3">
+            <div>{loadError}</div>
+            <button
+              type="button"
+              className="btn btn-light btn-sm mt-2"
+              onClick={() => setReloadKey((key) => key + 1)}
+            >
+              Retry
+            </button>
           </div>
         ) : conversations.length === 0 ? (
           <div role="status" className="text-white text-center py-3">
