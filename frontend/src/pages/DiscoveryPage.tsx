@@ -161,7 +161,9 @@ export default function ClubDiscovery() {
     return matchesSearch;
   });
 
-  const showControls = !loading && !loadError && clubs.length > 0;
+
+  const hasActiveFilters = Boolean(query.trim() || categories.length > 0);
+  const showControls = !loading && !loadError && (hasActiveFilters || clubs.length > 0);
   const showEmpty = !loading && !loadError && clubs.length === 0;
   const showNoMatches = showControls && visibleClubs.length === 0;
 
