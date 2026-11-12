@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import ClubCard from '../components/ClubCard';
 import type { Club, ClubCategory } from '../types/club';
-import Header from '../components/Header';
 import Alert from 'react-bootstrap/Alert';
 import Form from 'react-bootstrap/Form';
 import Button from 'react-bootstrap/Button';
@@ -180,8 +179,7 @@ export default function ClubDiscovery() {
     : '';
 
   return (
-    <div className="min-vh-100 bg-light">
-      <Header />
+    <div className="bg-light p-4">
       <div className="container py-5">
         <h1 className="fw-bold mb-4" style={{ color: '#3046C3', fontFamily: 'Inter' }}>
           Discover Clubs
