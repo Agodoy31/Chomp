@@ -1,11 +1,11 @@
 import Modal from 'react-bootstrap/Modal';
 import type { Conversation } from '../../types/Messaging/Conversation';
-import { CURRENT_USER_ID } from '../../testData/mockConversations';
+import { useAuth } from '../../hooks/useAuth';
 
 interface ConversationDetailsModalProps {
   show: boolean;
   onHide: () => void;
-  conversation?: Conversation | null;
+  conversation: Conversation | null;
 }
 
 export default function ConversationDetailsModal({
@@ -13,6 +13,7 @@ export default function ConversationDetailsModal({
   onHide,
   conversation,
 }: ConversationDetailsModalProps) {
+  const { user } = useAuth();
   if (!conversation) return null;
 
   const participants = conversation.participants || [];
@@ -90,7 +91,7 @@ export default function ConversationDetailsModal({
           ) : (
             participants.map((participant) => {
               const isCurrent =
-                participant._id === CURRENT_USER_ID ||
+                (user?.id && participant._id === user.id) ||
                 participant.firstName.toLowerCase() === 'you';
               const displayName = isCurrent ? 'You' : participant.firstName;
               const initial = (displayName.charAt(0) || 'U').toUpperCase();

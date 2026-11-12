@@ -2,26 +2,32 @@ import { useState, useEffect } from 'react';
 import type { Conversation } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
-import {
-  fetchMessages,
-  postMessage,
-  fetchConversationDetails,
-} from '../../api/messagingApi';
+import { fetchMessages, postMessage } from '../../api/messagingApi';
 import Message from './Message';
 
+// Combine message lists by ID so history and sends can overlap without duplicates
+function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
+  const byId = new Map([...current, ...incoming].map((m) => [m._id, m]));
+  return [...byId.values()].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
+  );
+}
+
 interface MessageAreaProps {
-  conversation?: Conversation | null;
-  onOpenDetails?: () => void;
+  conversation: Conversation | null;
+  onOpenDetails: () => void;
+  onMessageSent: (conversation: Conversation, message: IMessage) => void;
 }
 
 export default function MessageArea({
   conversation,
   onOpenDetails,
+  onMessageSent,
 }: MessageAreaProps) {
   const { user } = useAuth();
   const currentUserId = user?.id || '';
+
   const [messages, setMessages] = useState<IMessage[]>([]);
-  const [conversationDetails, setConversationDetails] = useState<Conversation | null>(null);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -30,27 +36,20 @@ export default function MessageArea({
 
   const conversationId = conversation?._id;
 
-  // Load messages and full conversation details
+  // Load messages for the selected conversation, ignoring responses after unmount/switch
   useEffect(() => {
     if (!conversationId) return;
     const currentId = conversationId;
-    let cancelled = false;
+    let ignore = false;
 
-    async function loadChatData() {
+    async function loadMessages() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const [msgData, detailsData] = await Promise.all([
-          fetchMessages(currentId),
-          fetchConversationDetails(currentId).catch(() => null),
-        ]);
-        if (cancelled) return;
-        setMessages(msgData);
-        if (detailsData) {
-          setConversationDetails(detailsData);
-        }
+        const data = await fetchMessages(currentId);
+        if (!ignore) setMessages((prev) => mergeMessages(data, prev));
       } catch (err) {
-        if (cancelled) return;
+        if (ignore) return;
         console.error('Error loading messages:', err);
         setLoadError(
           err instanceof Error && err.message
@@ -58,15 +57,13 @@ export default function MessageArea({
             : 'The server did not respond.'
         );
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        if (!ignore) setIsLoading(false);
       }
     }
 
-    loadChatData();
+    loadMessages();
     return () => {
-      cancelled = true;
+      ignore = true;
     };
   }, [conversationId, reloadKey]);
 
@@ -81,10 +78,26 @@ export default function MessageArea({
     );
   }
 
+  const participants = conversation.participants || [];
+
+  // Check client-side permissions: user must not have READ-only permission
+  const currentUserParticipant = participants.find(
+    (p) =>
+      (currentUserId && p._id === currentUserId) ||
+      p.firstName.toLowerCase() === 'you'
+  );
+
+  const canSend =
+    participants.length > 0
+      ? currentUserParticipant !== undefined &&
+        currentUserParticipant.permission !== 'READ'
+      : true;
+
   const headerInitial = conversation.displayName.charAt(0).toUpperCase();
 
   const handleSend = async (e: React.SubmitEvent) => {
     e.preventDefault();
+    if (!canSend) return;
     if (!inputText.trim()) return;
 
     const textToSend = inputText.trim();
@@ -92,20 +105,18 @@ export default function MessageArea({
 
     try {
       const newMsg = await postMessage(conversation._id, textToSend);
-      setMessages((prev) => [...prev, newMsg]);
+      setMessages((prev) => mergeMessages(prev, [newMsg]));
       setInputText('');
+      onMessageSent(conversation, newMsg);
     } catch (err) {
       console.error('Error sending message:', err);
       setSendError('Failed to send message. Please try again.');
     }
   };
 
-  const activeParticipants =
-    conversationDetails?.participants || conversation.participants || [];
-
   const getSenderName = (senderId: string): string => {
     return (
-      activeParticipants.find((p) => p._id === senderId)?.firstName ||
+      participants.find((p) => p._id === senderId)?.firstName ||
       conversation.displayName
     );
   };
@@ -240,25 +251,42 @@ export default function MessageArea({
           <input
             type="text"
             className="form-control border-0 bg-transparent shadow-none"
-            placeholder={`Message ${conversation.displayName}...`}
-            aria-label={`Message ${conversation.displayName}`}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            placeholder={
+              canSend
+                ? `Message ${conversation.displayName}...`
+                : 'You do not have permission to send messages in this conversation'
+            }
+            aria-label={
+              canSend
+                ? `Message ${conversation.displayName}`
+                : 'You do not have permission to send messages in this conversation'
+            }
+            value={
+              canSend
+                ? inputText
+                : 'You do not have permission to send messages in this conversation'
+            }
+            onChange={(e) => canSend && setInputText(e.target.value)}
+            disabled={!canSend}
             style={{
               fontSize: '14px',
-              color: '#1F2937',
+              color: canSend ? '#1F2937' : '#6B7280',
+              cursor: canSend ? 'text' : 'not-allowed',
+              userSelect: canSend ? 'auto' : 'none',
             }}
           />
 
           {/* Send Arrow Vector Button */}
           <button
             type="submit"
+            disabled={!canSend}
             className="btn rounded-circle d-flex align-items-center justify-content-center p-0 flex-shrink-0"
             style={{
               width: '36px',
               height: '36px',
-              backgroundColor: '#3046C3',
+              backgroundColor: canSend ? '#3046C3' : '#9CA3AF',
               border: 'none',
+              cursor: canSend ? 'pointer' : 'not-allowed',
             }}
             aria-label="Send message"
           >

@@ -1,61 +1,25 @@
-import { useState, useEffect } from 'react';
 import type { Conversation } from '../../types/Messaging/Conversation';
-import { fetchConversations } from '../../api/messagingApi';
 import SidebarElement from './SidebarElement';
 
 interface SidebarProps {
-  onSelectConversation?: (conversation: Conversation) => void;
-  onOpenNewChat?: () => void;
-  activeConversationId?: string;
+  conversations: Conversation[];
+  isLoading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
+  onSelectConversation: (conversation: Conversation) => void;
+  onOpenNewChat: () => void;
+  activeConversationId: string | undefined;
 }
 
 export default function Sidebar({
+  conversations,
+  isLoading,
+  loadError,
+  onRetry,
   onSelectConversation,
   onOpenNewChat,
   activeConversationId,
 }: SidebarProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadConversations() {
-      setIsLoading(true);
-      setLoadError(null);
-      try {
-        const flattenedData = await fetchConversations();
-        if (cancelled) return;
-        setConversations(flattenedData);
-        if (flattenedData.length > 0 && activeConversationId === undefined) {
-          onSelectConversation?.(flattenedData[0]);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Error loading conversations:', err);
-        setLoadError(
-          err instanceof Error ? err.message : 'Failed to load conversations'
-        );
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadConversations();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadKey]);
-
-  const handleSelect = (conv: Conversation) => {
-    onSelectConversation?.(conv);
-  };
-
   return (
     <aside
       className="d-flex flex-column flex-shrink-0 p-3"
@@ -122,7 +86,7 @@ export default function Sidebar({
             <button
               type="button"
               className="btn btn-light btn-sm mt-2"
-              onClick={() => setReloadKey((key) => key + 1)}
+              onClick={onRetry}
             >
               Retry
             </button>
@@ -137,7 +101,7 @@ export default function Sidebar({
               key={conv._id}
               conversation={conv}
               isActive={conv._id === activeConversationId}
-              onSelect={handleSelect}
+              onSelect={onSelectConversation}
             />
           ))
         )}
