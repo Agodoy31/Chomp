@@ -10,12 +10,12 @@ import { ConversationParticipant, ParticipantPermission } from '../../src/messag
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-async function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
-  return Club.create({
-    name: `Club ${new mongoose.Types.ObjectId().toHexString()}`,
+function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
+  return createTestClub(new mongoose.Types.ObjectId(), {
     description: 'Weekly meetings',
-    proposerId: new mongoose.Types.ObjectId(),
+    category: 'OTHER',
     status,
   });
 }
@@ -110,7 +110,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(seats[0].permission).toBe(ParticipantPermission.WRITE);
   });
 
-  it('restores a read-only seat to moderate when an inactive officer rejoins', async () => {
+  it('rejoins an inactive officer as a member with a write seat', async () => {
     const { club, channel } = await insertClubWithChannel();
     await Membership.create({ userId: studentId, clubId: club._id, role: 'OFFICER', status: 'INACTIVE' });
     await ConversationParticipant.create({
@@ -122,10 +122,10 @@ describe('POST /api/clubs/:clubId/join', () => {
     const res = await student.post(`/api/clubs/${club._id.toString()}/join`);
 
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ status: 'ACTIVE', role: 'OFFICER' });
+    expect(res.body).toMatchObject({ status: 'ACTIVE', role: 'MEMBER' });
     const seats = await ConversationParticipant.find({ conversationId: channel._id, userId: studentId }).lean();
     expect(seats).toHaveLength(1);
-    expect(seats[0].permission).toBe(ParticipantPermission.MODERATE);
+    expect(seats[0].permission).toBe(ParticipantPermission.WRITE);
   });
 
   it('creates one membership and one channel seat when the same student joins twice at once', async () => {
@@ -152,7 +152,7 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(await ConversationParticipant.countDocuments()).toBe(0);
   });
 
-  it.each(['MEMBER', 'OFFICER'] as const)('reactivates an inactive %s membership with the same role', async (role) => {
+  it.each(['MEMBER', 'OFFICER'] as const)('reactivates an inactive %s membership as a member', async (role) => {
     const club = await insertClub();
     const inactive = await Membership.create({
       userId: studentId,
@@ -165,12 +165,12 @@ describe('POST /api/clubs/:clubId/join', () => {
 
     expect(res.status).toBe(201);
     expect(res.body._id).toBe(inactive._id.toString());
-    expect(res.body.role).toBe(role);
+    expect(res.body.role).toBe('MEMBER');
     expect(res.body.status).toBe('ACTIVE');
 
     const stored = await Membership.findById(inactive._id);
     expect(stored?.status).toBe('ACTIVE');
-    expect(stored?.role).toBe(role);
+    expect(stored?.role).toBe('MEMBER');
     expect(await Membership.countDocuments({ userId: studentId, clubId: club._id })).toBe(1);
   });
 

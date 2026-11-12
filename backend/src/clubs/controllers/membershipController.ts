@@ -1,8 +1,13 @@
 import { Request, Response } from 'express';
 import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
 import { z } from 'zod';
-import { addMemberToClubChannels, syncMemberChannelPermission } from '../services/clubChannelAccess';
-import { User } from '../../user/models/User';
+import {
+  addMemberToClubChannels,
+  commitMemberDeparture,
+  commitMemberRole,
+  syncMemberChannelPermission,
+} from '../services/clubChannelAccess';
+import { isAdmin } from '../isAdmin';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
 import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
@@ -62,40 +67,12 @@ async function activateMembership(
   }
 
   if (existing.status === 'INACTIVE') {
+    existing.role = 'MEMBER';
     existing.status = 'ACTIVE';
-    return { membership: await existing.save() };
+    return { membership: await existing.save({ session }) };
   }
 
   return { error: rejectionForMembership(existing.status) };
-}
-
-async function setMembershipStatus(
-  membershipId: mongoose.Types.ObjectId,
-  clubId: string,
-  userId: string,
-  status: 'INACTIVE' | 'REMOVED'
-): Promise<MembershipRecord | null> {
-  const session = await mongoose.startSession();
-  try {
-    return await session.withTransaction(async () => {
-      const current = await Membership.findOne({ _id: membershipId, status: 'ACTIVE' }).session(session);
-      if (!current) {
-        return null;
-      }
-      current.status = status;
-      await current.save({ session });
-      await syncMemberChannelPermission(
-        new mongoose.Types.ObjectId(clubId),
-        new mongoose.Types.ObjectId(userId),
-        current.role,
-        session,
-        status
-      );
-      return current;
-    });
-  } finally {
-    await session.endSession();
-  }
 }
 
 async function isLastActiveOfficer(clubId: string, userId: string): Promise<boolean> {
@@ -110,10 +87,6 @@ async function isLastActiveOfficer(clubId: string, userId: string): Promise<bool
 
 async function approvedClubExists(clubId: string): Promise<boolean> {
   return mongoose.isValidObjectId(clubId) && Boolean(await Club.exists({ _id: clubId, status: 'APPROVED' }));
-}
-
-function isAdmin(userId: string) {
-  return User.exists({ _id: userId, isAdmin: true });
 }
 
 async function canManageMembers(userId: string, clubId: string): Promise<boolean> {
@@ -200,8 +173,12 @@ export const updateMemberRole = async (
     return;
   }
 
-  membership.role = parsed.data.role;
-  res.status(200).json(await membership.save());
+  const membershipBody = await commitMemberRole({ membershipId: membership._id, role: parsed.data.role });
+  if (!membershipBody) {
+    sendError(res, memberNotFound());
+    return;
+  }
+  res.status(200).json({ membership: membershipBody });
 };
 
 export const removeMember = async (
@@ -234,12 +211,12 @@ export const removeMember = async (
     return;
   }
 
-  const saved = await setMembershipStatus(membership._id, clubId, userId, 'REMOVED');
-  if (!saved) {
+  const membershipBody = await commitMemberDeparture({ membershipId: membership._id, status: 'REMOVED' });
+  if (!membershipBody) {
     sendError(res, memberNotFound());
     return;
   }
-  res.status(200).json(saved);
+  res.status(200).json({ membership: membershipBody });
 };
 
 export const getMyClubs = async (req: Request, res: Response): Promise<void> => {
@@ -330,10 +307,10 @@ export const leaveClub = async (req: Request<{ clubId: string }>, res: Response)
     return;
   }
 
-  const saved = await setMembershipStatus(membership._id, clubId, userId, 'INACTIVE');
-  if (!saved) {
+  const membershipBody = await commitMemberDeparture({ membershipId: membership._id, status: 'INACTIVE' });
+  if (!membershipBody) {
     sendError(res, notActiveMember());
     return;
   }
-  res.status(200).json(saved);
+  res.status(200).json({ membership: membershipBody });
 };

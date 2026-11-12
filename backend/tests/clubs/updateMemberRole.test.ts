@@ -4,15 +4,18 @@ import request from 'supertest';
 import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
+import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
+import { Conversation } from '../../src/messaging/models/Conversation';
+import { ConversationParticipant, ParticipantPermission } from '../../src/messaging/models/ConversationParticipant';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-async function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
-  return Club.create({
-    name: `Club ${new mongoose.Types.ObjectId().toHexString()}`,
+function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
+  return createTestClub(new mongoose.Types.ObjectId(), {
     description: 'Weekly meetings',
-    proposerId: new mongoose.Types.ObjectId(),
+    category: 'OTHER',
     status,
   });
 }
@@ -30,7 +33,7 @@ describe('PATCH /api/clubs/:clubId/members/:userId', () => {
 
   beforeAll(async () => {
     await connectTestDb();
-    await Promise.all([Club.init(), Membership.init(), User.init()]);
+    await Promise.all([Club.init(), Membership.init(), Conversation.init(), ConversationParticipant.init(), User.init()]);
     const [adminUser, officerUser, memberUser] = await Promise.all([createUser(true), createUser(), createUser()]);
     officerId = officerUser._id;
     memberId = memberUser._id;
@@ -58,11 +61,45 @@ describe('PATCH /api/clubs/:clubId/members/:userId', () => {
 
     const promote = await officer.patch(roleUrl(club._id, memberId)).send({ role: 'OFFICER' });
     expect(promote.status).toBe(200);
-    expect(promote.body).toMatchObject({ userId: memberId.toString(), role: 'OFFICER', status: 'ACTIVE' });
+    expect(promote.body).toEqual({
+      membership: {
+        _id: expect.any(String),
+        userId: memberId.toString(),
+        clubId: club._id.toString(),
+        role: 'OFFICER',
+        status: 'ACTIVE',
+      },
+    });
 
     const demote = await member.patch(roleUrl(club._id, officerId)).send({ role: 'MEMBER' });
     expect(demote.status).toBe(200);
     expect((await Membership.findOne({ userId: officerId, clubId: club._id }).lean())?.role).toBe('MEMBER');
+  });
+
+  it('moves the channel seat to moderate on promotion and back to write on demotion', async () => {
+    const club = await insertClubWithRoster();
+    const channel = await Conversation.create({
+      type: ConversationType.CHANNEL,
+      clubId: club._id,
+      title: 'General',
+    });
+    await ConversationParticipant.create({
+      conversationId: channel._id,
+      userId: memberId,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const promote = await officer.patch(roleUrl(club._id, memberId)).send({ role: 'OFFICER' });
+    expect(promote.status).toBe(200);
+    expect(
+      (await ConversationParticipant.findOne({ conversationId: channel._id, userId: memberId }).lean())?.permission
+    ).toBe(ParticipantPermission.MODERATE);
+
+    const demote = await officer.patch(roleUrl(club._id, memberId)).send({ role: 'MEMBER' });
+    expect(demote.status).toBe(200);
+    expect(
+      (await ConversationParticipant.findOne({ conversationId: channel._id, userId: memberId }).lean())?.permission
+    ).toBe(ParticipantPermission.WRITE);
   });
 
   it('lets an admin who is not a member change a role', async () => {

@@ -7,9 +7,16 @@ import { Membership } from '../../src/clubs/model/membershipModel';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-async function insertClub(proposerId: mongoose.Types.ObjectId, overrides: Record<string, unknown> = {}) {
-  return Club.create({ name: 'Chess Club', description: 'Weekly chess matches', proposerId, ...overrides });
+function insertClub(proposerId: mongoose.Types.ObjectId, overrides: Record<string, unknown> = {}) {
+  return createTestClub(proposerId, {
+    name: 'Chess Club',
+    description: 'Weekly chess matches',
+    category: 'OTHER',
+    status: 'PENDING',
+    ...overrides,
+  });
 }
 
 describe('POST /api/clubs/:clubId/reject', () => {
@@ -39,7 +46,14 @@ describe('POST /api/clubs/:clubId/reject', () => {
     const res = await admin.post(`/api/clubs/${club._id.toString()}/reject`);
 
     expect(res.status).toBe(200);
-    expect(res.body.club).toMatchObject({ _id: club._id.toString(), status: 'REJECTED' });
+    expect(res.body.club).toMatchObject({
+      _id: club._id.toString(),
+      proposerId: proposerId.toString(),
+      status: 'REJECTED',
+    });
+    expect(res.body.club).not.toHaveProperty('__v');
+    expect(res.body.club.createdAt).toEqual(expect.any(String));
+    expect(res.body.club.updatedAt).toEqual(expect.any(String));
     expect((await Club.findById(club._id).lean())?.status).toBe('REJECTED');
     expect(await Membership.countDocuments()).toBe(0);
   });

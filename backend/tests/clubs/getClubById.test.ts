@@ -4,14 +4,14 @@ import request from 'supertest';
 import app from '../../src/app';
 import { Club } from '../../src/clubs/model/clubModel';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-async function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
-  return Club.create({
+function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
+  return createTestClub(new mongoose.Types.ObjectId(), {
     name: `${status} Club`,
     description: 'Weekly chess matches',
     category: 'ACADEMIC',
     meeting: { day: 'Monday', time: '6:30 PM', location: 'Library West' },
-    proposerId: new mongoose.Types.ObjectId(),
     status,
   });
 }

@@ -7,25 +7,18 @@ import { Membership } from '../../src/clubs/model/membershipModel';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub, createTestUser } from '../messaging/services/conversationTestUtils';
 
-async function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
-  return Club.create({
-    name: `Club ${new mongoose.Types.ObjectId().toHexString()}`,
+function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
+  return createTestClub(new mongoose.Types.ObjectId(), {
     description: 'Weekly meetings',
-    proposerId: new mongoose.Types.ObjectId(),
+    category: 'OTHER',
     status,
   });
 }
 
-async function insertUser(firstName: string, lastName: string) {
-  const userId = new mongoose.Types.ObjectId();
-  return User.create({
-    _id: userId,
-    email: `member_${userId.toString()}@ufl.edu`,
-    hashedPassword: 'not-used',
-    firstName,
-    lastName,
-  });
+function insertUser(firstName: string, lastName: string) {
+  return createTestUser({ firstName, lastName });
 }
 
 describe('GET /api/clubs/:clubId/members', () => {

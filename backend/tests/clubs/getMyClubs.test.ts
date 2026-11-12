@@ -7,12 +7,13 @@ import { Membership } from '../../src/clubs/model/membershipModel';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-async function insertClub(name: string, status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
-  return Club.create({
+function insertClub(name: string, status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
+  return createTestClub(new mongoose.Types.ObjectId(), {
     name,
     description: `${name} description`,
-    proposerId: new mongoose.Types.ObjectId(),
+    category: 'OTHER',
     status,
   });
 }

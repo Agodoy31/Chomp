@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { createChannel } from '../../messaging/services/conversation.service';
-import { User } from '../../user/models/User';
 import { CLUB_CATEGORIES, type ClientError, type ClubFilter } from '../interfaces/clubs.interface';
+import { isAdmin } from '../isAdmin';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
 import {
@@ -133,8 +133,7 @@ export const getClubById = async (req: Request<{ clubId: string }>, res: Respons
 };
 
 export const getPendingClubs = async (req: Request, res: Response): Promise<void> => {
-  const isAdmin = await User.exists({ _id: req.session.userId, isAdmin: true });
-  if (!isAdmin) {
+  if (!(await isAdmin(req.session.userId!))) {
     sendError(res, adminRequired());
     return;
   }
@@ -182,8 +181,7 @@ export const updateClub = async (req: Request<{ clubId: string }>, res: Response
     role: 'OFFICER',
     status: 'ACTIVE',
   });
-  const isAdmin = !isOfficer && (await User.exists({ _id: req.session.userId, isAdmin: true }));
-  if (!isOfficer && !isAdmin) {
+  if (!isOfficer && !(await isAdmin(req.session.userId!))) {
     sendError(res, officerRequired());
     return;
   }
@@ -220,8 +218,7 @@ export const updateClub = async (req: Request<{ clubId: string }>, res: Response
 
 // See Issue #31: https://github.com/Agodoy31/Chomp/issues/31
 export const approveClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
-  const isAdmin = await User.exists({ _id: req.session.userId, isAdmin: true });
-  if (!isAdmin) {
+  if (!(await isAdmin(req.session.userId!))) {
     sendError(res, adminRequired());
     return;
   }
@@ -281,8 +278,7 @@ export const approveClub = async (req: Request<{ clubId: string }>, res: Respons
 };
 
 export const rejectClub = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
-  const isAdmin = await User.exists({ _id: req.session.userId, isAdmin: true });
-  if (!isAdmin) {
+  if (!(await isAdmin(req.session.userId!))) {
     sendError(res, adminRequired());
     return;
   }
@@ -298,7 +294,10 @@ export const rejectClub = async (req: Request<{ clubId: string }>, res: Response
     { _id: clubId, status: 'PENDING' },
     { status: 'REJECTED' },
     { new: true }
-  );
+  )
+    .select('-__v')
+    .lean()
+    .exec();
   if (!rejected) {
     sendError(res, clubNotPending('rejected'));
     return;

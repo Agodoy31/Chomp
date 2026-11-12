@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jest/globals';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import app from '../../src/app';
@@ -7,15 +7,16 @@ import { Membership } from '../../src/clubs/model/membershipModel';
 import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
 import { Conversation } from '../../src/messaging/models/Conversation';
 import { ConversationParticipant, ParticipantPermission } from '../../src/messaging/models/ConversationParticipant';
+import { messagingPublisher } from '../../src/messaging/sockets/messagingPublisher';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-async function insertClub() {
-  return Club.create({
-    name: `Club ${new mongoose.Types.ObjectId().toHexString()}`,
+function insertClub() {
+  return createTestClub(new mongoose.Types.ObjectId(), {
     description: 'Weekly meetings',
-    proposerId: new mongoose.Types.ObjectId(),
+    category: 'OTHER',
     status: 'APPROVED',
   });
 }
@@ -47,33 +48,48 @@ describe('POST /api/clubs/:clubId/leave', () => {
     const res = await student.post(`/api/clubs/${club._id.toString()}/leave`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ _id: membership._id.toString(), status: 'INACTIVE', role: 'MEMBER' });
+    expect(res.body).toEqual({
+      membership: {
+        _id: membership._id.toString(),
+        userId: studentId.toString(),
+        clubId: club._id.toString(),
+        role: 'MEMBER',
+        status: 'INACTIVE',
+      },
+    });
     expect((await Membership.findById(membership._id).lean())?.status).toBe('INACTIVE');
   });
 
-  it('keeps the channel seat and marks it read-only', async () => {
+  it('deletes the channel seats and drops the member from each channel room', async () => {
     const club = await insertClub();
     await Membership.create({ userId: studentId, clubId: club._id, status: 'ACTIVE' });
-    const channel = await Conversation.create({
-      type: ConversationType.CHANNEL,
-      clubId: club._id,
-      title: 'General',
-    });
-    await ConversationParticipant.create({
-      conversationId: channel._id,
-      userId: studentId,
-      permission: ParticipantPermission.WRITE,
+    const channels = await Conversation.create([
+      { type: ConversationType.CHANNEL, clubId: club._id, title: 'Announcements' },
+      { type: ConversationType.CHANNEL, clubId: club._id, title: 'General' },
+    ]);
+    await ConversationParticipant.create(
+      channels.map((channel) => ({
+        conversationId: channel._id,
+        userId: studentId,
+        permission: ParticipantPermission.WRITE,
+      }))
+    );
+    const seatCounts: Array<Promise<number>> = [];
+    const evict = jest.spyOn(messagingPublisher, 'evictUserFromConversation').mockImplementation((conversationId, userId) => {
+      seatCounts.push(ConversationParticipant.countDocuments({ conversationId, userId }));
     });
 
     const res = await student.post(`/api/clubs/${club._id.toString()}/leave`);
 
     expect(res.status).toBe(200);
-    const seats = await ConversationParticipant.find({ conversationId: channel._id, userId: studentId }).lean();
-    expect(seats).toHaveLength(1);
-    expect(seats[0].permission).toBe(ParticipantPermission.READ);
+    expect(await ConversationParticipant.countDocuments({ userId: studentId })).toBe(0);
+    expect(evict.mock.calls.map((call) => call[0]).sort()).toEqual(channels.map((channel) => channel._id.toString()).sort());
+    expect(evict.mock.calls.every((call) => call[1] === studentId.toString())).toBe(true);
+    expect(await Promise.all(seatCounts)).toEqual([0, 0]);
+    evict.mockRestore();
   });
 
-  it('lets an officer leave when another active officer remains, and rejoin as an officer', async () => {
+  it('lets an officer leave when another active officer remains, and rejoin as a member', async () => {
     const club = await insertClub();
     await Membership.create([
       { userId: studentId, clubId: club._id, role: 'OFFICER', status: 'ACTIVE' },
@@ -82,11 +98,11 @@ describe('POST /api/clubs/:clubId/leave', () => {
 
     const leaveRes = await student.post(`/api/clubs/${club._id.toString()}/leave`);
     expect(leaveRes.status).toBe(200);
-    expect(leaveRes.body).toMatchObject({ status: 'INACTIVE', role: 'OFFICER' });
+    expect(leaveRes.body.membership).toMatchObject({ status: 'INACTIVE', role: 'OFFICER' });
 
     const joinRes = await student.post(`/api/clubs/${club._id.toString()}/join`);
     expect(joinRes.status).toBe(201);
-    expect(joinRes.body).toMatchObject({ status: 'ACTIVE', role: 'OFFICER' });
+    expect(joinRes.body).toMatchObject({ status: 'ACTIVE', role: 'MEMBER' });
   });
 
   it('returns 409 when the only active officer tries to leave', async () => {

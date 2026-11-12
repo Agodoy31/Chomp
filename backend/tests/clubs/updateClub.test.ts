@@ -7,14 +7,14 @@ import { Membership } from '../../src/clubs/model/membershipModel';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
+import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-async function insertClub(overrides: Record<string, unknown> = {}) {
-  return Club.create({
+function insertClub(overrides: Record<string, unknown> = {}) {
+  return createTestClub(new mongoose.Types.ObjectId(), {
     name: 'Chess Club',
     description: 'Weekly chess matches',
     category: 'ACADEMIC',
     meeting: { day: 'Monday', time: '6:30 PM', location: 'Library West' },
-    proposerId: new mongoose.Types.ObjectId(),
     status: 'APPROVED',
     ...overrides,
   });
