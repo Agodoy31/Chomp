@@ -1,27 +1,34 @@
 import type { IMessage } from '../../types/Messaging/Message';
 
 interface MessageProps {
-  message?: IMessage;
+  message: IMessage;
   senderName?: string;
   isCurrentUser?: boolean;
 }
 
 export default function Message({
   message,
-  senderName = 'Alberta',
+  senderName = '',
   isCurrentUser = false,
 }: MessageProps) {
-  if (!message) {
-    return <div className="text-muted p-2">Message</div>;
+  if (message.isSystem) {
+    return (
+      <div
+        className="text-center text-muted small my-2 py-1"
+        role="status"
+        style={{ fontSize: '13px' }}
+      >
+        {message.text}
+      </div>
+    );
   }
 
-  const displayName = isCurrentUser ? 'You' : senderName;
-  const initial = isCurrentUser ? 'Y' : displayName.charAt(0).toUpperCase();
+  const displayName = isCurrentUser ? 'You' : senderName || 'User';
+  const initial = (displayName.charAt(0) || 'U').toUpperCase();
 
   const timeString = new Date(message.createdAt).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'UTC',
   });
 
   return (
