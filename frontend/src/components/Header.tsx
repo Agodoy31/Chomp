@@ -10,7 +10,9 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
   const navigate = useNavigate()
   const { user, loading, logout } = useAuth()
 
-  const initials = user ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase() : ''
+  const initials = user
+    ? `${user.firstName?.charAt(0) ?? ''}${user.lastName?.charAt(0) ?? ''}`.toUpperCase()
+    : ''
 
   async function handleLogout() {
     await logout()
