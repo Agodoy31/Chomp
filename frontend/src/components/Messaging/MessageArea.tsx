@@ -29,7 +29,10 @@ export default function MessageArea({
 
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState<number>(0);
 
   const conversationId = conversation?._id;
 
@@ -41,11 +44,18 @@ export default function MessageArea({
 
     async function loadMessages() {
       setIsLoading(true);
+      setLoadError(null);
       try {
         const data = await fetchMessages(currentId);
         if (!ignore) setMessages((prev) => mergeMessages(data, prev));
       } catch (err) {
+        if (ignore) return;
         console.error('Error loading messages:', err);
+        setLoadError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'The server did not respond.'
+        );
       } finally {
         if (!ignore) setIsLoading(false);
       }
@@ -55,10 +65,17 @@ export default function MessageArea({
     return () => {
       ignore = true;
     };
-  }, [conversationId]);
+  }, [conversationId, reloadKey]);
 
   if (!conversation) {
-    return null;
+    return (
+      <main
+        className="d-flex flex-column flex-grow-1 h-100 align-items-center justify-content-center text-muted"
+        style={{ backgroundColor: '#F5F6FA', minWidth: 0 }}
+      >
+        <p className="mb-0 fs-5">Pick a conversation to start chatting</p>
+      </main>
+    );
   }
 
   const participants = conversation.participants || [];
@@ -84,14 +101,16 @@ export default function MessageArea({
     if (!inputText.trim()) return;
 
     const textToSend = inputText.trim();
-    setInputText('');
+    setSendError(null);
 
     try {
       const newMsg = await postMessage(conversation._id, textToSend);
       setMessages((prev) => mergeMessages(prev, [newMsg]));
+      setInputText('');
       onMessageSent(conversation, newMsg);
     } catch (err) {
       console.error('Error sending message:', err);
+      setSendError('Failed to send message. Please try again.');
     }
   };
 
@@ -151,6 +170,8 @@ export default function MessageArea({
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+            focusable="false"
           >
             <path
               d="M12 7C13.1046 7 14 6.10457 14 5C14 3.89543 13.1046 3 12 3C10.8954 3 10 3.89543 10 5C10 6.10457 10.8954 7 12 7Z"
@@ -169,11 +190,32 @@ export default function MessageArea({
       </header>
 
       {/* Message History Feed */}
-      <div className="flex-grow-1 overflow-y-auto px-4 py-3">
+      <div
+        className="flex-grow-1 overflow-y-auto px-4 py-3"
+        role="log"
+        aria-label="Message history"
+      >
         {isLoading ? (
-          <div>Loading...</div>
+          <div
+            role="status"
+            aria-live="polite"
+            className="text-muted text-center py-4"
+          >
+            Loading messages...
+          </div>
+        ) : loadError ? (
+          <div role="alert" className="text-muted text-center py-4">
+            <div>The server did not respond.</div>
+            <button
+              type="button"
+              className="btn btn-outline-primary btn-sm mt-2 rounded-pill px-3"
+              onClick={() => setReloadKey((k) => k + 1)}
+            >
+              Retry
+            </button>
+          </div>
         ) : messages.length === 0 ? (
-          <div>No messages yet</div>
+          <div className="text-muted text-center py-4">No messages yet</div>
         ) : (
           <div className="d-flex flex-column">
             {messages.map((msg) => (
@@ -193,6 +235,11 @@ export default function MessageArea({
         className="p-3 px-4 flex-shrink-0"
         style={{ backgroundColor: '#F5F6FA' }}
       >
+        {sendError && (
+          <div className="text-danger small mb-2 text-center" role="alert">
+            {sendError}
+          </div>
+        )}
         <form
           onSubmit={handleSend}
           className="d-flex align-items-center rounded-pill px-3 py-1 shadow-sm"
@@ -207,6 +254,11 @@ export default function MessageArea({
             placeholder={
               canSend
                 ? `Message ${conversation.displayName}...`
+                : 'You do not have permission to send messages in this conversation'
+            }
+            aria-label={
+              canSend
+                ? `Message ${conversation.displayName}`
                 : 'You do not have permission to send messages in this conversation'
             }
             value={
@@ -244,6 +296,8 @@ export default function MessageArea({
               viewBox="0 0 20 20"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+              focusable="false"
             >
               <path
                 d="M4 10H16M10 16L16 10L10 4"
