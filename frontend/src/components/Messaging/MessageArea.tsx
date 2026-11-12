@@ -93,7 +93,11 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
       setInputText('');
     } catch (err) {
       console.error('Error sending message:', err);
-      setSendError('Failed to send message. Please try again.');
+      setSendError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to send message. Please try again.'
+      );
     }
   };
 
@@ -237,6 +241,7 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
             className="form-control border-0 bg-transparent shadow-none"
             placeholder={`Message ${conversation.displayName}...`}
             aria-label={`Message ${conversation.displayName}`}
+            maxLength={2000}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             style={{

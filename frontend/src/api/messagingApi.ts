@@ -98,7 +98,12 @@ export async function postMessage(
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to send message: ${response.status}`);
+    const errBody = await response.json().catch(() => null);
+    const errMessage =
+      (typeof errBody?.message === 'string' && errBody.message) ||
+      (typeof errBody?.error === 'string' && errBody.error) ||
+      `Failed to send message: ${response.status}`;
+    throw new Error(errMessage);
   }
 
   return response.json();
