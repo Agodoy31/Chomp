@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Conversation } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
@@ -6,6 +7,7 @@ import {
   fetchMessages,
   postMessage,
   fetchConversationDetails,
+  isUnauthorizedError,
 } from '../../api/messagingApi';
 import Message from './Message';
 
@@ -15,6 +17,7 @@ interface MessageAreaProps {
 
 export default function MessageArea({ conversation }: MessageAreaProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const currentUserId = user?.id || '';
 
   const [messages, setMessages] = useState<IMessage[]>([]);
@@ -24,6 +27,7 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState<number>(0);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const conversationId = conversation?._id;
 
@@ -48,6 +52,10 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
         }
       } catch (err) {
         if (cancelled) return;
+        if (isUnauthorizedError(err)) {
+          navigate('/login');
+          return;
+        }
         console.error('Error loading messages:', err);
         setLoadError(
           err instanceof Error && err.message
@@ -65,7 +73,14 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
     return () => {
       cancelled = true;
     };
-  }, [conversationId, reloadKey]);
+  }, [conversationId, reloadKey, navigate]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container && !isLoading && !loadError) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages.length, isLoading, loadError]);
 
   if (!conversation) {
     return (
@@ -92,6 +107,10 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
       setMessages((prev) => [...prev, newMsg]);
       setInputText('');
     } catch (err) {
+      if (isUnauthorizedError(err)) {
+        navigate('/login');
+        return;
+      }
       console.error('Error sending message:', err);
       setSendError(
         err instanceof Error && err.message
@@ -179,6 +198,7 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
 
       {/* Message History Feed */}
       <div
+        ref={messagesContainerRef}
         className="flex-grow-1 overflow-y-auto px-4 py-3"
         role="log"
         aria-label="Message history"
