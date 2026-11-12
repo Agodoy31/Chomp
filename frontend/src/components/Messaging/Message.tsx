@@ -48,7 +48,22 @@ export default function Message({
       });
 
   return (
-    <div className="d-flex align-items-start gap-3 mb-3">
+    <div
+      className="d-flex align-items-start gap-3 mb-3"
+      style={
+        message.isAnnouncement
+          ? {
+              backgroundColor: 'rgba(250, 166, 26, 0.16)',
+              marginLeft: '-1.5rem',
+              marginRight: '-1.5rem',
+              paddingLeft: '1.5rem',
+              paddingRight: '1.5rem',
+              paddingTop: '0.5rem',
+              paddingBottom: '0.5rem',
+            }
+          : undefined
+      }
+    >
       {/* Sender Avatar */}
       <div
         className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold shadow-sm"
