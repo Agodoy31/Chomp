@@ -19,7 +19,7 @@ export default function Sidebar() {
         color: isActive ? '#3046C3' : '#ffffff',
         borderRadius: '12px',
         padding: '10px 14px',
-        fontSize: '1.1rem',
+        fontSize: '1.3rem',
         fontFamily: '"Irish Grover"',
         whiteSpace: 'nowrap',
         overflow: 'hidden',
