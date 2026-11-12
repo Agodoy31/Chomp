@@ -12,8 +12,8 @@ export default function AppLayout() {
     <div className="d-flex flex-column min-vh-100">
       <Header />
       <div className="d-flex flex-grow-1 position-relative">
-        <Sidebar isLoggedIn={Boolean(user)} />
-        <main className="flex-grow-1 bg-light p-4 overflow-auto">
+        {user && <Sidebar />}
+        <main className="flex-grow-1 bg-light p-0 overflow-auto">
           <Outlet />
         </main>
       </div>

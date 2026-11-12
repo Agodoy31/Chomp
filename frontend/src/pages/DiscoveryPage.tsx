@@ -179,7 +179,7 @@ export default function ClubDiscovery() {
     : '';
 
   return (
-    <div className="min-vh-100 bg-light">
+    <div className="bg-light p-4">
       <div className="container py-5">
         <h1 className="fw-bold mb-4" style={{ color: '#3046C3', fontFamily: 'Inter' }}>
           Discover Clubs

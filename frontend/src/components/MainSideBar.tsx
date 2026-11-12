@@ -3,14 +3,16 @@ import { NavLink } from 'react-router-dom'
 import Button from 'react-bootstrap/Button'
 import { ChevronLeft, ChevronRight } from 'react-bootstrap-icons'
 
-interface SidebarProps {
-    isLoggedIn?: boolean
-}
 
-export default function Sidebar({ isLoggedIn = true }: SidebarProps) {
+const NAV_ITEMS = [
+  { to: '/clubs', label: 'Discover Clubs' },
+  { to: '/myClubs', label: 'My Clubs' },
+  { to: '/messaging', label: 'Messaging' },
+];
+
+export default function Sidebar() {
     const [collapsed, setCollapsed] = useState(false)
 
-    if (!isLoggedIn) return null
 
     const getLinkStyle = (isActive: boolean) => ({
         backgroundColor: isActive ? '#ffffff' : 'transparent',
@@ -29,7 +31,6 @@ export default function Sidebar({ isLoggedIn = true }: SidebarProps) {
             className="d-flex flex-column text-white position-relative"
             style={{
                 width: collapsed ? '36px' : '200px',
-                minHeight: 'calc(100vh - 76px)',
                 backgroundColor: '#3046C3',
                 transition: 'width 0.25s ease-in-out',
                 zIndex: 100,
@@ -50,51 +51,29 @@ export default function Sidebar({ isLoggedIn = true }: SidebarProps) {
                     color: '#3046C3',
                 }}
                 aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-expanded={!collapsed}
+                aria-controls="main-nav"
             >
                 {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             </Button>
 
             {/* Navigation Text Links */}
             {!collapsed && (
-                <nav className="nav flex-column gap-3 p-3 mt-3">
-                    {/* My Clubs */}
-                    <NavLink
-                        to="/myClubs"
-                        className={({ isActive }) =>
-                            `nav-link text-center fw-bold text-decoration-none ${
-                                isActive ? 'shadow-sm' : ''
-                            }`
-                        }
-                        style={({ isActive }) => getLinkStyle(isActive)}
-                    >
-                        My Clubs
-                    </NavLink>
-
-                    {/* All Clubs */}
-                    <NavLink
-                        to="/clubs"
-                        className={({ isActive }) =>
-                            `nav-link text-center fw-bold text-decoration-none ${
-                                isActive ? 'shadow-sm' : ''
-                            }`
-                        }
-                        style={({ isActive }) => getLinkStyle(isActive)}
-                    >
-                        All Clubs
-                    </NavLink>
-
-                    {/* Messages */}
-                    <NavLink
-                        to="/messages"
-                        className={({ isActive }) =>
-                            `nav-link text-center fw-bold text-decoration-none ${
-                                isActive ? 'shadow-sm' : ''
-                            }`
-                        }
-                        style={({ isActive }) => getLinkStyle(isActive)}
-                    >
-                        Messages
-                    </NavLink>
+                <nav className="nav flex-column gap-3 p-3 mt-3" id="main-nav" aria-label="Main">
+                    {NAV_ITEMS.map((item) => (
+                        <NavLink
+                            key={item.to}
+                            to={item.to}
+                            className={({ isActive }) =>
+                                `nav-link text-center fw-bold text-decoration-none ${
+                                    isActive ? 'shadow-sm' : ''
+                                }`
+                            }
+                            style={({ isActive }) => getLinkStyle(isActive)}
+                        >
+                            {item.label}
+                        </NavLink>
+                    ))}
                 </nav>
             )}
         </div>
