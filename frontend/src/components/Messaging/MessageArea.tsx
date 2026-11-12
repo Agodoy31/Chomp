@@ -11,12 +11,15 @@ import Message from './Message';
 
 interface MessageAreaProps {
   conversation?: Conversation | null;
+  onOpenDetails?: () => void;
 }
 
-export default function MessageArea({ conversation }: MessageAreaProps) {
+export default function MessageArea({
+  conversation,
+  onOpenDetails,
+}: MessageAreaProps) {
   const { user } = useAuth();
   const currentUserId = user?.id || '';
-
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [conversationDetails, setConversationDetails] = useState<Conversation | null>(null);
   const [inputText, setInputText] = useState('');
@@ -144,11 +147,13 @@ export default function MessageArea({ conversation }: MessageAreaProps) {
         {/* Three dots vector icon */}
         <button
           type="button"
+          onClick={onOpenDetails}
           className="btn rounded-circle d-flex align-items-center justify-content-center border-0 p-0"
           style={{
             width: '36px',
             height: '36px',
             backgroundColor: '#EDF0F5',
+            cursor: 'pointer',
           }}
           aria-label="Conversation details"
         >
