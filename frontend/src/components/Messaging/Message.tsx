@@ -26,10 +26,26 @@ export default function Message({
   const displayName = isCurrentUser ? 'You' : senderName || 'User';
   const initial = (displayName.charAt(0) || 'U').toUpperCase();
 
-  const timeString = new Date(message.createdAt).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const createdDate = new Date(message.createdAt);
+  const now = new Date();
+  const isToday =
+    createdDate.getFullYear() === now.getFullYear() &&
+    createdDate.getMonth() === now.getMonth() &&
+    createdDate.getDate() === now.getDate();
+  const isSameYear = createdDate.getFullYear() === now.getFullYear();
+
+  const timeString = isToday
+    ? createdDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : createdDate.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        ...(isSameYear ? {} : { year: 'numeric' }),
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 
   return (
     <div className="d-flex align-items-start gap-3 mb-3">
