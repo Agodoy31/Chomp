@@ -4,10 +4,9 @@ import Sidebar from '../components/Messaging/Sidebar';
 import MessageArea from '../components/Messaging/MessageArea';
 import ConversationDetailsModal from '../components/Messaging/ConversationDetailsModal';
 import type { Conversation } from '../types/Messaging/Conversation';
-import { MOCK_CONVERSATIONS } from '../testData/mockConversations';
 
 export default function MessagingPage() {
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(MOCK_CONVERSATIONS[0]);
+  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
 
   return (
@@ -19,6 +18,7 @@ export default function MessagingPage() {
           onSelectConversation={setActiveConversation}
         />
         <MessageArea
+          key={activeConversation?._id}
           conversation={activeConversation}
           onOpenDetails={() => setIsModalDisplayed(true)}
         />
