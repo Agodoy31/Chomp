@@ -7,7 +7,7 @@ import type { Conversation } from '../types/Messaging/Conversation';
 
 export default function MessagingPage() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
-  const [isModalDisplayed] = useState<boolean>(false);
+  const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
 
   return (
     <div className="d-flex flex-column vh-100 overflow-hidden">
@@ -20,9 +20,14 @@ export default function MessagingPage() {
         <MessageArea
           key={activeConversation?._id}
           conversation={activeConversation}
+          onOpenDetails={() => setIsModalDisplayed(true)}
         />
       </div>
-      {isModalDisplayed && <ConversationDetailsModal />}
+      <ConversationDetailsModal
+        show={isModalDisplayed}
+        onHide={() => setIsModalDisplayed(false)}
+        conversation={activeConversation}
+      />
     </div>
   );
 }
