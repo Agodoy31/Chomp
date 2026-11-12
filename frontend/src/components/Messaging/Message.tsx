@@ -89,9 +89,9 @@ export default function Message({
           </span>
         </div>
         <div
-          className="mt-1"
+          className={`mt-1${message.removedAt ? ' fst-italic text-muted' : ''}`}
           style={{
-            color: '#1F2937',
+            color: message.removedAt ? undefined : '#1F2937',
             fontSize: '14px',
             lineHeight: '1.45',
             wordBreak: 'break-word',
