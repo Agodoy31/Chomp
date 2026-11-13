@@ -1,4 +1,4 @@
-import { type ClientSession, type Types } from 'mongoose';
+import mongoose, { type ClientSession, type Types } from 'mongoose';
 import { type IConversation } from '../../messaging/interfaces/conversation.interfaces';
 import { ConversationParticipant, ParticipantPermission } from '../../messaging/models/ConversationParticipant';
 import {
@@ -7,7 +7,8 @@ import {
   getClubChannels,
   updateParticipantPermissions,
 } from '../../messaging/services/conversation.service';
-import { type Membership } from '../model/membershipModel';
+import { messagingPublisher } from '../../messaging/sockets/messagingPublisher';
+import { Membership } from '../model/membershipModel';
 
 const GENERAL_CHANNEL_TITLE = 'General';
 
@@ -15,6 +16,35 @@ const CHANNEL_PERMISSION_BY_ROLE: Record<Membership['role'], ParticipantPermissi
   OFFICER: ParticipantPermission.MODERATE,
   MEMBER: ParticipantPermission.WRITE,
 };
+
+type MembershipBody = {
+  _id: string;
+  userId: string;
+  clubId: string;
+  role: Membership['role'];
+  status: Membership['status'];
+};
+
+type CommittedDeparture = {
+  membership: MembershipBody;
+  channelIds: readonly string[];
+};
+
+function membershipBody(membership: {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  clubId: Types.ObjectId;
+  role: Membership['role'];
+  status: Membership['status'];
+}): MembershipBody {
+  return {
+    _id: membership._id.toString(),
+    userId: membership.userId.toString(),
+    clubId: membership.clubId.toString(),
+    role: membership.role,
+    status: membership.status,
+  };
+}
 
 export async function createGeneralChannel(
   clubId: Types.ObjectId,
@@ -64,4 +94,73 @@ export async function syncMemberChannelPermission(
 
     await updateParticipantPermissions(channel._id, undefined, [userId, permission], session);
   }
+}
+
+export async function commitMemberRole(input: {
+  membershipId: Types.ObjectId;
+  role: Membership['role'];
+}): Promise<MembershipBody | null> {
+  const session = await mongoose.startSession();
+  try {
+    return await session.withTransaction(async () => {
+      const current = await Membership.findOne({ _id: input.membershipId, status: 'ACTIVE' }).session(session);
+      if (!current) {
+        return null;
+      }
+      current.role = input.role;
+      await current.save({ session });
+      await syncMemberChannelPermission(current.clubId, current.userId, input.role, session);
+      return membershipBody(current);
+    });
+  } finally {
+    await session.endSession();
+  }
+}
+
+export async function commitMemberDeparture(input: {
+  membershipId: Types.ObjectId;
+  status: 'INACTIVE' | 'REMOVED';
+}): Promise<MembershipBody | null> {
+  const session = await mongoose.startSession();
+  try {
+    const committed = await session.withTransaction(async () => {
+      const current = await Membership.findOne({ _id: input.membershipId, status: 'ACTIVE' }).session(session);
+      if (!current) {
+        return null;
+      }
+      current.status = input.status;
+      await current.save({ session });
+      const channelIds = await deleteMemberChannelSeats(current.clubId, current.userId, session);
+      const departure: CommittedDeparture = {
+        membership: membershipBody(current),
+        channelIds,
+      };
+      return departure;
+    });
+    if (!committed) {
+      return null;
+    }
+    // chat:join_room admits any committed seat, so this runs only after the delete is visible.
+    for (const channelId of committed.channelIds) {
+      messagingPublisher.evictUserFromConversation(channelId, committed.membership.userId);
+    }
+    return committed.membership;
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function deleteMemberChannelSeats(
+  clubId: Types.ObjectId,
+  userId: Types.ObjectId,
+  session: ClientSession
+): Promise<readonly string[]> {
+  const channels = await getClubChannels(clubId);
+  const channelIds: string[] = [];
+  // Operations in a transaction have to run one at a time.
+  for (const channel of channels) {
+    await ConversationParticipant.deleteOne({ conversationId: channel._id, userId }, { session });
+    channelIds.push(channel._id.toString());
+  }
+  return channelIds;
 }
