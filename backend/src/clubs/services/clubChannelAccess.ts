@@ -17,36 +17,32 @@ const CHANNEL_PERMISSION_BY_ROLE: Record<Membership['role'], ParticipantPermissi
   MEMBER: ParticipantPermission.WRITE,
 };
 
-type MembershipBodyFields = {
+type MembershipBody = {
   _id: string;
   userId: string;
   clubId: string;
   role: Membership['role'];
+  status: Membership['status'];
 };
 
-export type ActiveMembershipBody = MembershipBodyFields & { status: 'ACTIVE' };
-
-export type EndedMembershipBody = MembershipBodyFields & { status: 'INACTIVE' | 'REMOVED' };
-
-type DepartureStatus = EndedMembershipBody['status'];
-
 type CommittedDeparture = {
-  membership: EndedMembershipBody;
-  userId: string;
+  membership: MembershipBody;
   channelIds: readonly string[];
 };
 
-function membershipFields(membership: {
+function membershipBody(membership: {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   clubId: Types.ObjectId;
   role: Membership['role'];
-}): MembershipBodyFields {
+  status: Membership['status'];
+}): MembershipBody {
   return {
     _id: membership._id.toString(),
     userId: membership.userId.toString(),
     clubId: membership.clubId.toString(),
     role: membership.role,
+    status: membership.status,
   };
 }
 
@@ -103,7 +99,7 @@ export async function syncMemberChannelPermission(
 export async function commitMemberRole(input: {
   membershipId: Types.ObjectId;
   role: Membership['role'];
-}): Promise<ActiveMembershipBody | null> {
+}): Promise<MembershipBody | null> {
   const session = await mongoose.startSession();
   try {
     return await session.withTransaction(async () => {
@@ -114,7 +110,7 @@ export async function commitMemberRole(input: {
       current.role = input.role;
       await current.save({ session });
       await syncMemberChannelPermission(current.clubId, current.userId, input.role, session);
-      return { ...membershipFields(current), status: 'ACTIVE' as const };
+      return membershipBody(current);
     });
   } finally {
     await session.endSession();
@@ -123,8 +119,8 @@ export async function commitMemberRole(input: {
 
 export async function commitMemberDeparture(input: {
   membershipId: Types.ObjectId;
-  status: DepartureStatus;
-}): Promise<EndedMembershipBody | null> {
+  status: 'INACTIVE' | 'REMOVED';
+}): Promise<MembershipBody | null> {
   const session = await mongoose.startSession();
   try {
     const committed = await session.withTransaction(async () => {
@@ -136,8 +132,7 @@ export async function commitMemberDeparture(input: {
       await current.save({ session });
       const channelIds = await deleteMemberChannelSeats(current.clubId, current.userId, session);
       const departure: CommittedDeparture = {
-        membership: { ...membershipFields(current), status: input.status },
-        userId: current.userId.toString(),
+        membership: membershipBody(current),
         channelIds,
       };
       return departure;
@@ -147,7 +142,7 @@ export async function commitMemberDeparture(input: {
     }
     // chat:join_room admits any committed seat, so this runs only after the delete is visible.
     for (const channelId of committed.channelIds) {
-      messagingPublisher.evictUserFromConversation(channelId, committed.userId);
+      messagingPublisher.evictUserFromConversation(channelId, committed.membership.userId);
     }
     return committed.membership;
   } finally {

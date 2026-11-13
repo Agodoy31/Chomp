@@ -1,16 +1,11 @@
 import { Request, Response } from 'express';
 import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
 import { z } from 'zod';
-import {
-  addMemberToClubChannels,
-  commitMemberDeparture,
-  commitMemberRole,
-  syncMemberChannelPermission,
-} from '../services/clubChannelAccess';
+import { addMemberToClubChannels, commitMemberDeparture, commitMemberRole } from '../services/clubChannelAccess';
 import { isAdmin } from '../isAdmin';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
-import { type MembershipStatus, type ClubStatus, type ClientError } from '../interfaces/clubs.interface';
+import { type MembershipStatus, type ClientError } from '../interfaces/clubs.interface';
 import {
   sendError,
   isDuplicateKey,
@@ -33,10 +28,6 @@ import {
 type MembershipRecord = HydratedDocument<MembershipShape>;
 
 type ActivationResult = { membership: MembershipRecord } | { error: ClientError };
-
-function rejectionForClub(status: Exclude<ClubStatus, 'APPROVED'>): ClientError {
-  return status === 'PENDING' ? clubPendingApproval() : clubRejected();
-}
 
 function rejectionForMembership(status: Exclude<MembershipStatus, 'INACTIVE'>): ClientError {
   if (status === 'REMOVED') {
@@ -250,7 +241,7 @@ export const joinClub = async (req: Request<{ clubId: string }>, res: Response):
     return;
   }
   if (club.status !== 'APPROVED') {
-    sendError(res, rejectionForClub(club.status));
+    sendError(res, club.status === 'PENDING' ? clubPendingApproval() : clubRejected());
     return;
   }
 
@@ -264,9 +255,7 @@ export const joinClub = async (req: Request<{ clubId: string }>, res: Response):
         return activation;
       }
 
-      const userObjectId = new mongoose.Types.ObjectId(userId);
-      await addMemberToClubChannels(club._id, userObjectId, session);
-      await syncMemberChannelPermission(club._id, userObjectId, activation.membership.role, session);
+      await addMemberToClubChannels(club._id, new mongoose.Types.ObjectId(userId), session);
       return activation;
     });
 
