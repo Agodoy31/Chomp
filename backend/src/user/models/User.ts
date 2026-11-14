@@ -44,4 +44,7 @@ const userSchema = new Schema<IUserDocument>({
     { timestamps: true,}
 );
 
+userSchema.index({ firstName: 1, lastName: 1 });
+userSchema.index({ lastName: 1 });
+
 export const User = model<IUserDocument>("User", userSchema, "users");

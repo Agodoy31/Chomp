@@ -10,13 +10,18 @@ import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 
 const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export interface SendMessageResult {
+  message: IMessage;
+  isNew: boolean;
+}
+
 export async function sendMessage(
   conversationId: Types.ObjectId,
   senderId: Types.ObjectId,
   text: string,
   clientId?: string,
   isAnnouncement = false
-): Promise<IMessage> {
+): Promise<SendMessageResult> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new MessagingError(
       MessagingErrorCode.INVALID_INPUT,
@@ -105,7 +110,10 @@ export async function sendMessage(
       isAnnouncement,
       isSystem: false,
     });
-    return created.toObject<IMessage>();
+    return {
+      message: created.toObject<IMessage>(),
+      isNew: true,
+    };
   } catch (error: unknown) {
     if (
       typeof error === 'object' &&
@@ -122,7 +130,10 @@ export async function sendMessage(
         .exec();
 
       if (existing) {
-        return existing;
+        return {
+          message: existing,
+          isNew: false,
+        };
       }
     }
     throw error;

@@ -11,10 +11,11 @@ type HeaderProps ={
 export default function Header({showAuthButtons = true}: HeaderProps) {
   const navigate = useNavigate()
   const { user, loading, logout } = useAuth()
-
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  const initials = user ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase() : ''
+  const initials = user
+    ? `${user.firstName?.charAt(0) ?? ''}${user.lastName?.charAt(0) ?? ''}`.toUpperCase()
+    : ''
 
   async function handleLogout() {
     await logout()
@@ -47,7 +48,7 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
 
         {/* Center */}
         <Link
-          to="/"
+          to={user && !loading ? '/clubs' : '/'}
           className="fw-bold"
           style={{
             color: 'white',
@@ -77,22 +78,21 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
             </Button>
 
             {/* Clickable Circle with users initial*/}
-            <div className= "d-flex align-items-center justify-content-center rounded-circle fw-semibold"
-              
-              style ={{
-                width: 40,
-                height: 40,
-                backgroundColor: '#D9D9D9',
-                border: '1px solid #14246D',
-                color: '#14246d',
-                cursor: 'pointer'
-
-              }}
-              onClick={() => setShowProfileModal(true)}
-
-            >
-              {initials}
-            </div>
+            <Button
+                  type="button"
+                  aria-label="Open user profile"
+                  className="d-flex align-items-center justify-content-center rounded-circle fw-semibold p-0"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    backgroundColor: '#D9D9D9',
+                    border: '1px solid #14246D',
+                    color: '#14246d',
+                  }}
+                  onClick={() => setShowProfileModal(true)}
+                >
+                  {initials}
+                </Button>
             </>
           )}
 

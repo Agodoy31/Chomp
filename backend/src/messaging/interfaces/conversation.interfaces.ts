@@ -52,3 +52,17 @@ export interface IConversationFeedItem {
   };
 }
 
+export interface IConversationFeedResponse {
+  _id: string;
+  type: string;
+  displayName: string;
+  clubId?: string;
+  lastActivityAt: string;
+  lastMessage?: {
+    text: string;
+    senderName: string;
+    createdAt?: string;
+  };
+}
+
+

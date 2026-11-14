@@ -433,18 +433,20 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(res.body.removedBy).toBeUndefined();
   });
 
-  it('deduplicates sends with identical client id and does not create second document', async () => {
+  it('deduplicates sends with identical client id returning 200 and does not create second document', async () => {
     const clientId = '0192c4a0-7c00-7000-8000-000000000002';
 
     const first = await studentA.agent
       .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Anyone have spare coffee?', clientId });
     expect(first.status).toBe(201);
+    expect(first.body.isNew).toBeUndefined();
 
     const second = await studentA.agent
       .post(`/api/conversations/${groupConversationId}/messages`)
       .send({ text: 'Altered duplicate request body', clientId });
-    expect(second.status).toBe(201);
+    expect(second.status).toBe(200);
+    expect(second.body.isNew).toBeUndefined();
     expect(second.body._id).toBe(first.body._id);
     expect(second.body.text).toBe('Anyone have spare coffee?');
   });
