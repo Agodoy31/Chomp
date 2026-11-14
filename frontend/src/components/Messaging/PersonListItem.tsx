@@ -11,7 +11,8 @@ export default function PersonListItem({
   isSelected,
   onToggle,
 }: PersonListItemProps) {
-  const initial = user.firstName.charAt(0).toUpperCase();
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+  const initial = (fullName.charAt(0) || 'U').toUpperCase();
 
   return (
     <div
@@ -37,9 +38,16 @@ export default function PersonListItem({
         >
           {initial}
         </div>
-        <span className="text-dark fw-medium" style={{ fontSize: '15px' }}>
-          {user.firstName}
-        </span>
+        <div className="d-flex flex-column">
+          <span className="text-dark fw-medium" style={{ fontSize: '15px' }}>
+            {fullName}
+          </span>
+          {user.email && (
+            <span className="text-muted" style={{ fontSize: '12px' }}>
+              {user.email}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Checkbox with square corners */}

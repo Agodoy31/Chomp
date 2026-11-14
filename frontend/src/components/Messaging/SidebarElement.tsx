@@ -52,7 +52,9 @@ export default function SidebarElement({
             className="fw-bold text-dark text-truncate"
             style={{ fontSize: '15px', lineHeight: '1.2' }}
           >
-            {conversation.displayName}
+            {conversation.type === 'CHANNEL' && !conversation.title
+              ? `# ${conversation.displayName}`
+              : conversation.displayName}
           </div>
 
           {conversation.type === 'CHANNEL' && conversation.title && (

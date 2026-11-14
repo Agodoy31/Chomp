@@ -121,18 +121,17 @@ export default function MessagingPage() {
   const handleChatCreated = (newConv: Conversation) => {
     setIsNewChatModalOpen(false);
     setActiveConversation(newConv);
-
-    // Existing DMs are selected by ID; brand-new DMs join the inbox on their first message
-    if (newConv.type !== 'GROUP') return;
-
     setConversations((prev) => upsertConversation(prev, newConv));
-    // Pick up the server-generated "created the group" preview
-    fetchConversations()
-      .then((feed) => {
-        const item = feed.find((c) => c._id === newConv._id);
-        if (item) setConversations((prev) => upsertConversation(prev, item));
-      })
-      .catch((err) => console.error('Failed to refresh conversations:', err));
+
+    if (newConv.type === 'GROUP') {
+      // Pick up the server-generated "created the group" preview
+      fetchConversations()
+        .then((feed) => {
+          const item = feed.find((c) => c._id === newConv._id);
+          if (item) setConversations((prev) => upsertConversation(prev, item));
+        })
+        .catch((err) => console.error('Failed to refresh conversations:', err));
+    }
   };
 
   const handleMessageSent = (conv: Conversation, msg: IMessage) => {

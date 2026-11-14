@@ -9,6 +9,8 @@ export default function SelectedUserTag({
   user,
   onRemove,
 }: SelectedUserTagProps) {
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+
   return (
     <div
       className="d-inline-flex align-items-center gap-1 rounded-pill px-3 py-1"
@@ -19,7 +21,7 @@ export default function SelectedUserTag({
         fontWeight: 500,
       }}
     >
-      <span>{user.firstName}</span>
+      <span>{fullName}</span>
       <button
         type="button"
         onClick={(e) => {
@@ -33,7 +35,7 @@ export default function SelectedUserTag({
           lineHeight: 1,
           cursor: 'pointer',
         }}
-        aria-label={`Remove ${user.firstName}`}
+        aria-label={`Remove ${fullName}`}
       >
         <svg
           width="12"
