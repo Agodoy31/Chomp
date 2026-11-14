@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Sidebar from '../components/Messaging/Sidebar';
 import MessageArea from '../components/Messaging/MessageArea';
@@ -9,7 +10,9 @@ import type { IMessage } from '../types/Messaging/Message';
 import {
   fetchConversations,
   fetchConversationDetails,
+  isUnauthorizedError,
 } from '../api/messagingApi';
+import { useAuth } from '../hooks/useAuth';
 
 const activity = (c: Conversation) =>
   c.lastActivityAt ? Date.parse(c.lastActivityAt) : 0;
@@ -24,6 +27,8 @@ function upsertConversation(list: Conversation[], incoming: Conversation): Conve
 }
 
 export default function MessagingPage() {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -48,6 +53,7 @@ export default function MessagingPage() {
   };
 
   useEffect(() => {
+    if (loading || !user) return;
     let ignore = false;
 
     async function loadConversations() {
@@ -72,6 +78,10 @@ export default function MessagingPage() {
         }
       } catch (err) {
         if (ignore) return;
+        if (isUnauthorizedError(err)) {
+          navigate('/login');
+          return;
+        }
         console.error('Error loading conversations:', err);
         setLoadError(
           err instanceof Error ? err.message : 'Failed to load conversations'
@@ -85,7 +95,7 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [loadDetails, reloadKey]);
+  }, [loadDetails, reloadKey, loading, user, navigate]);
 
   const handleChatCreated = (newConv: Conversation) => {
     setIsNewChatModalOpen(false);
@@ -118,6 +128,16 @@ export default function MessagingPage() {
       })
     );
   };
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login');
+    }
+  }, [loading, user, navigate]);
+
+  if (loading || !user) {
+    return null;
+  }
 
   return (
     <div className="d-flex flex-column" style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>

@@ -1,8 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Conversation } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
-import { fetchMessages, postMessage } from '../../api/messagingApi';
+import {
+  fetchMessages,
+  postMessage,
+  isUnauthorizedError,
+} from '../../api/messagingApi';
 import Message from './Message';
 
 // Combine message lists by ID so history and sends can overlap without duplicates
@@ -25,6 +30,7 @@ export default function MessageArea({
   onMessageSent,
 }: MessageAreaProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const currentUserId = user?.id || '';
 
   const [messages, setMessages] = useState<IMessage[]>([]);
@@ -33,6 +39,7 @@ export default function MessageArea({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState<number>(0);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const conversationId = conversation?._id;
 
@@ -50,6 +57,10 @@ export default function MessageArea({
         if (!ignore) setMessages((prev) => mergeMessages(data, prev));
       } catch (err) {
         if (ignore) return;
+        if (isUnauthorizedError(err)) {
+          navigate('/login');
+          return;
+        }
         console.error('Error loading messages:', err);
         setLoadError(
           err instanceof Error && err.message
@@ -65,7 +76,14 @@ export default function MessageArea({
     return () => {
       ignore = true;
     };
-  }, [conversationId, reloadKey]);
+  }, [conversationId, reloadKey, navigate]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container && !isLoading && !loadError) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages.length, isLoading, loadError]);
 
   if (!conversation) {
     return (
@@ -109,8 +127,16 @@ export default function MessageArea({
       setInputText('');
       onMessageSent(conversation, newMsg);
     } catch (err) {
+      if (isUnauthorizedError(err)) {
+        navigate('/login');
+        return;
+      }
       console.error('Error sending message:', err);
-      setSendError('Failed to send message. Please try again.');
+      setSendError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to send message. Please try again.'
+      );
     }
   };
 
@@ -191,6 +217,7 @@ export default function MessageArea({
 
       {/* Message History Feed */}
       <div
+        ref={messagesContainerRef}
         className="flex-grow-1 overflow-y-auto px-4 py-3"
         role="log"
         aria-label="Message history"
@@ -261,6 +288,7 @@ export default function MessageArea({
                 ? `Message ${conversation.displayName}`
                 : 'You do not have permission to send messages in this conversation'
             }
+            maxLength={2000}
             value={
               canSend
                 ? inputText

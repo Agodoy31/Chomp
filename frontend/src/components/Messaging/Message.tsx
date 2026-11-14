@@ -26,13 +26,44 @@ export default function Message({
   const displayName = isCurrentUser ? 'You' : senderName || 'User';
   const initial = (displayName.charAt(0) || 'U').toUpperCase();
 
-  const timeString = new Date(message.createdAt).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const createdDate = new Date(message.createdAt);
+  const now = new Date();
+  const isToday =
+    createdDate.getFullYear() === now.getFullYear() &&
+    createdDate.getMonth() === now.getMonth() &&
+    createdDate.getDate() === now.getDate();
+  const isSameYear = createdDate.getFullYear() === now.getFullYear();
+
+  const timeString = isToday
+    ? createdDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : createdDate.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        ...(isSameYear ? {} : { year: 'numeric' }),
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 
   return (
-    <div className="d-flex align-items-start gap-3 mb-3">
+    <div
+      className="d-flex align-items-start gap-3 mb-3"
+      style={
+        message.isAnnouncement
+          ? {
+              backgroundColor: 'rgba(250, 166, 26, 0.16)',
+              marginLeft: '-1.5rem',
+              marginRight: '-1.5rem',
+              paddingLeft: '1.5rem',
+              paddingRight: '1.5rem',
+              paddingTop: '0.5rem',
+              paddingBottom: '0.5rem',
+            }
+          : undefined
+      }
+    >
       {/* Sender Avatar */}
       <div
         className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold shadow-sm"
@@ -58,9 +89,9 @@ export default function Message({
           </span>
         </div>
         <div
-          className="mt-1"
+          className={`mt-1${message.removedAt ? ' fst-italic text-muted' : ''}`}
           style={{
-            color: '#1F2937',
+            color: message.removedAt ? undefined : '#1F2937',
             fontSize: '14px',
             lineHeight: '1.45',
             wordBreak: 'break-word',
