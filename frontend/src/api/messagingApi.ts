@@ -7,6 +7,16 @@ import type {
 import { flattenConversation } from '../types/Messaging/Conversation';
 import type { IMessage } from '../types/Messaging/Message';
 
+type ApiError = Error & { status?: number };
+
+function createApiError(message: string, status: number): ApiError {
+  return Object.assign(new Error(message), { status });
+}
+
+export function isUnauthorizedError(err: unknown): boolean {
+  return err instanceof Error && (err as ApiError).status === 401;
+}
+
 export type CreateConversationPayload =
   | {
       type: 'DIRECT';
@@ -28,7 +38,10 @@ export async function fetchConversations(): Promise<Conversation[]> {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch conversations: ${response.status}`);
+    throw createApiError(
+      `Failed to fetch conversations: ${response.status}`,
+      response.status
+    );
   }
 
   const data: RawConversationResponse[] = await response.json();
@@ -47,7 +60,10 @@ export async function fetchConversationDetails(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch conversation details: ${response.status}`);
+    throw createApiError(
+      `Failed to fetch conversation details: ${response.status}`,
+      response.status
+    );
   }
 
   const data: RawConversationResponse = await response.json();
@@ -69,7 +85,10 @@ export async function fetchMessages(
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch messages: ${response.status}`);
+    throw createApiError(
+      `Failed to fetch messages: ${response.status}`,
+      response.status
+    );
   }
 
   const data: IMessage[] = await response.json();
@@ -98,7 +117,12 @@ export async function postMessage(
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to send message: ${response.status}`);
+    const errBody = await response.json().catch(() => null);
+    const errMessage =
+      (typeof errBody?.message === 'string' && errBody.message) ||
+      (typeof errBody?.error === 'string' && errBody.error) ||
+      `Failed to send message: ${response.status}`;
+    throw createApiError(errMessage, response.status);
   }
 
   return response.json();
