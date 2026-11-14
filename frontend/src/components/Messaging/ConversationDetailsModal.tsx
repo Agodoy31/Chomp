@@ -90,9 +90,7 @@ export default function ConversationDetailsModal({
             <div className="text-secondary small">No participants</div>
           ) : (
             participants.map((participant) => {
-              const isCurrent =
-                (user?.id && participant._id === user.id) ||
-                participant.firstName.toLowerCase() === 'you';
+              const isCurrent = Boolean(user?.id && participant._id === user.id);
               const displayName = isCurrent ? 'You' : participant.firstName;
               const initial = (displayName.charAt(0) || 'U').toUpperCase();
 

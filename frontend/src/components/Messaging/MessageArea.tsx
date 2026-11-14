@@ -99,11 +99,9 @@ export default function MessageArea({
   const participants = conversation.participants || [];
 
   // Check client-side permissions: user must not have READ-only permission
-  const currentUserParticipant = participants.find(
-    (p) =>
-      (currentUserId && p._id === currentUserId) ||
-      p.firstName.toLowerCase() === 'you'
-  );
+  const currentUserParticipant = currentUserId
+    ? participants.find((p) => p._id === currentUserId)
+    : undefined;
 
   const canSend =
     participants.length > 0

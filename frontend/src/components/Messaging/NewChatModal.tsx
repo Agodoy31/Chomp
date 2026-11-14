@@ -97,6 +97,12 @@ export default function NewChatModal({
 
     try {
       const isDirect = selectedUsers.length === 1;
+      const fullGroupTitle = selectedUsers.map((u) => u.firstName).join(', ');
+      const groupTitle =
+        fullGroupTitle.length > 100
+          ? `${fullGroupTitle.slice(0, 97)}...`
+          : fullGroupTitle;
+
       const newConversation = await createConversation(
         isDirect
           ? {
@@ -105,7 +111,7 @@ export default function NewChatModal({
             }
           : {
               type: 'GROUP',
-              title: selectedUsers.map((u) => u.firstName).join(', '),
+              title: groupTitle,
               participantIds: selectedUsers.map((u) => u._id),
             }
       );
@@ -114,7 +120,11 @@ export default function NewChatModal({
       handleClose();
     } catch (err) {
       console.error('Error creating chat:', err);
-      setCreateError('Failed to create chat. Please try again.');
+      setCreateError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to create chat. Please try again.'
+      );
     } finally {
       setIsCreating(false);
     }

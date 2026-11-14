@@ -17,6 +17,18 @@ export function isUnauthorizedError(err: unknown): boolean {
   return err instanceof Error && (err as ApiError).status === 401;
 }
 
+async function parseApiErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  const errBody = await response.json().catch(() => null);
+  return (
+    (typeof errBody?.message === 'string' && errBody.message) ||
+    (typeof errBody?.error === 'string' && errBody.error) ||
+    fallback
+  );
+}
+
 export type CreateConversationPayload =
   | {
       type: 'DIRECT';
@@ -117,11 +129,10 @@ export async function postMessage(
   );
 
   if (!response.ok) {
-    const errBody = await response.json().catch(() => null);
-    const errMessage =
-      (typeof errBody?.message === 'string' && errBody.message) ||
-      (typeof errBody?.error === 'string' && errBody.error) ||
-      `Failed to send message: ${response.status}`;
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to send message: ${response.status}`
+    );
     throw createApiError(errMessage, response.status);
   }
 
@@ -145,7 +156,11 @@ export async function createConversation(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create conversation: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to create conversation: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
   const data: RawConversationResponse = await response.json();
