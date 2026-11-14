@@ -103,11 +103,12 @@ export default function MessageArea({
     ? participants.find((p) => p._id === currentUserId)
     : undefined;
 
+  const areDetailsLoaded = participants.length > 0;
   const canSend =
-    participants.length > 0
-      ? currentUserParticipant !== undefined &&
-        currentUserParticipant.permission !== 'READ'
-      : true;
+    areDetailsLoaded &&
+    currentUserParticipant !== undefined &&
+    currentUserParticipant.permission !== 'READ';
+  const hasNoSendPermission = areDetailsLoaded && !canSend;
 
   const headerInitial = conversation.displayName.charAt(0).toUpperCase();
 
@@ -276,21 +277,17 @@ export default function MessageArea({
           <input
             type="text"
             className="form-control border-0 bg-transparent shadow-none"
-            placeholder={
-              canSend
-                ? `Message ${conversation.displayName}...`
-                : 'You do not have permission to send messages in this conversation'
-            }
+            placeholder={`Message ${conversation.displayName}...`}
             aria-label={
-              canSend
-                ? `Message ${conversation.displayName}`
-                : 'You do not have permission to send messages in this conversation'
+              hasNoSendPermission
+                ? 'You do not have permission to send messages in this conversation'
+                : `Message ${conversation.displayName}`
             }
             maxLength={2000}
             value={
-              canSend
-                ? inputText
-                : 'You do not have permission to send messages in this conversation'
+              hasNoSendPermission
+                ? 'You do not have permission to send messages in this conversation'
+                : inputText
             }
             onChange={(e) => canSend && setInputText(e.target.value)}
             disabled={!canSend}
