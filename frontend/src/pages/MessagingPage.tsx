@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Sidebar from '../components/Messaging/Sidebar';
@@ -37,20 +37,42 @@ export default function MessagingPage() {
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
 
-  // Fill in participants for a chat, only if it is still the active one
-  const loadDetails = useCallback(async (id: string) => {
-    try {
-      const details = await fetchConversationDetails(id);
-      setActiveConversation((prev) => (prev?._id === id ? { ...prev, ...details } : prev));
-    } catch (err) {
-      console.error('Failed to load conversation details:', err);
-    }
-  }, []);
-
   const handleSelectConversation = (conv: Conversation) => {
     setActiveConversation(conv);
-    loadDetails(conv._id);
   };
+
+  // Fill in participants for whichever conversation is currently active
+  useEffect(() => {
+    const activeId = activeConversation?._id;
+    if (!activeId) return;
+    if (activeConversation.participants && activeConversation.participants.length > 0) {
+      return;
+    }
+
+    let ignore = false;
+    async function fetchDetails() {
+      try {
+        const details = await fetchConversationDetails(activeId!);
+        if (!ignore) {
+          setActiveConversation((prev) =>
+            prev?._id === activeId ? { ...prev, ...details } : prev
+          );
+        }
+      } catch (err) {
+        if (ignore) return;
+        if (isUnauthorizedError(err)) {
+          navigate('/login');
+          return;
+        }
+        console.error('Failed to load conversation details:', err);
+      }
+    }
+
+    fetchDetails();
+    return () => {
+      ignore = true;
+    };
+  }, [activeConversation?._id, activeConversation?.participants, reloadKey, navigate]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -74,7 +96,6 @@ export default function MessagingPage() {
         // Only auto-select when the user hasn't already opened a chat
         if (feed.length > 0) {
           setActiveConversation((prev) => prev ?? feed[0]);
-          loadDetails(feed[0]._id);
         }
       } catch (err) {
         if (ignore) return;
@@ -95,7 +116,7 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [loadDetails, reloadKey, loading, user, navigate]);
+  }, [reloadKey, loading, user, navigate]);
 
   const handleChatCreated = (newConv: Conversation) => {
     setIsNewChatModalOpen(false);
