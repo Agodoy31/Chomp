@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import Header from '../components/Header';
 import ClubCard from '../components/ClubCard';
 import type { Club } from '../types/club';
@@ -37,7 +37,12 @@ const featuredClubs: Club[] = [
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user) {
+    return <Navigate to="/myClubs" replace />;
+  }
+
   const scrollToSection = (sectionId: string) => {
     const section = document.getElementById(sectionId);
     if (section) section.scrollIntoView({ behavior: 'smooth' });
