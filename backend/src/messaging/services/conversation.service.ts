@@ -879,7 +879,8 @@ export async function updateConversationTitle(
       const requester = await User.findById(requestingUserId)
         .select('firstName lastName')
         .session(session)
-        .lean<IUserSummary>();
+        .lean<IUserSummary>()
+        .exec();
       if (!requester) {
         throw new MessagingError(
           MessagingErrorCode.USER_NOT_FOUND,
