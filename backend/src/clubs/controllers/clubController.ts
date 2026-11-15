@@ -1,11 +1,11 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
-import { createChannel } from '../../messaging/services/conversation.service';
 import { CLUB_CATEGORIES, type ClientError, type ClubFilter } from '../interfaces/clubs.interface';
 import { isAdmin } from '../isAdmin';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
+import { createGeneralChannel } from '../services/clubChannelAccess';
 import {
   adminRequired,
   clubNameExists,
@@ -17,8 +17,6 @@ import {
   officerRequired,
   sendError,
 } from '../errors';
-
-const DEFAULT_CHANNEL_TITLE = 'General';
 
 const clubNameRegex = /^[\p{L}\p{M}\p{N}\p{P} +]+$/u;
 const dayOfWeekRegex = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
@@ -259,7 +257,7 @@ export const approveClub = async (req: Request<{ clubId: string }>, res: Respons
       [{ userId: club.proposerId, clubId: club._id, role: 'OFFICER', status: 'ACTIVE' }],
       { session }
     );
-    const conversation = await createChannel(club._id, DEFAULT_CHANNEL_TITLE, [club.proposerId], session);
+    const conversation = await createGeneralChannel(club._id, club.proposerId, session);
 
     await session.commitTransaction();
     res.status(201).json({ club: approved, membership, conversation });
