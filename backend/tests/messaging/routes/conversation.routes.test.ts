@@ -422,7 +422,12 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(res.status).toBe(201);
     expect(res.body._id).toBeDefined();
     expect(res.body.conversationId).toBe(groupConversationId);
-    expect(res.body.senderId).toBe(studentA.user._id.toString());
+    expect(res.body.senderId).toBeUndefined();
+    expect(res.body.sender).toEqual({
+      _id: studentA.user._id.toString(),
+      firstName: studentA.user.firstName,
+      lastName: studentA.user.lastName,
+    });
     expect(res.body.text).toBe('Meeting at the sculpture at five');
     expect(res.body.clientId).toBe(clientId);
     expect(res.body.isAnnouncement).toBe(false);
@@ -448,6 +453,12 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(second.status).toBe(200);
     expect(second.body.isNew).toBeUndefined();
     expect(second.body._id).toBe(first.body._id);
+    expect(second.body.senderId).toBeUndefined();
+    expect(second.body.sender).toEqual({
+      _id: studentA.user._id.toString(),
+      firstName: studentA.user.firstName,
+      lastName: studentA.user.lastName,
+    });
     expect(second.body.text).toBe('Anyone have spare coffee?');
   });
 
@@ -572,7 +583,12 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(50);
     expect(res.body[0].text).toBe('Extra message entry 50');
-    expect(res.body[0].senderId).toBe(studentA.user._id.toString());
+    expect(res.body[0].senderId).toBeUndefined();
+    expect(res.body[0].sender).toEqual({
+      _id: studentA.user._id.toString(),
+      firstName: studentA.user.firstName,
+      lastName: studentA.user.lastName,
+    });
   });
 
   it('supports custom limit query parameter and returns empty array for empty chat', async () => {
@@ -624,12 +640,24 @@ describe('GET /api/conversations/:id/messages', () => {
     const deletedMsg = res.body.find((m: { text: string }) => m.text === 'This message was deleted');
     expect(deletedMsg).toBeDefined();
     expect(deletedMsg._id).toBe(msgToSoftDelete._id.toString());
+    expect(deletedMsg.senderId).toBeUndefined();
+    expect(deletedMsg.sender).toEqual({
+      _id: studentA.user._id.toString(),
+      firstName: studentA.user.firstName,
+      lastName: studentA.user.lastName,
+    });
     expect(deletedMsg.removedAt).toBeDefined();
     expect(deletedMsg.removedBy).toBeUndefined();
 
     const systemMsg = res.body.find((m: { isSystem: boolean }) => m.isSystem);
     expect(systemMsg).toBeDefined();
     expect(systemMsg.isSystem).toBe(true);
+    expect(systemMsg.senderId).toBeUndefined();
+    expect(systemMsg.sender).toEqual({
+      _id: studentA.user._id.toString(),
+      firstName: studentA.user.firstName,
+      lastName: studentA.user.lastName,
+    });
   });
 
   it('rejects out of range or non integer limit with 400 and ERR_VALIDATION_FAILED', async () => {
@@ -775,6 +803,12 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
       .expect(200);
 
     expect(delRes1.body.text).toBe('This message was deleted');
+    expect(delRes1.body.senderId).toBeUndefined();
+    expect(delRes1.body.sender).toEqual({
+      _id: studentB.user._id.toString(),
+      firstName: studentB.user.firstName,
+      lastName: studentB.user.lastName,
+    });
     expect(delRes1.body.removedAt).toBeDefined();
     const firstRemovedAt = delRes1.body.removedAt;
 
@@ -788,6 +822,12 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
       .expect(200);
 
     expect(delRes2.body.text).toBe('This message was deleted');
+    expect(delRes2.body.senderId).toBeUndefined();
+    expect(delRes2.body.sender).toEqual({
+      _id: studentB.user._id.toString(),
+      firstName: studentB.user.firstName,
+      lastName: studentB.user.lastName,
+    });
     expect(delRes2.body.removedAt).toBeDefined();
 
     const repeatedDelRes = await studentA.agent
@@ -795,6 +835,11 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
       .expect(200);
 
     expect(repeatedDelRes.body.text).toBe('This message was deleted');
+    expect(repeatedDelRes.body.sender).toEqual({
+      _id: studentB.user._id.toString(),
+      firstName: studentB.user.firstName,
+      lastName: studentB.user.lastName,
+    });
     expect(repeatedDelRes.body.removedAt).toBe(firstRemovedAt);
   });
 
