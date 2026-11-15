@@ -20,10 +20,21 @@ import {
 import { User } from '../../user/models/User';
 import { Club } from '../../clubs/model/clubModel';
 import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
-import { IMessage } from '../interfaces/message.interfaces';
+import { IHydratedMessage, IMessage } from '../interfaces/message.interfaces';
 import { messagingPublisher } from '../sockets/messagingPublisher';
 
 export const DEFAULT_GROUP_CONVERSATION_TITLE = 'Group Chat';
+
+function toHydratedSystemMessage(
+  message: IMessage,
+  sender: IUserSummary
+): IHydratedMessage {
+  const { senderId: _senderId, ...rest } = message;
+  return {
+    ...rest,
+    sender,
+  };
+}
 
 export interface CreateDirectConversationResult {
   conversation: IConversation;
@@ -196,7 +207,13 @@ export async function createGroupConversation(
     .select('firstName lastName')
     .lean<IUserSummary>()
     .exec();
-  const creatorName = creator ? `${creator.firstName} ${creator.lastName}`.trim() : 'Someone';
+  if (!creator) {
+    throw new MessagingError(
+      MessagingErrorCode.USER_NOT_FOUND,
+      'Creator user not found'
+    );
+  }
+  const creatorName = `${creator.firstName} ${creator.lastName}`.trim();
 
   const session = await mongoose.startSession();
   try {
@@ -242,7 +259,9 @@ export async function createGroupConversation(
 
     await session.commitTransaction();
 
-    messagingPublisher.messageCreated(systemMessageDoc.toObject<IMessage>());
+    messagingPublisher.messageCreated(
+      toHydratedSystemMessage(systemMessageDoc.toObject<IMessage>(), creator)
+    );
 
     return conversation.toObject<IConversation>();
   } catch (error: any) {
@@ -417,7 +436,7 @@ export async function addParticipantsToConversation(
     }
     const addedUsers = await usersQuery.exec();
 
-    let systemMessageDoc: IMessage | undefined;
+    let systemMessageDoc: IHydratedMessage | undefined;
     if (_requestingUserId) {
       const requesterQuery = User.findById(_requestingUserId)
         .select('firstName lastName')
@@ -426,9 +445,13 @@ export async function addParticipantsToConversation(
         requesterQuery.session(effectiveSession);
       }
       const requester = await requesterQuery.exec();
-      const requesterName = requester
-        ? `${requester.firstName} ${requester.lastName}`.trim()
-        : 'Someone';
+      if (!requester) {
+        throw new MessagingError(
+          MessagingErrorCode.USER_NOT_FOUND,
+          'Requesting user not found'
+        );
+      }
+      const requesterName = `${requester.firstName} ${requester.lastName}`.trim();
 
       let text: string;
       if (usersToAdd.length === 1) {
@@ -455,7 +478,10 @@ export async function addParticipantsToConversation(
         ],
         effectiveSession ? { session: effectiveSession } : undefined
       );
-      systemMessageDoc = createdMsg.toObject<IMessage>();
+      systemMessageDoc = toHydratedSystemMessage(
+        createdMsg.toObject<IMessage>(),
+        requester
+      );
     }
 
     if (ownsSession && effectiveSession) {
@@ -848,15 +874,19 @@ export async function updateConversationTitle(
       throw saveError;
     }
 
-    let systemMessageDoc: IMessage | undefined;
+    let systemMessageDoc: IHydratedMessage | undefined;
     if (conversation.type === ConversationType.GROUP && oldTitle !== conversation.title) {
       const requester = await User.findById(requestingUserId)
         .select('firstName lastName')
         .session(session)
         .lean<IUserSummary>();
-      const requesterName = requester
-        ? `${requester.firstName} ${requester.lastName}`.trim()
-        : 'Someone';
+      if (!requester) {
+        throw new MessagingError(
+          MessagingErrorCode.USER_NOT_FOUND,
+          'Requesting user not found'
+        );
+      }
+      const requesterName = `${requester.firstName} ${requester.lastName}`.trim();
 
       const [createdMsg] = await Message.create(
         [
@@ -870,7 +900,10 @@ export async function updateConversationTitle(
         ],
         { session }
       );
-      systemMessageDoc = createdMsg.toObject<IMessage>();
+      systemMessageDoc = toHydratedSystemMessage(
+        createdMsg.toObject<IMessage>(),
+        requester
+      );
     }
 
     await session.commitTransaction();
@@ -960,7 +993,7 @@ async function executeRemoveParticipantFromConversation(
   requestingUserId: Types.ObjectId,
   targetUserId: Types.ObjectId,
   session: ClientSession
-): Promise<{ success: boolean; systemMessage?: IMessage }> {
+): Promise<{ success: boolean; systemMessage?: IHydratedMessage }> {
   const conversation = await Conversation.findById(conversationId)
     .select('type')
     .session(session)
@@ -1054,9 +1087,13 @@ async function executeRemoveParticipantFromConversation(
     .session(session)
     .lean<IUserSummary>()
     .exec();
-  const requesterName = requester
-    ? `${requester.firstName} ${requester.lastName}`.trim()
-    : 'Someone';
+  if (!requester) {
+    throw new MessagingError(
+      MessagingErrorCode.USER_NOT_FOUND,
+      'Requesting user not found'
+    );
+  }
+  const requesterName = `${requester.firstName} ${requester.lastName}`.trim();
 
   let text: string;
   if (isSelf) {
@@ -1089,7 +1126,10 @@ async function executeRemoveParticipantFromConversation(
     { session }
   );
 
-  return { success: true, systemMessage: createdMsg.toObject<IMessage>() };
+  return {
+    success: true,
+    systemMessage: toHydratedSystemMessage(createdMsg.toObject<IMessage>(), requester),
+  };
 }
 
 export type PermissionUpdate = [Types.ObjectId, ParticipantPermission];
@@ -1172,7 +1212,7 @@ export async function updateParticipantPermissions(
     const isBulk = normalizedUpdates.length > 1;
     const isGroup = conversation.type === ConversationType.GROUP;
     const updatedParticipants: IConversationParticipant[] = [];
-    let systemMessageDoc: IMessage | undefined;
+    let systemMessageDoc: IHydratedMessage | undefined;
 
     if (isGroup) {
       const requesterParticipant = await ConversationParticipant.findOne({
@@ -1251,9 +1291,13 @@ export async function updateParticipantPermissions(
           .session(activeSession)
           .lean<IUserSummary>()
           .exec();
-        const requesterName = requester
-          ? `${requester.firstName} ${requester.lastName}`.trim()
-          : 'Someone';
+        if (!requester) {
+          throw new MessagingError(
+            MessagingErrorCode.USER_NOT_FOUND,
+            'Requesting user not found'
+          );
+        }
+        const requesterName = `${requester.firstName} ${requester.lastName}`.trim();
 
         const targetUser = await User.findById(targetUserId)
           .select('firstName lastName')
@@ -1295,7 +1339,10 @@ export async function updateParticipantPermissions(
           ],
           { session: activeSession }
         );
-        systemMessageDoc = createdMsg.toObject<IMessage>();
+        systemMessageDoc = toHydratedSystemMessage(
+          createdMsg.toObject<IMessage>(),
+          requester
+        );
       }
     }
 
