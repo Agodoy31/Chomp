@@ -2,7 +2,9 @@ import type { Club } from '../types/club';
 
 type ClubCardProps = {
   club: Club;
-  onJoin: (clubId: string) => void;
+  onJoin?: (clubId: string) => void;
+  onLeave?: (club: Club) => void;
+  onChat?: (clubId: string) => void;
 };
 
 // Meeting day and time are optional, so the card only shows what exists
@@ -11,7 +13,7 @@ function formatMeetingTime(meeting: Club['meeting']): string {
   return meetingTime.length > 0 ? meetingTime.join(' ') : '';
 }
 
-export default function ClubCard({ club, onJoin }: ClubCardProps) {
+export default function ClubCard({ club, onJoin, onLeave, onChat }: ClubCardProps) {
   const meetingTime = formatMeetingTime(club.meeting);
   const location = club.meeting?.location;
 
@@ -43,18 +45,54 @@ export default function ClubCard({ club, onJoin }: ClubCardProps) {
           )}
         </div>
 
-        <button
-          className="btn rounded-pill w-100 fw-semibold py-2"
-          style={{
-            backgroundColor: '#F07833',
-            borderColor: '#14246D',
-            color: '#14246D',
-          }}
-          onClick={() => onJoin(club._id)}
-        >
-          Join
-        </button>
+        <div className="d-flex flex-column gap-2">
+          {onJoin && (
+            <button
+              className="btn rounded-pill w-100 fw-semibold py-2"
+              style={{
+                backgroundColor: '#F07833',
+                borderColor: '#14246D',
+                color: '#14246D',
+              }}
+              aria-label={`Join ${club.name}`}
+              onClick={() => onJoin(club._id)}
+            >
+              Join
+            </button>
+          )}
+
+          {onChat && (
+             <button
+              className="btn rounded-pill w-100 fw-semibold py-2"
+              style={{
+                backgroundColor: '#F07833',
+                borderColor: '#14246D',
+                color: '#14246D',
+              }}
+              aria-label={`Chat in ${club.name}`}
+              onClick={() => onChat(club._id)}
+            >
+              Chat
+            </button>
+          )}
+
+          {onLeave && (
+            <button
+              className="btn rounded-pill w-100 fw-semibold py-2"
+              style={{
+                backgroundColor: '#FFFFFF',
+                border: '2px solid #DC3545',
+                color:  '#DC3545'
+              }}
+              aria-label={`Leave ${club.name}`}
+              onClick={() => onLeave(club)}
+            >
+              Leave
+            </button>
+          )}
+
+        </div>
       </div>
-    </div>
+  </div>
   );
 }
