@@ -130,8 +130,6 @@ export default function ClubDiscovery() {
       setJoinError(err instanceof Error ? err.message : 'Failed to join club');
     }
   }
-  
- 
 
   function handleCategoryToggle(cat: ClubCategory) {
     setCategories(prev => {

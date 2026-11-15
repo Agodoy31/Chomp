@@ -8,8 +8,6 @@ import MessagingPage from './pages/MessagingPage'
 
 
 
-
-
 export default function App() {
   return (
    <Routes>
