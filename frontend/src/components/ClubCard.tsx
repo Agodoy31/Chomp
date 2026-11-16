@@ -1,10 +1,13 @@
 import type { Club } from '../types/club';
+import { Dropdown } from 'react-bootstrap';
+import { ThreeDotsVertical } from 'react-bootstrap-icons';
 
 type ClubCardProps = {
   club: Club;
   onJoin?: (clubId: string) => void;
   onLeave?: (club: Club) => void;
-  onChat?: (clubId: string) => void;
+  onOpen?: (clubId: string) => void;
+  
 };
 
 // Meeting day and time are optional, so the card only shows what exists
@@ -13,9 +16,10 @@ function formatMeetingTime(meeting: Club['meeting']): string {
   return meetingTime.length > 0 ? meetingTime.join(' ') : '';
 }
 
-export default function ClubCard({ club, onJoin, onLeave, onChat }: ClubCardProps) {
+export default function ClubCard({ club, onJoin, onLeave, onOpen }: ClubCardProps) {
   const meetingTime = formatMeetingTime(club.meeting);
   const location = club.meeting?.location;
+  const isOfficer = club.role === 'OFFICER';
 
   return (
     <div
@@ -25,9 +29,50 @@ export default function ClubCard({ club, onJoin, onLeave, onChat }: ClubCardProp
       }}
     >
       <div className="card-body d-flex flex-column p-4">
-        <span className="badge bg-primary-subtle text-primary mb-2 align-self-start">
-          {club.category}
-        </span>
+       <div className="d-flex justify-content-between align-items-start mb-2">
+          <div className="d-flex gap-2 flex-wrap align-items-center">
+            <span className="badge bg-primary-subtle text-primary px-3 py-2">
+              {club.category}
+            </span>
+            {isOfficer && (
+            <span 
+                className="badge fw-semibold px-3 py-2"
+                style={{ backgroundColor: '#FFEDD5', color: '#C2410C' }}
+              >
+                OFFICER
+              </span>
+            )}
+          </div>
+          {onLeave && (
+            <Dropdown align="end">
+              <Dropdown.Toggle
+                as="button"
+                type="button"
+                className="btn btn-link text-muted p-0 text-decoration-none border-0 shadow-none"
+                style={{ background: 'none', border: 'none' }}
+                aria-label={`Options for ${club.name}`}
+              >
+                <ThreeDotsVertical size={20} />
+              </Dropdown.Toggle>
+              <style>{`
+                .dropdown-toggle::after {
+                  display: none !important;
+                }
+              `}</style>
+              <Dropdown.Menu>
+                <Dropdown.Item
+                  as="button"
+                  type="button"
+                  className="text-danger fw-semibold"
+                  onClick={() => onLeave(club)}
+                >
+                  Leave Club
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown>
+          )}
+        </div>
+
 
         <h4 className="card-title fw-bold text-dark mt-2 mb-2">{club.name}</h4>
 
@@ -48,6 +93,7 @@ export default function ClubCard({ club, onJoin, onLeave, onChat }: ClubCardProp
         <div className="d-flex flex-column gap-2">
           {onJoin && (
             <button
+              type="button"
               className="btn rounded-pill w-100 fw-semibold py-2"
               style={{
                 backgroundColor: '#F07833',
@@ -61,38 +107,19 @@ export default function ClubCard({ club, onJoin, onLeave, onChat }: ClubCardProp
             </button>
           )}
 
-          {onChat && (
-             <button
-              className="btn rounded-pill w-100 fw-semibold py-2"
-              style={{
-                backgroundColor: '#F07833',
-                borderColor: '#14246D',
-                color: '#14246D',
-              }}
-              aria-label={`Chat in ${club.name}`}
-              onClick={() => onChat(club._id)}
-            >
-              Chat
-            </button>
-          )}
-
-          {onLeave && (
+           {onOpen && (
             <button
-              className="btn rounded-pill w-100 fw-semibold py-2"
-              style={{
-                backgroundColor: '#FFFFFF',
-                border: '2px solid #DC3545',
-                color:  '#DC3545'
-              }}
-              aria-label={`Leave ${club.name}`}
-              onClick={() => onLeave(club)}
+              type="button"
+              className="btn btn-primary rounded-pill w-100 fw-semibold py-2"
+              style={{ backgroundColor: '#3046C3', borderColor: '#3046C3' }}
+              aria-label={`Open ${club.name}`}
+              onClick={() => onOpen(club._id)}
             >
-              Leave
+              Open Club
             </button>
           )}
-
         </div>
       </div>
-  </div>
+    </div>
   );
 }

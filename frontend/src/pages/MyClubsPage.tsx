@@ -5,7 +5,8 @@ import Button from 'react-bootstrap/Button';
 import Modal from 'react-bootstrap/Modal';
 import ClubCard from '../components/ClubCard';
 import type { Club } from '../types/club';
-import { fetchConversations } from '../api/messagingApi';
+import { useAuth } from '../hooks/useAuth';
+
 
 async function readJson(response: Response) {
   try {
@@ -18,9 +19,10 @@ async function readJson(response: Response) {
 
 export default function MyClubs() {
   const navigate = useNavigate();
+  const { user, loading, setUser } = useAuth();
 
   const [clubs, setClubs] = useState<Club[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [clubsLoading, setClubsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -29,9 +31,17 @@ export default function MyClubs() {
   const [leaving, setLeaving] = useState(false);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const shouldFocusHeadingRef = useRef(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+
   useEffect(() => {
+    if (loading) return;
+
+    if (!user) {
+      navigate('/login');
+      return;
+    }
     
     async function fetchMyClubs() {
       try {
@@ -39,6 +49,7 @@ export default function MyClubs() {
         const data = await readJson(response);
 
         if (response.status === 401) {
+          setUser(null);
           navigate('/login');
           return;
         }
@@ -50,13 +61,13 @@ export default function MyClubs() {
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : 'An error occurred while loading your clubs.');
       } finally {
-        setLoading(false);
+        setClubsLoading(false);
       }
     }
 
     fetchMyClubs();
     
-  }, [navigate]);
+  }, [loading, user, navigate, setUser]);
 
   useEffect(() => {
     return () => clearTimeout(successTimer.current);
@@ -68,30 +79,6 @@ export default function MyClubs() {
     successTimer.current = setTimeout(() => setSuccessMsg(''), 5000);
   }
 
-async function handleChat(clubId: string) {
-    setActionError('');
-    try {
-      const club = clubs.find((c) => c._id === clubId);
-      if (!club) return;
-
-      const conversations = await fetchConversations();
-      const existingConv = conversations.find(
-        (conv) => conv.clubId === clubId || conv.title === club.name
-      );
-
-      if (existingConv) {
-        navigate(`/messaging?conversationId=${existingConv._id}`);
-        return;
-      }
-
-      navigate('/messaging');
-    } 
-    catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : 'Could not open chat for this club.'
-      );
-    }
-  }
 
   async function confirmLeave() {
     if (!clubToLeave) return;
@@ -109,6 +96,7 @@ async function handleChat(clubId: string) {
       const data = await readJson(response);
 
       if (response.status === 401) {
+        setUser(null);
         navigate('/login');
         return;
       }
@@ -119,7 +107,7 @@ async function handleChat(clubId: string) {
       const leftId = clubToLeave._id;
       showSuccess(`You left ${clubToLeave.name}.`);
       setClubs((current) => current.filter((club) => club._id !== leftId));
-      headingRef.current?.focus();
+      shouldFocusHeadingRef.current = true;
     } 
     catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to leave club.');
@@ -130,7 +118,7 @@ async function handleChat(clubId: string) {
     }
   }
 
-  const showEmpty = !loading && !loadError && clubs.length === 0;
+  const showEmpty = !clubsLoading && !loadError && clubs.length === 0;
 
   return (
     <div className="container py-5">
@@ -164,9 +152,11 @@ async function handleChat(clubId: string) {
         </Alert>
       )}
 
-      {loading && (
+      {clubsLoading && (
         <div className="text-center py-5" style={{ color: '#3046C3' }}>
-          <h4>Loading your clubs...</h4>
+          <p role="status" aria-live="polite" className="h4">
+            Loading your clubs...
+          </p>
         </div>
       )}
 
@@ -183,14 +173,27 @@ async function handleChat(clubId: string) {
         <div className="row g-4">
           {clubs.map((club) => (
             <div key={club._id} className="col-12 col-md-6 col-lg-4">
-              <ClubCard club={club} onChat={handleChat} onLeave={setClubToLeave} />
+              <ClubCard club={club} onLeave={setClubToLeave}
+                onOpen={(clubId) => navigate(`/clubs/${clubId}`)}
+              />
             </div>
           ))}
         </div>
       )}
 
        {/* Confirm before leaving, since it removes the student from the club chat */}
-      <Modal show={clubToLeave !== null} onHide={() => !leaving && setClubToLeave(null)} centered>
+      <Modal
+        show={clubToLeave !== null} 
+        onHide={() => !leaving && setClubToLeave(null)} 
+        onExited={() => {
+          if (shouldFocusHeadingRef.current) {
+            shouldFocusHeadingRef.current = false;
+            headingRef.current?.focus();
+          }
+        }}
+        centered
+
+        >
         <Modal.Header closeButton={!leaving}>
           <Modal.Title>Leave {clubToLeave?.name}?</Modal.Title>
         </Modal.Header>
