@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import type { IUserSummary } from './conversation.interfaces';
 
 export interface IMessage {
   _id: Types.ObjectId;
@@ -12,4 +13,8 @@ export interface IMessage {
   removedBy?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface IHydratedMessage extends Omit<IMessage, 'senderId'> {
+  sender: IUserSummary;
 }

@@ -351,6 +351,34 @@ describe('updateConversationTitle service', () => {
       updateConversationTitle(channel._id, user1._id, 'general')
     ).rejects.toThrow('A channel with this title already exists in the club');
   });
+
+  it('rejects with USER_NOT_FOUND when requester user record is missing on title update', async () => {
+    const moderator = await createTestUser({
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+      email: 'dwuerffel@ufl.edu',
+    });
+    const member = await createTestUser({
+      firstName: 'Century',
+      lastName: 'Tower',
+      email: 'carillon@ufl.edu',
+    });
+    const group = await createGroupConversation(
+      moderator._id,
+      [member._id],
+      'Marston Basement Study Group'
+    );
+
+    await User.deleteOne({ _id: moderator._id });
+
+    await expect(
+      updateConversationTitle(group._id, moderator._id, 'Swamp Launch Rocketry')
+    ).rejects.toMatchObject({
+      name: 'MessagingError',
+      code: 'ERR_USER_NOT_FOUND',
+      message: 'Requesting user not found',
+    });
+  });
 });
 
 describe('removeParticipantFromConversation service', () => {

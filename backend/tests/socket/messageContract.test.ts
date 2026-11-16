@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import type { IMessage } from '../../src/messaging/interfaces/message.interfaces';
+import type { IHydratedMessage } from '../../src/messaging/interfaces/message.interfaces';
 import { getConversationRoom, getUserRoom } from '../../src/socket/rooms';
 import { toMessageResponse } from '../../src/messaging/serializers/messageResponse';
 
@@ -12,24 +12,33 @@ test('uses stable personal and canonical conversation rooms', () => {
 
 test('preserves message fields and redacts deleted text', () => {
   const date = new Date('2026-11-05T12:00:00.000Z');
-  const message: IMessage = {
+  const senderId = new Types.ObjectId('507f1f77bcf86cd799439011');
+  const message: IHydratedMessage = {
     _id: new Types.ObjectId('507f1f77bcf86cd799439013'),
     conversationId: new Types.ObjectId('507f1f77bcf86cd799439012'),
-    senderId: new Types.ObjectId('507f1f77bcf86cd799439011'),
+    sender: {
+      _id: senderId,
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+    },
     text: 'Danny reserved a room in Marston',
     isAnnouncement: false, isSystem: false, createdAt: date, updatedAt: date,
   };
   const expected = {
     _id: '507f1f77bcf86cd799439013',
     conversationId: '507f1f77bcf86cd799439012',
-    senderId: '507f1f77bcf86cd799439011',
+    sender: {
+      _id: '507f1f77bcf86cd799439011',
+      firstName: 'Danny',
+      lastName: 'Wuerffel',
+    },
     text: message.text, isAnnouncement: false, isSystem: false,
     createdAt: date.toISOString(),
   };
   expect(toMessageResponse(message)).toEqual(expected);
   const deleted = {
     ...message, clientId: '019a52ca-0000-7000-8000-000000000001',
-    removedAt: date, removedBy: message.senderId,
+    removedAt: date, removedBy: message.sender._id,
   };
   expect(toMessageResponse(deleted)).toEqual({
     ...expected, text: 'This message was deleted',

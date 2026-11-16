@@ -1,7 +1,13 @@
+export interface IUserSummaryResponse {
+  _id: string;
+  firstName: string;
+  lastName: string;
+}
+
 export interface IMessageResponse {
   _id: string;
   conversationId: string;
-  senderId: string;
+  sender: IUserSummaryResponse;
   text: string;
   clientId?: string;
   isAnnouncement: boolean;

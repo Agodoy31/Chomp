@@ -1,18 +1,54 @@
 import mongoose, { Types } from 'mongoose';
-import { IMessage } from '../interfaces/message.interfaces';
-import { ConversationType } from '../interfaces/conversation.interfaces';
+import { IHydratedMessage, IMessage } from '../interfaces/message.interfaces';
+import { ConversationType, IUserSummary } from '../interfaces/conversation.interfaces';
 import { ParticipantPermission } from '../interfaces/conversationParticipant.interfaces';
 import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
 import { Message } from '../models/Message';
+import { User } from '../../user/models/User';
 import { isUserParticipant } from './conversation.service';
 import { MessagingError, MessagingErrorCode } from '../errors/messagingError';
 
 const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface SendMessageResult {
-  message: IMessage;
+  message: IHydratedMessage;
   isNew: boolean;
+}
+
+async function hydrateMessages(messages: IMessage[]): Promise<IHydratedMessage[]> {
+  if (messages.length === 0) {
+    return [];
+  }
+
+  const uniqueSenderIds = [
+    ...new Map(messages.map((m) => [m.senderId.toString(), m.senderId])).values(),
+  ];
+
+  const users = await User.find({ _id: { $in: uniqueSenderIds } })
+    .select('firstName lastName')
+    .lean<IUserSummary[]>()
+    .exec();
+
+  const userMap = new Map<string, IUserSummary>(
+    users.map((user) => [user._id.toString(), user])
+  );
+
+  return messages.map((message) => {
+    const sender = userMap.get(message.senderId.toString());
+    if (!sender) {
+      throw new MessagingError(
+        MessagingErrorCode.USER_NOT_FOUND,
+        'Message sender not found'
+      );
+    }
+
+    const { senderId: _senderId, ...rest } = message;
+    return {
+      ...rest,
+      sender,
+    };
+  });
 }
 
 export async function sendMessage(
@@ -110,8 +146,9 @@ export async function sendMessage(
       isAnnouncement,
       isSystem: false,
     });
+    const [hydrated] = await hydrateMessages([created.toObject<IMessage>()]);
     return {
-      message: created.toObject<IMessage>(),
+      message: hydrated,
       isNew: true,
     };
   } catch (error: unknown) {
@@ -130,8 +167,9 @@ export async function sendMessage(
         .exec();
 
       if (existing) {
+        const [hydrated] = await hydrateMessages([existing]);
         return {
-          message: existing,
+          message: hydrated,
           isNew: false,
         };
       }
@@ -144,7 +182,7 @@ export async function getMessages(
   conversationId: Types.ObjectId,
   requestingUserId: Types.ObjectId,
   limit?: number
-): Promise<IMessage[]> {
+): Promise<IHydratedMessage[]> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new MessagingError(
       MessagingErrorCode.INVALID_INPUT,
@@ -177,7 +215,7 @@ export async function getMessages(
   }
 
   const messages = await query.lean<IMessage[]>().exec();
-  return messages.map((message) => {
+  const sanitized = messages.map((message) => {
     if (message.removedAt) {
       return {
         ...message,
@@ -186,13 +224,14 @@ export async function getMessages(
     }
     return message;
   });
+  return hydrateMessages(sanitized);
 }
 
 export async function deleteMessage(
   conversationId: Types.ObjectId,
   messageId: Types.ObjectId,
   requestingUserId: Types.ObjectId
-): Promise<IMessage> {
+): Promise<IHydratedMessage> {
   if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
     throw new MessagingError(
       MessagingErrorCode.VALIDATION_FAILED,
@@ -259,9 +298,12 @@ export async function deleteMessage(
   }
 
   const messageObject = message.toObject<IMessage>();
-  return {
-    ...messageObject,
-    text: 'This message was deleted',
-  };
+  const [hydrated] = await hydrateMessages([
+    {
+      ...messageObject,
+      text: 'This message was deleted',
+    },
+  ]);
+  return hydrated;
 }
 
