@@ -58,11 +58,11 @@ beforeAll(async () => {
     description: 'Late night study sessions on the basement floor.',
     proposerId: dannyUser._id,
   });
-  const leftClub = await Club.create({
-    name: 'Alpha Club',
-    status: 'APPROVED',
+  const pendingClub = await Club.create({
+    name: 'Pending Club',
+    status: 'PENDING',
     category: 'OTHER',
-    description: 'A club the member already left.',
+    description: 'Pending club description',
     proposerId: dannyUser._id,
   });
 
@@ -80,9 +80,9 @@ beforeAll(async () => {
   });
   await Membership.create({
     userId: marstonDweller._id,
-    clubId: leftClub._id,
+    clubId: pendingClub._id,
     role: 'MEMBER',
-    status: 'INACTIVE',
+    status: 'PENDING',
   });
 });
 
