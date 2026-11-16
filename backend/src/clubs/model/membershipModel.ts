@@ -1,4 +1,5 @@
 import { InferSchemaType, Schema, model } from 'mongoose';
+import { MEMBERSHIP_STATUSES } from '../interfaces/clubs.interface';
 
 const membershipSchema = new Schema(
   {
@@ -12,7 +13,7 @@ const membershipSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['ACTIVE', 'PENDING', 'INACTIVE', 'REMOVED', 'REJECTED'] as const,
+      enum: MEMBERSHIP_STATUSES,
       default: 'ACTIVE',
       required: [true, 'status is required'],
     },

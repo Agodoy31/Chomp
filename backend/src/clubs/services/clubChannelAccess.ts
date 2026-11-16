@@ -88,7 +88,7 @@ export async function syncMemberChannelPermission(
       .session(session)
       .lean()
       .exec();
-    if (!seat || seat.permission === permission) {
+    if (seat && seat.permission === permission) {
       continue;
     }
 
