@@ -61,7 +61,7 @@ describe('Membership model', () => {
     await Membership.create({ userId, clubId });
 
     await expect(
-      Membership.create({ userId, clubId, role: 'OFFICER', status: 'REMOVED' })
+      Membership.create({ userId, clubId, role: 'OFFICER', status: 'PENDING' })
     ).rejects.toMatchObject({ code: 11000 });
   });
 

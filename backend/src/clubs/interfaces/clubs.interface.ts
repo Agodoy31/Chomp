@@ -5,7 +5,7 @@ export type ClubCategory = (typeof CLUB_CATEGORIES)[number]; // 'ACADEMIC' | 'CU
 export const CLUB_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
 export type ClubStatus = (typeof CLUB_STATUSES)[number];
 
-export const MEMBERSHIP_STATUSES = ['ACTIVE', 'INACTIVE', 'REMOVED'] as const;
+export const MEMBERSHIP_STATUSES = ['ACTIVE', 'PENDING', 'INACTIVE', 'REMOVED', 'REJECTED'] as const;
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
 
 export interface ClubFilter {

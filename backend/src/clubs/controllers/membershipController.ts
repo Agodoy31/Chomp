@@ -20,6 +20,8 @@ import {
   memberNotFound,
   memberRemoved,
   memberRequired,
+  membershipPending,
+  membershipRejected,
   notActiveMember,
   officerRequired,
 } from '../errors';
@@ -31,6 +33,12 @@ type ActivationResult = { membership: MembershipRecord } | { error: ClientError 
 function rejectionForMembership(status: Exclude<MembershipStatus, 'INACTIVE'>): ClientError {
   if (status === 'REMOVED') {
     return memberRemoved();
+  }
+  if (status === 'PENDING') {
+    return membershipPending();
+  }
+  if (status === 'REJECTED') {
+    return membershipRejected();
   }
   return alreadyMember();
 }
@@ -233,7 +241,7 @@ export const getMyClubs = async (req: Request, res: Response): Promise<void> => 
     .exec();
   const roles = new Map(memberships.map((membership) => [membership.clubId.toString(), membership.role]));
 
-  const clubs = await Club.find({ _id: { $in: [...roles.keys()] } })
+  const clubs = await Club.find({ _id: { $in: [...roles.keys()] }, status: 'APPROVED' })
     .select('-proposerId -__v -status -createdAt -updatedAt')
     .sort({ name: 1 })
     .collation({ locale: 'en', strength: 2 })

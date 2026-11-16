@@ -51,6 +51,12 @@ export function alreadyMember(): ClientError {
 export function memberRemoved(): ClientError {
     return { status: 403, code: 'ERR_MEMBER_REMOVED', message: 'Removed members cannot rejoin this club' };
 }
+export function membershipPending(): ClientError {
+    return { status: 409, code: 'ERR_MEMBERSHIP_PENDING', message: 'A request to join this club is already pending' };
+}
+export function membershipRejected(): ClientError {
+    return { status: 403, code: 'ERR_MEMBERSHIP_REJECTED', message: 'Rejected members cannot rejoin this club' };
+}
 export function lastOfficer(): ClientError {
     return { status: 409, code: 'ERR_LAST_OFFICER', message: 'A club must keep at least one active officer' };
 }
