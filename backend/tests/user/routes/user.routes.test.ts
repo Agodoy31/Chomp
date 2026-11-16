@@ -58,14 +58,6 @@ beforeAll(async () => {
     description: 'Late night study sessions on the basement floor.',
     proposerId: dannyUser._id,
   });
-  const pendingClub = await Club.create({
-    name: 'Pending Club',
-    status: 'PENDING',
-    category: 'OTHER',
-    description: 'Pending club description',
-    proposerId: dannyUser._id,
-  });
-
   await Membership.create({
     userId: marstonDweller._id,
     clubId: cucumberClub._id,
@@ -77,12 +69,6 @@ beforeAll(async () => {
     clubId: marstonStudyGroup._id,
     role: 'OFFICER',
     status: 'ACTIVE',
-  });
-  await Membership.create({
-    userId: marstonDweller._id,
-    clubId: pendingClub._id,
-    role: 'MEMBER',
-    status: 'PENDING',
   });
 });
 

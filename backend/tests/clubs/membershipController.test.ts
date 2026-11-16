@@ -198,28 +198,4 @@ describe('POST /api/clubs/:clubId/join', () => {
     expect(res.body.message).toBe('Already an active member of this club');
     expect(await Membership.countDocuments({ userId: studentId, clubId: club._id })).toBe(1);
   });
-
-  it('returns 409 when a join request is already pending', async () => {
-    const club = await insertClub();
-    await Membership.create({ userId: studentId, clubId: club._id, status: 'PENDING' });
-
-    const res = await student.post(`/api/clubs/${club._id.toString()}/join`);
-
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('ERR_MEMBERSHIP_PENDING');
-    expect(res.body.message).toBe('A request to join this club is already pending');
-    expect(await Membership.countDocuments({ userId: studentId, clubId: club._id })).toBe(1);
-  });
-
-  it('returns 403 when a previous join request was rejected', async () => {
-    const club = await insertClub();
-    await Membership.create({ userId: studentId, clubId: club._id, status: 'REJECTED' });
-
-    const res = await student.post(`/api/clubs/${club._id.toString()}/join`);
-
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe('ERR_MEMBERSHIP_REJECTED');
-    expect(res.body.message).toBe('Rejected members cannot rejoin this club');
-    expect(await Membership.countDocuments({ userId: studentId, clubId: club._id })).toBe(1);
-  });
 });

@@ -12,7 +12,7 @@ import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-function insertClub(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
+function insertClub(status: 'PENDING' | 'APPROVED' = 'APPROVED') {
   return createTestClub(new mongoose.Types.ObjectId(), {
     description: 'Weekly meetings',
     category: 'OTHER',
@@ -48,8 +48,8 @@ describe('PATCH /api/clubs/:clubId/members/:userId', () => {
     await closeTestDb();
   });
 
-  async function insertClubWithRoster(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
-    const club = await insertClub(status);
+  async function insertClubWithRoster() {
+    const club = await insertClub();
     await Membership.create([
       { userId: officerId, clubId: club._id, role: 'OFFICER', status: 'ACTIVE' },
       { userId: memberId, clubId: club._id, role: 'MEMBER', status: 'ACTIVE' },
@@ -161,7 +161,7 @@ describe('PATCH /api/clubs/:clubId/members/:userId', () => {
   });
 
   it('returns 404 for a pending, missing, or malformed club', async () => {
-    const pending = await insertClubWithRoster('PENDING');
+    const pending = await insertClub('PENDING');
 
     for (const clubId of [pending._id.toString(), new mongoose.Types.ObjectId().toString(), 'nope']) {
       const res = await admin.patch(roleUrl(clubId, memberId)).send({ role: 'OFFICER' });
