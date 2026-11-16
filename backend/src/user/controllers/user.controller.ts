@@ -35,7 +35,7 @@ export const getUserProfile: RequestHandler = async (
     memberships.map(({ clubId, role }) => [clubId.toString(), role])
   );
   const clubIds = memberships.map(({ clubId }) => clubId);
-  const clubs = await Club.find({ _id: { $in: clubIds }, status: 'APPROVED' })
+  const clubs = await Club.find({ _id: { $in: clubIds } })
     .select('_id name description category')
     .sort({ name: 1 })
     .collation({ locale: 'en', strength: 2 })
