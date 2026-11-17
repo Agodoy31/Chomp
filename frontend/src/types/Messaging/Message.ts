@@ -18,10 +18,6 @@ export interface IMessage {
   removedAt?: string; // If deleted text will be "This message was deleted"
 }
 
-// Aliases for compatibility
-export type MessageI = IMessage;
-export type Message = IMessage;
-
 // Data type that sends a new message
 export interface SendMessagePayload {
   text: string;

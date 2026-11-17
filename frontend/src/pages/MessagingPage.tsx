@@ -4,7 +4,10 @@ import Sidebar from '../components/Messaging/Sidebar';
 import MessageArea from '../components/Messaging/MessageArea';
 import ConversationDetailsModal from '../components/Messaging/ConversationDetailsModal';
 import NewChatModal from '../components/Messaging/NewChatModal';
-import type { Conversation } from '../types/Messaging/Conversation';
+import type {
+  ConversationDetails,
+  ConversationFeedItem,
+} from '../types/Messaging/Conversation';
 import type { IMessage } from '../types/Messaging/Message';
 import {
   fetchConversations,
@@ -13,11 +16,14 @@ import {
 } from '../api/messagingApi';
 import { useAuth } from '../hooks/useAuth';
 
-const activity = (c: Conversation) =>
+const activity = (c: ConversationFeedItem) =>
   c.lastActivityAt ? Date.parse(c.lastActivityAt) : 0;
 
-// Insert or update a row, keeping whichever preview is newer; newer rows move to the top
-function upsertConversation(list: Conversation[], incoming: Conversation): Conversation[] {
+// Insert or update a feed row, keeping whichever preview is newer; newer rows move to the top
+function upsertConversation(
+  list: ConversationFeedItem[],
+  incoming: ConversationFeedItem
+): ConversationFeedItem[] {
   const existing = list.find((c) => c._id === incoming._id);
   if (existing && activity(existing) > activity(incoming)) {
     return list.map((c) => (c._id === incoming._id ? { ...incoming, ...existing } : c));
@@ -28,34 +34,34 @@ function upsertConversation(list: Conversation[], incoming: Conversation): Conve
 export default function MessagingPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<ConversationFeedItem[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeDetails, setActiveDetails] = useState<ConversationDetails | null>(null);
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
 
-  const handleSelectConversation = (conv: Conversation) => {
-    setActiveConversation(conv);
+  const handleSelectConversation = (conv: ConversationFeedItem) => {
+    setActiveConversationId(conv._id);
   };
 
-  // Fill in participants for whichever conversation is currently active
+  // Load details and participants for whichever conversation is currently active
   useEffect(() => {
-    const activeId = activeConversation?._id;
-    if (!activeId) return;
-    if (activeConversation.participants && activeConversation.participants.length > 0) {
+    if (!activeConversationId) {
+      return;
+    }
+    if (activeDetails?._id === activeConversationId) {
       return;
     }
 
     let ignore = false;
     async function fetchDetails() {
       try {
-        const details = await fetchConversationDetails(activeId!);
+        const details = await fetchConversationDetails(activeConversationId!);
         if (!ignore) {
-          setActiveConversation((prev) =>
-            prev?._id === activeId ? { ...prev, ...details } : prev
-          );
+          setActiveDetails(details);
         }
       } catch (err) {
         if (ignore) return;
@@ -71,7 +77,7 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [activeConversation?._id, activeConversation?.participants, reloadKey, navigate]);
+  }, [activeConversationId, activeDetails?._id, reloadKey, navigate]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -94,7 +100,7 @@ export default function MessagingPage() {
         });
         // Only auto-select when the user hasn't already opened a chat
         if (feed.length > 0) {
-          setActiveConversation((prev) => prev ?? feed[0]);
+          setActiveConversationId((prev) => prev ?? feed[0]._id);
         }
       } catch (err) {
         if (ignore) return;
@@ -117,10 +123,19 @@ export default function MessagingPage() {
     };
   }, [reloadKey, loading, user, navigate]);
 
-  const handleChatCreated = (newConv: Conversation) => {
+  const handleChatCreated = (newConv: ConversationDetails) => {
     setIsNewChatModalOpen(false);
-    setActiveConversation(newConv);
-    setConversations((prev) => upsertConversation(prev, newConv));
+    setActiveDetails(newConv);
+    setActiveConversationId(newConv._id);
+    setConversations((prev) =>
+      upsertConversation(prev, {
+        _id: newConv._id,
+        type: newConv.type,
+        displayName: newConv.displayName,
+        lastActivityAt: new Date().toISOString(),
+        ...(newConv.clubId ? { clubId: newConv.clubId } : {}),
+      })
+    );
 
     if (newConv.type === 'GROUP') {
       // Pick up the server-generated "created the group" preview
@@ -133,14 +148,17 @@ export default function MessagingPage() {
     }
   };
 
-  const handleMessageSent = (conv: Conversation, msg: IMessage) => {
+  const handleMessageSent = (conv: ConversationDetails, msg: IMessage) => {
     const senderName = msg.sender
       ? `${msg.sender.firstName} ${msg.sender.lastName}`.trim()
       : '';
     setConversations((prev) =>
       upsertConversation(prev, {
-        ...conv,
+        _id: conv._id,
+        type: conv.type,
+        displayName: conv.displayName,
         lastActivityAt: msg.createdAt,
+        ...(conv.clubId ? { clubId: conv.clubId } : {}),
         lastMessage: {
           text: msg.text,
           senderName: senderName || 'You',
@@ -160,6 +178,11 @@ export default function MessagingPage() {
     return null;
   }
 
+  const displayedDetails =
+    activeConversationId && activeDetails?._id === activeConversationId
+      ? activeDetails
+      : null;
+
   return (
     <div className="d-flex flex-column vh-100 overflow-hidden">
       <div className="d-flex flex-grow-1 overflow-hidden">
@@ -170,11 +193,11 @@ export default function MessagingPage() {
           onRetry={() => setReloadKey((key) => key + 1)}
           onSelectConversation={handleSelectConversation}
           onOpenNewChat={() => setIsNewChatModalOpen(true)}
-          activeConversationId={activeConversation?._id}
+          activeConversationId={activeConversationId ?? undefined}
         />
         <MessageArea
-          key={activeConversation?._id}
-          conversation={activeConversation}
+          key={activeConversationId ?? 'empty'}
+          conversation={displayedDetails}
           onOpenDetails={() => setIsModalDisplayed(true)}
           onMessageSent={handleMessageSent}
         />
@@ -182,7 +205,7 @@ export default function MessagingPage() {
       <ConversationDetailsModal
         show={isModalDisplayed}
         onHide={() => setIsModalDisplayed(false)}
-        conversation={activeConversation}
+        conversation={displayedDetails}
       />
       <NewChatModal
         show={isNewChatModalOpen}

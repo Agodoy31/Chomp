@@ -1,11 +1,11 @@
 import type {
   ClubChannel,
-  Conversation,
+  ConversationDetails,
+  ConversationFeedItem,
+  ConversationParticipant,
   ParticipantPermission,
-  RawConversationResponse,
-  ChatUser,
+  UserSummary,
 } from '../types/Messaging/Conversation';
-import { flattenConversation } from '../types/Messaging/Conversation';
 import type { IMessage } from '../types/Messaging/Message';
 
 type ApiError = Error & { status?: number };
@@ -45,7 +45,7 @@ export type CreateConversationPayload =
  * Fetches the user's active conversations feed.
  * Endpoint: GET /api/conversations
  */
-export async function fetchConversations(): Promise<Conversation[]> {
+export async function fetchConversations(): Promise<ConversationFeedItem[]> {
   const response = await fetch('/api/conversations', {
     credentials: 'include',
   });
@@ -57,8 +57,8 @@ export async function fetchConversations(): Promise<Conversation[]> {
     );
   }
 
-  const data: RawConversationResponse[] = await response.json();
-  return Array.isArray(data) ? data.map(flattenConversation) : [];
+  const data: ConversationFeedItem[] = await response.json();
+  return Array.isArray(data) ? data : [];
 }
 
 /**
@@ -67,7 +67,7 @@ export async function fetchConversations(): Promise<Conversation[]> {
  */
 export async function fetchConversationDetails(
   conversationId: string
-): Promise<Conversation> {
+): Promise<ConversationDetails> {
   const response = await fetch(`/api/conversations/${conversationId}`, {
     credentials: 'include',
   });
@@ -79,8 +79,7 @@ export async function fetchConversationDetails(
     );
   }
 
-  const data: RawConversationResponse = await response.json();
-  return flattenConversation(data);
+  return response.json();
 }
 
 /**
@@ -146,7 +145,7 @@ export async function postMessage(
  */
 export async function createConversation(
   payload: CreateConversationPayload
-): Promise<Conversation> {
+): Promise<ConversationDetails> {
   const response = await fetch('/api/conversations', {
     method: 'POST',
     headers: {
@@ -164,8 +163,7 @@ export async function createConversation(
     throw createApiError(errMessage, response.status);
   }
 
-  const data: RawConversationResponse = await response.json();
-  return flattenConversation(data);
+  return response.json();
 }
 
 /**
@@ -175,7 +173,7 @@ export async function createConversation(
 export async function searchUsers(
   search: string,
   signal?: AbortSignal
-): Promise<ChatUser[]> {
+): Promise<UserSummary[]> {
   const trimmed = search.trim();
   if (!trimmed) {
     return [];
@@ -201,7 +199,7 @@ export async function searchUsers(
 export async function addParticipantsToConversation(
   conversationId: string,
   userIds: string[]
-): Promise<unknown> {
+): Promise<ConversationParticipant[]> {
   const response = await fetch(
     `/api/conversations/${conversationId}/participants`,
     {
@@ -251,7 +249,7 @@ export async function updateParticipantPermission(
   conversationId: string,
   userId: string,
   permission: ParticipantPermission
-): Promise<unknown> {
+): Promise<ConversationParticipant> {
   const response = await fetch(
     `/api/conversations/${conversationId}/participants/${userId}`,
     {

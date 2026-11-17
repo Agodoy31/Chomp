@@ -1,11 +1,11 @@
 import Modal from 'react-bootstrap/Modal';
-import type { Conversation } from '../../types/Messaging/Conversation';
+import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import { useAuth } from '../../hooks/useAuth';
 
 interface ConversationDetailsModalProps {
   show: boolean;
   onHide: () => void;
-  conversation: Conversation | null;
+  conversation: ConversationDetails | null;
 }
 
 export default function ConversationDetailsModal({
@@ -90,13 +90,17 @@ export default function ConversationDetailsModal({
             <div className="text-secondary small">No participants</div>
           ) : (
             participants.map((participant) => {
-              const isCurrent = Boolean(user?.id && participant._id === user.id);
-              const displayName = isCurrent ? 'You' : participant.firstName;
+              const isCurrent = Boolean(
+                user?.id && participant.userId._id === user.id
+              );
+              const displayName = isCurrent
+                ? 'You'
+                : participant.userId.firstName;
               const initial = (displayName.charAt(0) || 'U').toUpperCase();
 
               return (
                 <div
-                  key={participant._id}
+                  key={participant.userId._id}
                   className="d-flex align-items-center gap-3"
                 >
                   <div

@@ -1,7 +1,7 @@
-import type { ChatUser } from '../../types/Messaging/Conversation';
+import type { UserSummary } from '../../types/Messaging/Conversation';
 
 interface PersonListItemProps {
-  user: ChatUser;
+  user: UserSummary;
   isSelected: boolean;
   onToggle: () => void;
 }

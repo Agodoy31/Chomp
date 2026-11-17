@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import Modal from 'react-bootstrap/Modal';
 import type {
-  Conversation,
-  ChatUser,
+  ConversationDetails,
+  UserSummary,
 } from '../../types/Messaging/Conversation';
 import { useAuth } from '../../hooks/useAuth';
 import { createConversation, searchUsers } from '../../api/messagingApi';
@@ -12,7 +12,7 @@ import PersonListItem from './PersonListItem';
 interface NewChatModalProps {
   show: boolean;
   onHide: () => void;
-  onChatCreated: (conversation: Conversation) => void;
+  onChatCreated: (conversation: ConversationDetails) => void;
 }
 
 export default function NewChatModal({
@@ -23,12 +23,12 @@ export default function NewChatModal({
   const { user } = useAuth();
   const currentUserId = user?.id || '';
 
-  const [users, setUsers] = useState<ChatUser[]>([]);
+  const [users, setUsers] = useState<UserSummary[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedUsers, setSelectedUsers] = useState<ChatUser[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<UserSummary[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -68,7 +68,7 @@ export default function NewChatModal({
     setIsLoadingUsers(nextQuery.trim().length > 0);
   };
 
-  const handleToggleUser = (targetUser: ChatUser) => {
+  const handleToggleUser = (targetUser: UserSummary) => {
     setCreateError(null);
     setSelectedUsers((prev) => {
       const exists = prev.some((u) => u._id === targetUser._id);

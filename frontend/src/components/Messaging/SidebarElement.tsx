@@ -1,9 +1,9 @@
-import type { Conversation } from '../../types/Messaging/Conversation';
+import type { ConversationFeedItem } from '../../types/Messaging/Conversation';
 
 interface SidebarElementProps {
-  conversation: Conversation;
+  conversation: ConversationFeedItem;
   isActive: boolean;
-  onSelect: (conversation: Conversation) => void;
+  onSelect: (conversation: ConversationFeedItem) => void;
 }
 
 export default function SidebarElement({
@@ -52,19 +52,10 @@ export default function SidebarElement({
             className="fw-bold text-dark text-truncate"
             style={{ fontSize: '15px', lineHeight: '1.2' }}
           >
-            {conversation.type === 'CHANNEL' && !conversation.title
+            {conversation.type === 'CHANNEL'
               ? `# ${conversation.displayName}`
               : conversation.displayName}
           </div>
-
-          {conversation.type === 'CHANNEL' && conversation.title && (
-            <div
-              className="fw-bold text-truncate mt-1"
-              style={{ color: '#3046C3', fontSize: '13px', lineHeight: '1.2' }}
-            >
-              # {conversation.title}
-            </div>
-          )}
 
           {previewText && (
             <div

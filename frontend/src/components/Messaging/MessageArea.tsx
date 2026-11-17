@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Conversation } from '../../types/Messaging/Conversation';
+import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -19,9 +19,9 @@ function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
 }
 
 interface MessageAreaProps {
-  conversation: Conversation | null;
+  conversation: ConversationDetails | null;
   onOpenDetails: () => void;
-  onMessageSent: (conversation: Conversation, message: IMessage) => void;
+  onMessageSent: (conversation: ConversationDetails, message: IMessage) => void;
 }
 
 export default function MessageArea({
@@ -100,7 +100,7 @@ export default function MessageArea({
 
   // Check client-side permissions: user must not have READ-only permission
   const currentUserParticipant = currentUserId
-    ? participants.find((p) => p._id === currentUserId)
+    ? participants.find((p) => p.userId._id === currentUserId)
     : undefined;
 
   const areDetailsLoaded = participants.length > 0;

@@ -1,12 +1,12 @@
-import type { Conversation } from '../../types/Messaging/Conversation';
+import type { ConversationFeedItem } from '../../types/Messaging/Conversation';
 import SidebarElement from './SidebarElement';
 
 interface SidebarProps {
-  conversations: Conversation[];
+  conversations: ConversationFeedItem[];
   isLoading: boolean;
   loadError: string | null;
   onRetry: () => void;
-  onSelectConversation: (conversation: Conversation) => void;
+  onSelectConversation: (conversation: ConversationFeedItem) => void;
   onOpenNewChat: () => void;
   activeConversationId: string | undefined;
 }
