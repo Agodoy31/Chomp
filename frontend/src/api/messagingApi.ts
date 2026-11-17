@@ -1,4 +1,5 @@
 import type {
+  ClubChannel,
   Conversation,
   ParticipantPermission,
   RawConversationResponse,
@@ -287,4 +288,24 @@ export async function deleteMessage(
   }
 
   return response.json();
+}
+
+/**
+ * Fetches the channels for an approved club.
+ * Endpoint: GET /api/clubs/:clubId/channels
+ */
+export async function fetchClubChannels(clubId: string): Promise<ClubChannel[]> {
+  const response = await fetch(`/api/clubs/${clubId}/channels`, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw createApiError(
+      `Failed to fetch club channels: ${response.status}`,
+      response.status
+    );
+  }
+
+  const data: { channels?: ClubChannel[] } = await response.json();
+  return Array.isArray(data?.channels) ? data.channels : [];
 }
