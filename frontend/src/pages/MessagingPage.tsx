@@ -9,6 +9,7 @@ import type { IMessage } from '../types/Messaging/Message';
 import {
   fetchConversations,
   fetchConversationDetails,
+  fetchMyClubNames,
   isUnauthorizedError,
 } from '../api/messagingApi';
 import { useAuth } from '../hooks/useAuth';
@@ -29,6 +30,7 @@ export default function MessagingPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [clubNamesById, setClubNamesById] = useState<Record<string, string>>({});
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -81,8 +83,12 @@ export default function MessagingPage() {
       setIsLoadingConversations(true);
       setLoadError(null);
       try {
-        const feed = await fetchConversations();
+        const [feed, clubNames] = await Promise.all([
+          fetchConversations(),
+          fetchMyClubNames().catch(() => ({})),
+        ]);
         if (ignore) return;
+        setClubNamesById(clubNames);
         // Rows created or updated locally while loading keep their newer previews
         setConversations((local) => {
           const merged = feed.map((item) => {
@@ -165,6 +171,7 @@ export default function MessagingPage() {
       <div className="d-flex flex-grow-1 overflow-hidden">
         <Sidebar
           conversations={conversations}
+          clubNamesById={clubNamesById}
           isLoading={isLoadingConversations}
           loadError={loadError}
           onRetry={() => setReloadKey((key) => key + 1)}
