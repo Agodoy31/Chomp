@@ -66,3 +66,25 @@ export function invalidRole(): ClientError {
 export function cannotRemoveSelf(): ClientError {
     return { status: 400, code: 'ERR_CANNOT_REMOVE_SELF', message: 'Use leave to exit a club instead of removing yourself' };
 }
+//channel errors
+export function invalidChannelTitle(): ClientError {
+    return {
+        status: 400,
+        code: 'ERR_INVALID_CHANNEL_TITLE',
+        message:
+            "Channel title must be 1 to 100 characters and use letters, numbers, spaces, and . _ - + & / ' ! ? : , #",
+    };
+}
+export function channelNotFound(): ClientError {
+    return { status: 404, code: 'ERR_CHANNEL_NOT_FOUND', message: 'Channel not found' };
+}
+export function channelTitleExists(): ClientError {
+    return {
+        status: 409,
+        code: 'ERR_CHANNEL_TITLE_EXISTS',
+        message: 'A channel with this title already exists in the club',
+    };
+}
+export function lastChannel(): ClientError {
+    return { status: 409, code: 'ERR_LAST_CHANNEL', message: 'A club must keep at least one channel' };
+}
