@@ -44,7 +44,7 @@ export default function PostAnnouncementModal({
     setSubmitting(true);
 
     try {
-      const created = await postMessage(conversationId, trimmedText);
+      const created = await postMessage(conversationId, trimmedText, true);
 
       if (created?._id) {
         onSuccess?.(created);
@@ -52,17 +52,16 @@ export default function PostAnnouncementModal({
       onHide();
     } 
     catch (err) {
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
-      
-      if (message.includes('401')) {
+      const status = (err as Error & { status?: number }).status;
 
+      if (status === 401) {
         setUser(null);
         navigate('/login');
         return;
       }
 
-      setError(message);
-    } 
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+    }
     finally {
       setSubmitting(false);
     }
@@ -110,7 +109,10 @@ export default function PostAnnouncementModal({
               rows={5}
               placeholder="Share important information with members..."
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                if (error) setError('');
+              }}
               disabled={submitting}
               autoFocus
               aria-label="Announcement text content"
