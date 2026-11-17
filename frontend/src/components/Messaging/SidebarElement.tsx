@@ -2,16 +2,22 @@ import type { ConversationFeedItem } from '../../types/Messaging/Conversation';
 
 interface SidebarElementProps {
   conversation: ConversationFeedItem;
+  clubName?: string;
   isActive: boolean;
   onSelect: (conversation: ConversationFeedItem) => void;
 }
 
 export default function SidebarElement({
   conversation,
+  clubName,
   isActive,
   onSelect,
 }: SidebarElementProps) {
-  const initial = conversation.displayName?.charAt(0)?.toUpperCase() ?? '';
+  const isChannel = conversation.type === 'CHANNEL';
+  const primaryTitle = isChannel
+    ? clubName || `# ${conversation.displayName}`
+    : conversation.displayName;
+  const initial = primaryTitle?.charAt(0)?.toUpperCase() ?? '';
 
   const previewText = conversation.lastMessage
     ? `${conversation.lastMessage.senderName}: ${conversation.lastMessage.text}`
@@ -52,11 +58,17 @@ export default function SidebarElement({
             className="fw-bold text-dark text-truncate"
             style={{ fontSize: '15px', lineHeight: '1.2' }}
           >
-            {conversation.type === 'CHANNEL'
-              ? `# ${conversation.displayName}`
-              : conversation.displayName}
+            {primaryTitle}
           </div>
 
+          {isChannel && clubName && (
+            <div
+              className="fw-bold text-truncate mt-1"
+              style={{ color: '#3046C3', fontSize: '13px', lineHeight: '1.2' }}
+            >
+              # {conversation.displayName}
+            </div>
+          )}
           {previewText && (
             <div
               className="text-truncate mt-1"
