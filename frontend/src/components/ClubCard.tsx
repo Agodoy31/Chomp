@@ -48,17 +48,13 @@ export default function ClubCard({ club, onJoin, onLeave, onOpen }: ClubCardProp
               <Dropdown.Toggle
                 as="button"
                 type="button"
+                bsPrefix="club-card-toggle"
                 className="btn btn-link text-muted p-0 text-decoration-none border-0 shadow-none"
                 style={{ background: 'none', border: 'none' }}
                 aria-label={`Options for ${club.name}`}
               >
                 <ThreeDotsVertical size={20} />
               </Dropdown.Toggle>
-              <style>{`
-                .dropdown-toggle::after {
-                  display: none !important;
-                }
-              `}</style>
               <Dropdown.Menu>
                 <Dropdown.Item
                   as="button"
