@@ -139,11 +139,8 @@ export default function MessageArea({
     }
   };
 
-  const getSenderName = (senderId: string): string => {
-    return (
-      participants.find((p) => p._id === senderId)?.firstName ||
-      conversation.displayName
-    );
+  const getSenderName = (msg: IMessage): string => {
+    return msg.sender?.firstName || conversation.displayName;
   };
 
   return (
@@ -248,8 +245,8 @@ export default function MessageArea({
               <Message
                 key={msg._id}
                 message={msg}
-                senderName={getSenderName(msg.senderId)}
-                isCurrentUser={Boolean(currentUserId && msg.senderId === currentUserId)}
+                senderName={getSenderName(msg)}
+                isCurrentUser={Boolean(currentUserId && msg.sender?._id === currentUserId)}
               />
             ))}
           </div>

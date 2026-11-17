@@ -1,6 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom';
 import Button from 'react-bootstrap/Button';
 import { useAuth } from '../hooks/useAuth';
+import UserProfileModal from './modals/UserProfileModal';
+import { useState } from 'react';
 
 type HeaderProps ={
     showAuthButtons?: boolean
@@ -9,6 +11,7 @@ type HeaderProps ={
 export default function Header({showAuthButtons = true}: HeaderProps) {
   const navigate = useNavigate()
   const { user, loading, logout } = useAuth()
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const initials = user
     ? `${user.firstName?.charAt(0) ?? ''}${user.lastName?.charAt(0) ?? ''}`.toUpperCase()
@@ -20,6 +23,7 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
   }
 
   return (
+    <>
     <header className="w-100 border-bottom sticky-top shadow-sm" 
       style={{
         background:"#3046C3"
@@ -44,7 +48,7 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
 
         {/* Center */}
         <Link
-          to="/"
+          to={user && !loading ? '/clubs' : '/'}
           className="fw-bold"
           style={{
             color: 'white',
@@ -73,20 +77,22 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
              Log out
             </Button>
 
-            {/* Circle with users initial*/}
-            <div className= "d-flex align-items-center justify-content-center rounded-circle fw-semibold"
-              
-              style ={{
-                width: 40,
-                height: 40,
-                backgroundColor: '#D9D9D9',
-                border: '1px solid #14246D',
-                color: '#14246d'
-
-              }}
-            >
-              {initials}
-            </div>
+            {/* Clickable Circle with users initial*/}
+            <Button
+                  type="button"
+                  aria-label="Open user profile"
+                  className="d-flex align-items-center justify-content-center rounded-circle fw-semibold p-0"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    backgroundColor: '#D9D9D9',
+                    border: '1px solid #14246D',
+                    color: '#14246d',
+                  }}
+                  onClick={() => setShowProfileModal(true)}
+                >
+                  {initials}
+                </Button>
             </>
           )}
 
@@ -112,5 +118,11 @@ export default function Header({showAuthButtons = true}: HeaderProps) {
         </div>
       </div>
     </header>
+    <UserProfileModal
+      show={showProfileModal}
+      onHide={() => setShowProfileModal(false)}
+    />
+    </>
+
   );
 }

@@ -13,5 +13,6 @@ export type Club = {
     }
 
     status: 'PENDING' | 'APPROVED' | 'REJECTED'
+    role?: 'MEMBER' | 'OFFICER'
 
 }

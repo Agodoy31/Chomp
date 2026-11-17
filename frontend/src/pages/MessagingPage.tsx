@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Header from '../components/Header';
 import Sidebar from '../components/Messaging/Sidebar';
 import MessageArea from '../components/Messaging/MessageArea';
 import ConversationDetailsModal from '../components/Messaging/ConversationDetailsModal';
@@ -135,14 +134,16 @@ export default function MessagingPage() {
   };
 
   const handleMessageSent = (conv: Conversation, msg: IMessage) => {
-    const sender = conv.participants?.find((p) => p._id === msg.senderId);
+    const senderName = msg.sender
+      ? `${msg.sender.firstName} ${msg.sender.lastName}`.trim()
+      : '';
     setConversations((prev) =>
       upsertConversation(prev, {
         ...conv,
         lastActivityAt: msg.createdAt,
         lastMessage: {
           text: msg.text,
-          senderName: sender ? `${sender.firstName} ${sender.lastName}`.trim() : 'You',
+          senderName: senderName || 'You',
           createdAt: msg.createdAt,
         },
       })
@@ -160,8 +161,7 @@ export default function MessagingPage() {
   }
 
   return (
-    <div className="d-flex flex-column" style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>
-      <Header />
+    <div className="d-flex flex-column vh-100 overflow-hidden">
       <div className="d-flex flex-grow-1 overflow-hidden">
         <Sidebar
           conversations={conversations}

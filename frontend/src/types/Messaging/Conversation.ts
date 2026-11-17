@@ -26,13 +26,18 @@ export interface ConversationLastMessage {
   createdAt?: string;
 }
 
+export interface ClubChannel {
+  _id: string;
+  title: string;
+}
+
 export interface Conversation {
   _id: string;
   type: ConversationType;
   displayName: string;
   lastActivityAt?: string;
-  title?: string; // Channel name or group title, in the case of a club its that name
-  clubId?: string; // club channels name
+  title?: string; // Channel name or group title (present on conversation details)
+  clubId?: string; // Club ID for CHANNEL conversations
   lastMessage?: ConversationLastMessage;
 
   // The above are fetched for all of the converstations a user is in

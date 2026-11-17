@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import type { IMessage } from '../interfaces/message.interfaces';
+import type { IHydratedMessage } from '../interfaces/message.interfaces';
 import type {
   IConversationParticipantSummary,
   IConversationFeedResponse,
@@ -13,7 +13,7 @@ import { getConversationRoom, getUserRoom } from '../../socket/rooms';
 import { toMessageResponse } from '../serializers/messageResponse';
 
 export const messagingPublisher = {
-  messageCreated(message: IMessage): void {
+  messageCreated(message: IHydratedMessage): void {
     const io: Server<ClientToServerEvents, ServerToClientEvents> | null =
       getIO() as Server<ClientToServerEvents, ServerToClientEvents> | null;
     if (!io) {
@@ -23,7 +23,7 @@ export const messagingPublisher = {
     io.to(conversationRoom).emit('message:created', toMessageResponse(message));
   },
 
-  messageDeleted(message: IMessage): void {
+  messageDeleted(message: IHydratedMessage): void {
     const io: Server<ClientToServerEvents, ServerToClientEvents> | null =
       getIO() as Server<ClientToServerEvents, ServerToClientEvents> | null;
     if (!io) {
