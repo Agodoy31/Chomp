@@ -79,7 +79,7 @@ export default function Message({
       </div>
 
       {/* Message Body */}
-      <div className="d-flex flex-column">
+      <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
         <div className="d-flex align-items-baseline gap-2">
           <span className="fw-bold text-dark" style={{ fontSize: '15px' }}>
             {displayName}
@@ -94,6 +94,7 @@ export default function Message({
             color: message.removedAt ? undefined : '#1F2937',
             fontSize: '14px',
             lineHeight: '1.45',
+            overflowWrap: 'anywhere',
             wordBreak: 'break-word',
           }}
         >

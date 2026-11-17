@@ -23,7 +23,7 @@ export default function MessagingPage() {
   }
 
   return (
-    <div className="d-flex flex-column vh-100 overflow-hidden">
+    <div className="d-flex flex-column h-100 overflow-hidden">
       <div className="d-flex flex-grow-1 overflow-hidden">
         <Sidebar
           activeConversationId={activeConversation?._id}
