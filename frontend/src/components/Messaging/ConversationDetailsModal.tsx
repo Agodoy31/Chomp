@@ -1,22 +1,72 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Modal from 'react-bootstrap/Modal';
 import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import { useAuth } from '../../hooks/useAuth';
+import {
+  isUnauthorizedError,
+  updateConversationTitle,
+} from '../../api/messagingApi';
 
 interface ConversationDetailsModalProps {
   show: boolean;
   onHide: () => void;
   conversation: ConversationDetails | null;
+  onTitleUpdated?: (conversationId: string, newTitle: string) => void;
 }
 
 export default function ConversationDetailsModal({
   show,
   onHide,
   conversation,
+  onTitleUpdated,
 }: ConversationDetailsModalProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [isEditing, setIsEditing] = useState(false);
+  const [titleInput, setTitleInput] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   if (!conversation) return null;
 
   const participants = conversation.participants || [];
+  const permission = participants.find((p) => p.userId._id === user?.id)?.permission;
+  const canEditTitle =
+    (conversation.type === 'GROUP' && permission !== undefined && permission !== 'READ') ||
+    (conversation.type === 'CHANNEL' && permission === 'MODERATE');
+
+  const closeModal = () => {
+    setIsEditing(false);
+    setError(null);
+    onHide();
+  };
+
+  const handleSaveTitle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = titleInput.trim();
+    if (!trimmed) {
+      setError('Title cannot be empty.');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      await updateConversationTitle(conversation._id, trimmed);
+      onTitleUpdated?.(conversation._id, trimmed);
+      setIsEditing(false);
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        closeModal();
+        navigate('/login');
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Failed to update title.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const getSubtitle = () => {
     if (conversation.type === 'CHANNEL') {
@@ -32,7 +82,7 @@ export default function ConversationDetailsModal({
   return (
     <Modal
       show={show}
-      onHide={onHide}
+      onHide={closeModal}
       centered
       contentClassName="border-0 rounded-4 shadow p-3"
     >
@@ -42,7 +92,7 @@ export default function ConversationDetailsModal({
           <h2 className="h5 fw-bold mb-0 text-dark">Conversation details</h2>
           <button
             type="button"
-            onClick={onHide}
+            onClick={closeModal}
             className="btn rounded-circle d-flex align-items-center justify-content-center border-0 p-0"
             style={{
               width: '32px',
@@ -71,9 +121,69 @@ export default function ConversationDetailsModal({
 
         {/* Conversation name and type */}
         <div className="mb-4">
-          <h3 className="h5 fw-bold mb-1 text-dark">
-            {conversation.displayName}
-          </h3>
+          {isEditing ? (
+            <form onSubmit={handleSaveTitle} className="mb-1">
+              <div className="d-flex align-items-center gap-2">
+                <input
+                  type="text"
+                  className="form-control form-control-sm border-0 shadow-none rounded-3 px-3"
+                  style={{ backgroundColor: '#EDF0F5', color: '#1F2937' }}
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  maxLength={100}
+                  aria-label="Conversation title"
+                  disabled={isSaving}
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="btn btn-sm border-0 fw-semibold text-white rounded-3 px-3"
+                  style={{ backgroundColor: '#FF6C2F' }}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm border-0 rounded-3"
+                  style={{ backgroundColor: '#EDF0F5', color: '#374151' }}
+                  onClick={() => {
+                    setIsEditing(false);
+                    setError(null);
+                  }}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </button>
+              </div>
+              {error && (
+                <div className="text-danger small mt-1" role="alert">
+                  {error}
+                </div>
+              )}
+            </form>
+          ) : (
+            <div className="d-flex align-items-center gap-2 mb-1">
+              <h3 className="h5 fw-bold mb-0 text-dark">
+                {conversation.displayName}
+              </h3>
+              {canEditTitle && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitleInput(conversation.title ?? conversation.displayName);
+                    setError(null);
+                    setIsEditing(true);
+                  }}
+                  className="btn btn-sm border-0 py-0 px-2 rounded-3"
+                  style={{ backgroundColor: '#EDF0F5', color: '#3046C3' }}
+                  aria-label="Edit conversation title"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          )}
           <p className="text-secondary small mb-0">{getSubtitle()}</p>
         </div>
 

@@ -237,7 +237,11 @@ export async function updateConversationTitle(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to update conversation title: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to update conversation title: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 }
 

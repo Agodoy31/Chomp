@@ -168,6 +168,19 @@ export default function MessagingPage() {
     );
   };
 
+  const handleTitleUpdated = (conversationId: string, newTitle: string) => {
+    setActiveDetails((prev) =>
+      prev?._id === conversationId
+        ? { ...prev, displayName: newTitle, title: newTitle }
+        : prev
+    );
+    setConversations((prev) =>
+      prev.map((c) =>
+        c._id === conversationId ? { ...c, displayName: newTitle } : c
+      )
+    );
+  };
+
   useEffect(() => {
     if (!loading && !user) {
       navigate('/login');
@@ -206,6 +219,7 @@ export default function MessagingPage() {
         show={isModalDisplayed}
         onHide={() => setIsModalDisplayed(false)}
         conversation={displayedDetails}
+        onTitleUpdated={handleTitleUpdated}
       />
       <NewChatModal
         show={isNewChatModalOpen}
