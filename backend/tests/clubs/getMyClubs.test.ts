@@ -62,7 +62,7 @@ describe('GET /api/clubs/me', () => {
   });
 
   it('omits memberships that are not active', async () => {
-    for (const status of ['INACTIVE', 'REMOVED'] as const) {
+    for (const status of ['INACTIVE', 'REMOVED', 'REJECTED', 'PENDING'] as const) {
       const club = await insertClub(`${status} Club`);
       await Membership.create({ userId: studentId, clubId: club._id, status });
     }

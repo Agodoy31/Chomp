@@ -95,7 +95,7 @@ describe('GET /api/clubs/:clubId/channels', () => {
     expect(res.body.code).toBe('ERR_MEMBER_REQUIRED');
   });
 
-  it.each(['REMOVED', 'INACTIVE'] as const)(
+  it.each(['REMOVED', 'INACTIVE', 'PENDING', 'REJECTED'] as const)(
     'returns 403 when the membership is %s',
     async (status) => {
       const club = await insertClub();
