@@ -1,11 +1,15 @@
-import { IMessage } from '../interfaces/message.interfaces';
+import { IHydratedMessage } from '../interfaces/message.interfaces';
 import { IMessageResponse } from '../interfaces/message.responses';
 
-export function toMessageResponse(message: IMessage): IMessageResponse {
+export function toMessageResponse(message: IHydratedMessage): IMessageResponse {
   const response: IMessageResponse = {
     _id: message._id.toString(),
     conversationId: message.conversationId.toString(),
-    senderId: message.senderId.toString(),
+    sender: {
+      _id: message.sender._id.toString(),
+      firstName: message.sender.firstName,
+      lastName: message.sender.lastName,
+    },
     text: message.removedAt ? 'This message was deleted' : message.text,
     isAnnouncement: message.isAnnouncement,
     isSystem: message.isSystem,

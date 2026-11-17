@@ -6,7 +6,6 @@ import { useAuth } from '../../hooks/useAuth';
 import {
   fetchMessages,
   postMessage,
-  fetchConversationDetails,
   isUnauthorizedError,
 } from '../../api/messagingApi';
 import Message from './Message';
@@ -23,8 +22,8 @@ export default function MessageArea({
   const { user } = useAuth();
   const navigate = useNavigate();
   const currentUserId = user?.id || '';
+
   const [messages, setMessages] = useState<IMessage[]>([]);
-  const [conversationDetails, setConversationDetails] = useState<Conversation | null>(null);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -34,7 +33,7 @@ export default function MessageArea({
 
   const conversationId = conversation?._id;
 
-  // Load messages and full conversation details
+  // Load messages for the active conversation
   useEffect(() => {
     if (!conversationId) return;
     const currentId = conversationId;
@@ -44,15 +43,9 @@ export default function MessageArea({
       setIsLoading(true);
       setLoadError(null);
       try {
-        const [msgData, detailsData] = await Promise.all([
-          fetchMessages(currentId),
-          fetchConversationDetails(currentId).catch(() => null),
-        ]);
+        const msgData = await fetchMessages(currentId);
         if (cancelled) return;
         setMessages(msgData);
-        if (detailsData) {
-          setConversationDetails(detailsData);
-        }
       } catch (err) {
         if (cancelled) return;
         if (isUnauthorizedError(err)) {
@@ -123,14 +116,8 @@ export default function MessageArea({
     }
   };
 
-  const activeParticipants =
-    conversationDetails?.participants || conversation.participants || [];
-
-  const getSenderName = (senderId: string): string => {
-    return (
-      activeParticipants.find((p) => p._id === senderId)?.firstName ||
-      conversation.displayName
-    );
+  const getSenderName = (msg: IMessage): string => {
+    return msg.sender?.firstName || conversation.displayName;
   };
 
   return (
@@ -235,8 +222,8 @@ export default function MessageArea({
               <Message
                 key={msg._id}
                 message={msg}
-                senderName={getSenderName(msg.senderId)}
-                isCurrentUser={Boolean(currentUserId && msg.senderId === currentUserId)}
+                senderName={getSenderName(msg)}
+                isCurrentUser={Boolean(currentUserId && msg.sender?._id === currentUserId)}
               />
             ))}
           </div>

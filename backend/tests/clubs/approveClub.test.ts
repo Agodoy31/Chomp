@@ -6,7 +6,7 @@ import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
 import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
 import { Conversation } from '../../src/messaging/models/Conversation';
-import { ConversationParticipant } from '../../src/messaging/models/ConversationParticipant';
+import { ConversationParticipant, ParticipantPermission } from '../../src/messaging/models/ConversationParticipant';
 import { User } from '../../src/user/models/User';
 import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
@@ -75,6 +75,7 @@ describe('POST /api/clubs/:clubId/approve', () => {
     expect(participants).toHaveLength(1);
     expect(participants[0].conversationId.toString()).toBe(channels[0]._id.toString());
     expect(participants[0].userId.toString()).toBe(proposerId.toString());
+    expect(participants[0].permission).toBe(ParticipantPermission.MODERATE);
 
     expect(res.body.club).toMatchObject({ _id: club._id.toString(), status: 'APPROVED' });
     expect(res.body.membership._id).toBe(memberships[0]._id.toString());
