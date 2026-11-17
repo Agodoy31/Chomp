@@ -215,6 +215,7 @@ export default function MessageArea({
       <div
         ref={messagesContainerRef}
         className="flex-grow-1 overflow-y-auto px-4 py-3"
+        style={{ overflowX: 'hidden' }}
         role="log"
         aria-label="Message history"
       >

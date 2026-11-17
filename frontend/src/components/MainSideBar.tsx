@@ -28,7 +28,7 @@ export default function Sidebar() {
 
     return (
         <div
-            className="d-flex flex-column text-white position-relative"
+            className="d-flex flex-column text-white position-relative flex-shrink-0"
             style={{
                 width: collapsed ? '36px' : '200px',
                 backgroundColor: '#3046C3',
