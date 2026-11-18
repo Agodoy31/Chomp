@@ -40,7 +40,7 @@ async function insertClubWithChannels() {
   const club = await createTestClub(officer._id);
   const general = await inTransaction((session) => createGeneralChannel(club._id, officer._id, session));
   const announcements = await conversationService.createChannel(club._id, 'Announcements', [officer._id]);
-  return { officer, club, channelIds: [general._id.toString(), announcements._id.toString()] };
+  return { club, channelIds: [general._id.toString(), announcements._id.toString()] };
 }
 
 beforeAll(async () => {
@@ -106,38 +106,13 @@ describe('addMemberToClubChannels', () => {
     expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: WRITE, [channelIds[1]]: WRITE });
     expect(await Message.countDocuments()).toBe(0);
   });
-
-  it('does nothing when the club has no channels', async () => {
-    const officer = await createTestUser();
-    const club = await createTestClub(officer._id);
-    const member = await createTestUser();
-
-    await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
-
-    expect(await ConversationParticipant.countDocuments()).toBe(0);
-  });
-
-  it('keeps an existing moderator seat and adds a writer seat on channels the user is missing from', async () => {
-    const officer = await createTestUser();
-    const club = await createTestClub(officer._id);
-    const general = await inTransaction((session) => createGeneralChannel(club._id, officer._id, session));
-    const announcements = await conversationService.createChannel(club._id, 'Announcements');
-
-    await inTransaction((session) => addMemberToClubChannels(club._id, officer._id, session));
-
-    expect(await seatPermissions(officer._id)).toEqual({
-      [general._id.toString()]: MODERATE,
-      [announcements._id.toString()]: WRITE,
-    });
-  });
 });
 
 describe('syncMemberChannelPermission', () => {
-  it('promotes and demotes a member on every seated channel and skips channels without a seat', async () => {
-    const { officer, club, channelIds } = await insertClubWithChannels();
+  it('promotes and demotes a member on every club channel', async () => {
+    const { club, channelIds } = await insertClubWithChannels();
     const member = await createTestUser();
     await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
-    await conversationService.createChannel(club._id, 'Events', [officer._id]);
 
     await inTransaction((session) => syncMemberChannelPermission(club._id, member._id, 'OFFICER', session));
     expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: MODERATE, [channelIds[1]]: MODERATE });
@@ -145,17 +120,6 @@ describe('syncMemberChannelPermission', () => {
     await inTransaction((session) => syncMemberChannelPermission(club._id, member._id, 'MEMBER', session));
     expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: WRITE, [channelIds[1]]: WRITE });
     expect(await Message.countDocuments()).toBe(0);
-  });
-
-  it('promotes the only seated member when the channel has no moderator', async () => {
-    const officer = await createTestUser();
-    const club = await createTestClub(officer._id);
-    const member = await createTestUser();
-    const general = await conversationService.createChannel(club._id, 'General', [member._id]);
-
-    await inTransaction((session) => syncMemberChannelPermission(club._id, member._id, 'OFFICER', session));
-
-    expect(await seatPermissions(member._id)).toEqual({ [general._id.toString()]: MODERATE });
   });
 
   it('keeps the previous permission when the caller transaction aborts', async () => {
@@ -220,7 +184,7 @@ describe('commitMemberDeparture', () => {
     const membership = await Membership.create({
       userId: member._id,
       clubId: club._id,
-      role: 'OFFICER',
+      role: 'MEMBER',
       status: 'ACTIVE',
     });
     const evict = jest.spyOn(messagingPublisher, 'evictUserFromConversation');

@@ -145,6 +145,12 @@ describe('PATCH /api/clubs/:clubId', () => {
 
   it('returns 403 for a member who is not an officer and for an officer who left', async () => {
     const club = await insertOfficerClub();
+    await Membership.create({
+      userId: new mongoose.Types.ObjectId(),
+      clubId: club._id,
+      role: 'OFFICER',
+      status: 'ACTIVE',
+    });
     await Membership.updateOne({ userId: officerId, clubId: club._id }, { status: 'INACTIVE' });
 
     for (const agent of [member, officer]) {
@@ -157,7 +163,7 @@ describe('PATCH /api/clubs/:clubId', () => {
   });
 
   it('returns 404 for a pending, missing, or malformed club', async () => {
-    const pending = await insertOfficerClub({ status: 'PENDING' });
+    const pending = await insertClub({ status: 'PENDING' });
 
     for (const clubId of [pending._id.toString(), new mongoose.Types.ObjectId().toString(), 'nope']) {
       const res = await officer.patch(`/api/clubs/${clubId}`).send({ description: 'Updated' });

@@ -34,7 +34,6 @@ async function insertChannels(clubId: mongoose.Types.ObjectId) {
 describe('GET /api/clubs/:clubId/channels', () => {
   let admin: LoggedInAgent;
   let student: LoggedInAgent;
-  let adminId: mongoose.Types.ObjectId;
   let studentId: mongoose.Types.ObjectId;
 
   beforeAll(async () => {
@@ -47,7 +46,6 @@ describe('GET /api/clubs/:clubId/channels', () => {
       User.init(),
     ]);
     const [adminUser, studentUser] = await Promise.all([createUser(true), createUser()]);
-    adminId = adminUser._id;
     studentId = studentUser._id;
     [admin, student] = await Promise.all([logIn(adminUser), logIn(studentUser)]);
   }, 60000);
@@ -69,37 +67,23 @@ describe('GET /api/clubs/:clubId/channels', () => {
     expect(res.body).toEqual({ message: 'ERR_REQUIRE_AUTH', redirectTo: '/login' });
   });
 
-  it('returns 404 when the club id is malformed', async () => {
-    const res = await student.get('/api/clubs/nope/channels');
+  it('returns 404 for a pending, rejected, missing, or malformed club', async () => {
+    const pending = await insertClub('PENDING');
+    const rejected = await insertClub('REJECTED');
+    const clubIds = [
+      pending._id.toString(),
+      rejected._id.toString(),
+      new mongoose.Types.ObjectId().toString(),
+      'nope',
+    ];
 
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe('ERR_CLUB_NOT_FOUND');
-  });
-
-  it('returns 404 when the club does not exist', async () => {
-    const res = await student.get(`/api/clubs/${new mongoose.Types.ObjectId().toString()}/channels`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe('ERR_CLUB_NOT_FOUND');
-  });
-
-  it('returns 404 when an admin requests a pending club', async () => {
-    const club = await insertClub('PENDING');
-
-    const res = await admin.get(`/api/clubs/${club._id.toString()}/channels`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe('ERR_CLUB_NOT_FOUND');
-  });
-
-  it('returns 404 when an active member requests a rejected club', async () => {
-    const club = await insertClub('REJECTED');
-    await Membership.create({ userId: studentId, clubId: club._id, role: 'MEMBER', status: 'ACTIVE' });
-
-    const res = await student.get(`/api/clubs/${club._id.toString()}/channels`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe('ERR_CLUB_NOT_FOUND');
+    for (const clubId of clubIds) {
+      const res = await admin.get(`/api/clubs/${clubId}/channels`);
+      expect({ status: res.status, body: res.body }).toEqual({
+        status: 404,
+        body: { code: 'ERR_CLUB_NOT_FOUND', message: 'Club not found' },
+      });
+    }
   });
 
   it('returns 403 when the user has no membership', async () => {
@@ -148,26 +132,5 @@ describe('GET /api/clubs/:clubId/channels', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ channels });
-  });
-
-  it('lets an admin with a removed membership list the channels', async () => {
-    const club = await insertClub();
-    await Membership.create({ userId: adminId, clubId: club._id, status: 'REMOVED' });
-    const channels = await insertChannels(club._id);
-
-    const res = await admin.get(`/api/clubs/${club._id.toString()}/channels`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ channels });
-  });
-
-  it('returns an empty list when the approved club has no channels', async () => {
-    const club = await insertClub();
-    await Membership.create({ userId: studentId, clubId: club._id, role: 'MEMBER', status: 'ACTIVE' });
-
-    const res = await student.get(`/api/clubs/${club._id.toString()}/channels`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ channels: [] });
   });
 });

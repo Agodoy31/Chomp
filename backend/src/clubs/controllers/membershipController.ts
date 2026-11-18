@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
 import { z } from 'zod';
-import { getClubChannels } from '../../messaging/services/conversation.service';
 import { addMemberToClubChannels, commitMemberDeparture, commitMemberRole } from '../services/clubChannelAccess';
 import { isAdmin } from '../isAdmin';
 import { Club } from '../model/clubModel';
@@ -131,25 +130,6 @@ export const getClubMembers = async (req: Request<{ clubId: string }>, res: Resp
         a.firstName.localeCompare(b.firstName)
     );
   res.status(200).json({ members });
-};
-
-export const listClubChannels = async (req: Request<{ clubId: string }>, res: Response): Promise<void> => {
-  const userId = req.session.userId!;
-  const clubId = req.params.clubId;
-
-  if (!(await approvedClubExists(clubId))) {
-    sendError(res, clubNotFound());
-    return;
-  }
-  if (!(await isActiveMemberOrAdmin(userId, clubId))) {
-    sendError(res, memberRequired());
-    return;
-  }
-
-  const channels = await getClubChannels(new mongoose.Types.ObjectId(clubId));
-  res.status(200).json({
-    channels: channels.map((channel) => ({ _id: channel._id.toString(), title: channel.title })),
-  });
 };
 
 export const updateMemberRole = async (

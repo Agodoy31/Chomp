@@ -113,7 +113,8 @@ export async function fetchMessages(
  */
 export async function postMessage(
   conversationId: string,
-  text: string
+  text: string,
+  isAnnouncement = false
 ): Promise<IMessage> {
   const response = await fetch(
     `/api/conversations/${conversationId}/messages`,
@@ -123,7 +124,7 @@ export async function postMessage(
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, isAnnouncement }),
     }
   );
 
