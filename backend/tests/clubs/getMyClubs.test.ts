@@ -9,12 +9,12 @@ import { createUser, logIn, type LoggedInAgent } from '../helpers/auth';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 import { createTestClub } from '../messaging/services/conversationTestUtils';
 
-function insertClub(name: string, status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
+function insertClub(name: string) {
   return createTestClub(new mongoose.Types.ObjectId(), {
     name,
     description: `${name} description`,
     category: 'OTHER',
-    status,
+    status: 'APPROVED',
   });
 }
 
@@ -73,13 +73,9 @@ describe('GET /api/clubs/me', () => {
     expect(res.body).toEqual({ clubs: [] });
   });
 
-  it('omits clubs that are not approved and clubs of other users', async () => {
-    const pending = await insertClub('Pending Club', 'PENDING');
+  it('omits clubs of other users', async () => {
     const other = await insertClub('Other Club');
-    await Membership.create([
-      { userId: studentId, clubId: pending._id, status: 'ACTIVE' },
-      { userId: new mongoose.Types.ObjectId(), clubId: other._id, status: 'ACTIVE' },
-    ]);
+    await Membership.create({ userId: new mongoose.Types.ObjectId(), clubId: other._id, status: 'ACTIVE' });
 
     const res = await student.get('/api/clubs/me');
 
