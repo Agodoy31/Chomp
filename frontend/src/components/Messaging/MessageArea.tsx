@@ -232,7 +232,7 @@ export default function MessageArea({
           </div>
         ) : loadError ? (
           <div role="alert" className="text-muted text-center py-4">
-            <div>The server did not respond.</div>
+            <div>{loadError}</div>
             <button
               type="button"
               className="btn btn-outline-primary btn-sm mt-2 rounded-pill px-3"
