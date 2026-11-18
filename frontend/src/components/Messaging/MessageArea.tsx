@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { v7 as uuidv7 } from 'uuid';
 import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
@@ -36,8 +37,10 @@ export default function MessageArea({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState<boolean>(false);
   const [reloadKey, setReloadKey] = useState<number>(0);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const pendingClientIdRef = useRef<string | null>(null);
 
   const conversationId = conversation?._id;
 
@@ -124,14 +127,22 @@ export default function MessageArea({
 
   const handleSend = async (e: React.SubmitEvent) => {
     e.preventDefault();
-    if (!canSend) return;
+    if (!canSend || isSending) return;
     if (!inputText.trim()) return;
 
     const textToSend = inputText.trim();
+    pendingClientIdRef.current ??= uuidv7();
+    setIsSending(true);
     setSendError(null);
 
     try {
-      const newMsg = await postMessage(conversation._id, textToSend);
+      const newMsg = await postMessage(
+        conversation._id,
+        textToSend,
+        false,
+        pendingClientIdRef.current
+      );
+      pendingClientIdRef.current = null;
       setMessages((prev) => mergeMessages(prev, [newMsg]));
       setInputText('');
       onMessageSent(conversation, newMsg);
@@ -142,6 +153,8 @@ export default function MessageArea({
           ? err.message
           : 'Failed to send message. Please try again.'
       );
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -308,14 +321,14 @@ export default function MessageArea({
           {/* Send Arrow Vector Button */}
           <button
             type="submit"
-            disabled={!canSend}
+            disabled={!canSend || isSending}
             className="btn rounded-circle d-flex align-items-center justify-content-center p-0 flex-shrink-0"
             style={{
               width: '36px',
               height: '36px',
-              backgroundColor: canSend ? '#3046C3' : '#9CA3AF',
+              backgroundColor: canSend && !isSending ? '#3046C3' : '#9CA3AF',
               border: 'none',
-              cursor: canSend ? 'pointer' : 'not-allowed',
+              cursor: canSend && !isSending ? 'pointer' : 'not-allowed',
             }}
             aria-label="Send message"
           >
