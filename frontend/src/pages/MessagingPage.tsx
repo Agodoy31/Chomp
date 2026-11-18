@@ -42,10 +42,13 @@ export default function MessagingPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeDetails, setActiveDetails] = useState<ConversationDetails | null>(null);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsReloadKey, setDetailsReloadKey] = useState(0);
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
 
   const handleSelectConversation = (conv: ConversationFeedItem) => {
+    setDetailsError(null);
     setActiveConversationId(conv._id);
   };
 
@@ -63,6 +66,7 @@ export default function MessagingPage() {
       try {
         const details = await fetchConversationDetails(activeConversationId!);
         if (!ignore) {
+          setDetailsError(null);
           setActiveDetails(details);
         }
       } catch (err) {
@@ -72,6 +76,11 @@ export default function MessagingPage() {
           return;
         }
         console.error('Failed to load conversation details:', err);
+        setDetailsError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to load conversation details'
+        );
       }
     }
 
@@ -79,7 +88,7 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [activeConversationId, activeDetails?._id, reloadKey, navigate]);
+  }, [activeConversationId, activeDetails?._id, reloadKey, detailsReloadKey, navigate]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -218,6 +227,11 @@ export default function MessagingPage() {
         <MessageArea
           key={activeConversationId ?? 'empty'}
           conversation={displayedDetails}
+          detailsError={detailsError}
+          onRetryDetails={() => {
+            setDetailsError(null);
+            setDetailsReloadKey((key) => key + 1);
+          }}
           onOpenDetails={() => setIsModalDisplayed(true)}
           onMessageSent={handleMessageSent}
         />

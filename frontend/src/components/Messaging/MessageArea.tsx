@@ -20,12 +20,16 @@ function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
 
 interface MessageAreaProps {
   conversation: ConversationDetails | null;
+  detailsError?: string | null;
+  onRetryDetails?: () => void;
   onOpenDetails: () => void;
   onMessageSent: (conversation: ConversationDetails, message: IMessage) => void;
 }
 
 export default function MessageArea({
   conversation,
+  detailsError = null,
+  onRetryDetails,
   onOpenDetails,
   onMessageSent,
 }: MessageAreaProps) {
@@ -92,7 +96,22 @@ export default function MessageArea({
         className="d-flex flex-column flex-grow-1 h-100 align-items-center justify-content-center text-muted"
         style={{ backgroundColor: '#F5F6FA', minWidth: 0 }}
       >
-        <p className="mb-0 fs-5">Pick a conversation to start chatting</p>
+        {detailsError ? (
+          <div role="alert" className="text-center px-4">
+            <div>{detailsError}</div>
+            {onRetryDetails && (
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm mt-2 rounded-pill px-3"
+                onClick={onRetryDetails}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="mb-0 fs-5">Pick a conversation to start chatting</p>
+        )}
       </section>
     );
   }

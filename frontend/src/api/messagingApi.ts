@@ -72,10 +72,11 @@ export async function fetchConversationDetails(
   });
 
   if (!response.ok) {
-    throw createApiError(
-      `Failed to fetch conversation details: ${response.status}`,
-      response.status
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch conversation details: ${response.status}`
     );
+    throw createApiError(errMessage, response.status);
   }
 
   return response.json();
