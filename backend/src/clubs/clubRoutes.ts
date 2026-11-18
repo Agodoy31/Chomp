@@ -9,12 +9,12 @@ import {
   requestClub,
   updateClub,
 } from './controllers/clubController';
+import { listClubChannels } from './controllers/channelController';
 import {
   getClubMembers,
   getMyClubs,
   joinClub,
   leaveClub,
-  listClubChannels,
   removeMember,
   updateMemberRole,
 } from './controllers/membershipController';
