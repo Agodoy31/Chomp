@@ -83,7 +83,9 @@ export async function fetchMessages(
  */
 export async function postMessage(
   conversationId: string,
-  text: string
+  text: string,
+  isAnnouncement = false
+  
 ): Promise<IMessage> {
   const response = await fetch(
     `/api/conversations/${conversationId}/messages`,
@@ -93,12 +95,24 @@ export async function postMessage(
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, isAnnouncement }),
     }
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to send message: ${response.status}`);
+    let errorMessage = `Failed to send message: ${response.status}`;
+    try {
+      const errorData = await response.json();
+      if (errorData?.message || errorData?.error) {
+        errorMessage = errorData.message || errorData.error;
+      }
+    } catch {
+      // Fall back to default status message if response is not JSON
+    }
+
+    const error = new Error(errorMessage) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
 
   return response.json();
