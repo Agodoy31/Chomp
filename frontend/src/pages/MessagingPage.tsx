@@ -13,7 +13,6 @@ import {
   fetchConversations,
   fetchConversationDetails,
   fetchMyClubNames,
-  isUnauthorizedError,
 } from '../api/messagingApi';
 import { useAuth } from '../hooks/useAuth';
 
@@ -71,10 +70,6 @@ export default function MessagingPage() {
         }
       } catch (err) {
         if (ignore) return;
-        if (isUnauthorizedError(err)) {
-          navigate('/login');
-          return;
-        }
         console.error('Failed to load conversation details:', err);
         setDetailsError(
           err instanceof Error && err.message
@@ -88,7 +83,7 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [activeConversationId, activeDetails?._id, reloadKey, detailsReloadKey, navigate]);
+  }, [activeConversationId, activeDetails?._id, reloadKey, detailsReloadKey]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -119,10 +114,6 @@ export default function MessagingPage() {
         }
       } catch (err) {
         if (ignore) return;
-        if (isUnauthorizedError(err)) {
-          navigate('/login');
-          return;
-        }
         console.error('Error loading conversations:', err);
         setLoadError(
           err instanceof Error ? err.message : 'Failed to load conversations'
@@ -136,7 +127,7 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [reloadKey, loading, user, navigate]);
+  }, [reloadKey, loading, user]);
 
   const handleChatCreated = (newConv: ConversationDetails) => {
     setIsNewChatModalOpen(false);

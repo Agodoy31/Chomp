@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
-import {
-  fetchMessages,
-  postMessage,
-  isUnauthorizedError,
-} from '../../api/messagingApi';
+import { fetchMessages, postMessage } from '../../api/messagingApi';
 import Message from './Message';
 
 // Combine message lists by ID so history and sends can overlap without duplicates
@@ -34,7 +29,6 @@ export default function MessageArea({
   onMessageSent,
 }: MessageAreaProps) {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const currentUserId = user?.id || '';
 
   const [messages, setMessages] = useState<IMessage[]>([]);
@@ -61,10 +55,6 @@ export default function MessageArea({
         if (!ignore) setMessages((prev) => mergeMessages(data, prev));
       } catch (err) {
         if (ignore) return;
-        if (isUnauthorizedError(err)) {
-          navigate('/login');
-          return;
-        }
         console.error('Error loading messages:', err);
         setLoadError(
           err instanceof Error && err.message
@@ -80,7 +70,7 @@ export default function MessageArea({
     return () => {
       ignore = true;
     };
-  }, [conversationId, reloadKey, navigate]);
+  }, [conversationId, reloadKey]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -146,10 +136,6 @@ export default function MessageArea({
       setInputText('');
       onMessageSent(conversation, newMsg);
     } catch (err) {
-      if (isUnauthorizedError(err)) {
-        navigate('/login');
-        return;
-      }
       console.error('Error sending message:', err);
       setSendError(
         err instanceof Error && err.message

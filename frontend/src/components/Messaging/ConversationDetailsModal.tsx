@@ -1,12 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Modal from 'react-bootstrap/Modal';
 import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import { useAuth } from '../../hooks/useAuth';
-import {
-  isUnauthorizedError,
-  updateConversationTitle,
-} from '../../api/messagingApi';
+import { updateConversationTitle } from '../../api/messagingApi';
 
 interface ConversationDetailsModalProps {
   show: boolean;
@@ -22,7 +18,6 @@ export default function ConversationDetailsModal({
   onTitleUpdated,
 }: ConversationDetailsModalProps) {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -57,11 +52,6 @@ export default function ConversationDetailsModal({
       onTitleUpdated?.(conversation._id, trimmed);
       setIsEditing(false);
     } catch (err) {
-      if (isUnauthorizedError(err)) {
-        closeModal();
-        navigate('/login');
-        return;
-      }
       setError(err instanceof Error ? err.message : 'Failed to update title.');
     } finally {
       setIsSaving(false);

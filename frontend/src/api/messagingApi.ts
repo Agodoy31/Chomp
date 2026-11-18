@@ -10,11 +10,10 @@ import type { IMessage } from '../types/Messaging/Message';
 type ApiError = Error & { status?: number };
 
 function createApiError(message: string, status: number): ApiError {
+  if (status === 401) {
+    window.dispatchEvent(new Event('auth:unauthorized'));
+  }
   return Object.assign(new Error(message), { status });
-}
-
-export function isUnauthorizedError(err: unknown): boolean {
-  return err instanceof Error && (err as ApiError).status === 401;
 }
 
 async function parseApiErrorMessage(
@@ -187,7 +186,11 @@ export async function searchUsers(
   });
 
   if (!response.ok) {
-    throw new Error(`The server did not respond with users: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `The server did not respond with users: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
   return response.json();
