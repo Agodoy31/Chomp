@@ -5,6 +5,7 @@ import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchMessages, postMessage } from '../../api/messagingApi';
 import Message from './Message';
+import PostAnnouncementModal from '../modals/AnnouncementModal';
 
 // Combine message lists by ID so history and sends can overlap without duplicates
 function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
@@ -16,6 +17,7 @@ function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
 
 interface MessageAreaProps {
   conversation: ConversationDetails | null;
+  clubName?: string;
   detailsError?: string | null;
   onRetryDetails?: () => void;
   onOpenDetails: () => void;
@@ -24,6 +26,7 @@ interface MessageAreaProps {
 
 export default function MessageArea({
   conversation,
+  clubName,
   detailsError = null,
   onRetryDetails,
   onOpenDetails,
@@ -38,6 +41,8 @@ export default function MessageArea({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState<boolean>(false);
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] =
+    useState<boolean>(false);
   const [reloadKey, setReloadKey] = useState<number>(0);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const pendingClientIdRef = useRef<string | null>(null);
@@ -116,12 +121,17 @@ export default function MessageArea({
     ? participants.find((p) => p.userId._id === currentUserId)
     : undefined;
 
+  const isAdmin = Boolean(user?.isAdmin);
   const areDetailsLoaded = participants.length > 0;
   const canSend =
-    areDetailsLoaded &&
-    currentUserParticipant !== undefined &&
-    currentUserParticipant.permission !== 'READ';
+    isAdmin ||
+    (areDetailsLoaded &&
+      currentUserParticipant !== undefined &&
+      currentUserParticipant.permission !== 'READ');
   const hasNoSendPermission = areDetailsLoaded && !canSend;
+  const canPostAnnouncement =
+    conversation.type === 'CHANNEL' &&
+    (isAdmin || currentUserParticipant?.permission === 'MODERATE');
 
   const headerInitial = conversation.displayName.charAt(0).toUpperCase();
 
@@ -131,6 +141,16 @@ export default function MessageArea({
     if (!inputText.trim()) return;
 
     const textToSend = inputText.trim();
+    const announcementMatch = canPostAnnouncement
+      ? textToSend.match(/^@announcements(?:\s+([\s\S]*))?$/i)
+      : null;
+    if (announcementMatch) {
+      // TODO: pass announcementMatch[1]?.trim() ?? '' to PostAnnouncementModal once it accepts initialText
+      setInputText('');
+      setIsAnnouncementModalOpen(true);
+      return;
+    }
+
     pendingClientIdRef.current ??= uuidv7();
     setIsSending(true);
     setSendError(null);
@@ -352,6 +372,19 @@ export default function MessageArea({
           </button>
         </form>
       </footer>
+
+      {canPostAnnouncement && (
+        <PostAnnouncementModal
+          show={isAnnouncementModalOpen}
+          onHide={() => setIsAnnouncementModalOpen(false)}
+          conversationId={conversation._id}
+          clubName={clubName || conversation.displayName}
+          onSuccess={(newMsg) => {
+            setMessages((prev) => mergeMessages(prev, [newMsg]));
+            onMessageSent(conversation, newMsg);
+          }}
+        />
+      )}
     </section>
   );
 }

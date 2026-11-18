@@ -218,6 +218,11 @@ export default function MessagingPage() {
         <MessageArea
           key={activeConversationId ?? 'empty'}
           conversation={displayedDetails}
+          clubName={
+            displayedDetails?.clubId
+              ? clubNamesById[displayedDetails.clubId]
+              : undefined
+          }
           detailsError={detailsError}
           onRetryDetails={() => {
             setDetailsError(null);

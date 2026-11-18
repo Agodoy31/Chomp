@@ -28,8 +28,10 @@ export default function ConversationDetailsModal({
   const participants = conversation.participants || [];
   const permission = participants.find((p) => p.userId._id === user?.id)?.permission;
   const canEditTitle =
-    (conversation.type === 'GROUP' && permission !== undefined && permission !== 'READ') ||
-    (conversation.type === 'CHANNEL' && permission === 'MODERATE');
+    conversation.type !== 'DIRECT' &&
+    (Boolean(user?.isAdmin) ||
+      (conversation.type === 'GROUP' && permission !== undefined && permission !== 'READ') ||
+      (conversation.type === 'CHANNEL' && permission === 'MODERATE'));
 
   const closeModal = () => {
     setIsEditing(false);
