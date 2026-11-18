@@ -206,7 +206,7 @@ export default function ConversationDetailsModal({
               const displayName = isCurrent
                 ? 'You'
                 : participant.userId.firstName;
-              const initial = (displayName.charAt(0) || 'U').toUpperCase();
+              const initial = displayName.charAt(0).toUpperCase();
 
               return (
                 <div
@@ -214,6 +214,7 @@ export default function ConversationDetailsModal({
                   className="d-flex align-items-center gap-3"
                 >
                   <div
+                    aria-hidden="true"
                     className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
                     style={{
                       width: '36px',

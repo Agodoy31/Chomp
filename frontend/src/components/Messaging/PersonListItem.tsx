@@ -27,6 +27,7 @@ export default function PersonListItem({
     >
       <div className="d-flex align-items-center gap-3">
         <div
+          aria-hidden="true"
           className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
           style={{
             width: '36px',

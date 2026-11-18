@@ -21,11 +21,6 @@ export interface ConversationLastMessage {
   createdAt?: string;
 }
 
-export interface ClubChannel {
-  _id: string;
-  title: string;
-}
-
 // Returned by GET /api/conversations
 export interface ConversationFeedItem {
   _id: string;

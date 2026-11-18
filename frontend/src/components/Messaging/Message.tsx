@@ -15,7 +15,6 @@ export default function Message({
     return (
       <div
         className="text-center text-muted small my-2 py-1"
-        role="status"
         style={{ fontSize: '13px' }}
       >
         {message.text}
@@ -23,8 +22,8 @@ export default function Message({
     );
   }
 
-  const displayName = isCurrentUser ? 'You' : senderName || 'User';
-  const initial = (displayName.charAt(0) || 'U').toUpperCase();
+  const displayName = isCurrentUser ? 'You' : senderName;
+  const initial = displayName.charAt(0).toUpperCase();
 
   const createdDate = new Date(message.createdAt);
   const now = new Date();
@@ -66,6 +65,7 @@ export default function Message({
     >
       {/* Sender Avatar */}
       <div
+        aria-hidden="true"
         className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 fw-bold shadow-sm"
         style={{
           width: '40px',
@@ -87,6 +87,14 @@ export default function Message({
           <span className="text-muted" style={{ fontSize: '12px' }}>
             {timeString}
           </span>
+          {message.isAnnouncement && (
+            <span
+              className="fw-semibold"
+
+            >
+              • Announcement
+            </span>
+          )}
         </div>
         <div
           className={`mt-1${message.removedAt ? ' fst-italic text-muted' : ''}`}

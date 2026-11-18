@@ -17,7 +17,7 @@ export default function SidebarElement({
   const primaryTitle = isChannel
     ? clubName || `# ${conversation.displayName}`
     : conversation.displayName;
-  const initial = primaryTitle?.charAt(0)?.toUpperCase() ?? '';
+  const initial = primaryTitle.charAt(0).toUpperCase();
 
   const previewText = conversation.lastMessage
     ? `${conversation.lastMessage.senderName}: ${conversation.lastMessage.text}`

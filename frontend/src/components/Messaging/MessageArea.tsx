@@ -87,12 +87,13 @@ export default function MessageArea({
 
   if (!conversation) {
     return (
-      <main
+      <section
+        aria-label="Message thread"
         className="d-flex flex-column flex-grow-1 h-100 align-items-center justify-content-center text-muted"
         style={{ backgroundColor: '#F5F6FA', minWidth: 0 }}
       >
         <p className="mb-0 fs-5">Pick a conversation to start chatting</p>
-      </main>
+      </section>
     );
   }
 
@@ -140,11 +141,12 @@ export default function MessageArea({
   };
 
   const getSenderName = (msg: IMessage): string => {
-    return msg.sender?.firstName || conversation.displayName;
+    return `${msg.sender.firstName} ${msg.sender.lastName}`.trim();
   };
 
   return (
-    <main
+    <section
+      aria-label={conversation.displayName}
       className="d-flex flex-column flex-grow-1 h-100"
       style={{ backgroundColor: '#F5F6FA', minWidth: 0 }}
     >
@@ -155,6 +157,7 @@ export default function MessageArea({
       >
         <div className="d-flex align-items-center gap-3">
           <div
+            aria-hidden="true"
             className="rounded-circle d-flex align-items-center justify-content-center fw-bold"
             style={{
               width: '42px',
@@ -331,6 +334,6 @@ export default function MessageArea({
           </button>
         </form>
       </footer>
-    </main>
+    </section>
   );
 }
