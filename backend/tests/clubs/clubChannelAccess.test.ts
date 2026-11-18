@@ -44,7 +44,7 @@ async function insertClubWithChannels() {
   const club = await createTestClub(officer._id);
   const general = await inTransaction((session) => createGeneralChannel(club._id, officer._id, session));
   const announcements = await conversationService.createChannel(club._id, 'Announcements', [officer._id]);
-  return { club, channelIds: [general._id.toString(), announcements._id.toString()] };
+  return { officer, club, channelIds: [general._id.toString(), announcements._id.toString()] };
 }
 
 beforeAll(async () => {
