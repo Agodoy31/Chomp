@@ -12,8 +12,8 @@ export type UpdateClubPayload = {
 };
 
 /**
-- Updates an approved club's details as an active officer or admin.
-- Endpoint: PATCH /api/clubs/:clubId
+ * Updates club's details 
+ * Endpoint: PATCH /api/clubs/:clubId
  */
 export async function updateClub(clubId: string, payload: UpdateClubPayload): Promise<Club> {
  
