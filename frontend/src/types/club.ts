@@ -16,3 +16,18 @@ export type Club = {
     role?: 'MEMBER' | 'OFFICER'
 
 }
+
+// Public club payload from GET /api/clubs/:clubId. Review fields are omitted.
+export type ClubDetails = Pick<Club, '_id' | 'name' | 'description' | 'category' | 'meeting'>
+
+export type ClubChannel = {
+    _id: string
+    title: string
+}
+
+export type ClubMember = {
+    userId: string
+    firstName: string
+    lastName: string
+    role: 'MEMBER' | 'OFFICER'
+}
