@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { z } from 'zod';
-import { CONVERSATION_TITLE_REGEX } from '../../messaging/validators/conversation.validator';
 import { getClubChannels } from '../../messaging/services/conversation.service';
+import { updateConversationTitleBodySchema } from '../../messaging/validators/conversation.validator';
 import { approvedClubExists, canManageChannels, isActiveMemberOrAdmin } from '../clubAccess';
 import {
   channelNotFound,
@@ -18,10 +17,6 @@ import {
   removeClubChannel as commitChannelRemoval,
   renameClubChannel as commitChannelRename,
 } from '../services/clubChannelAccess';
-
-const channelTitleSchema = z.object({
-  title: z.string().trim().min(1).max(100).regex(CONVERSATION_TITLE_REGEX),
-});
 
 function sendChannel(res: Response, status: number, result: ChannelCommandResult): void {
   if ('error' in result) {
@@ -63,7 +58,7 @@ export const createClubChannel = async (req: Request<{ clubId: string }>, res: R
     return;
   }
 
-  const parsed = channelTitleSchema.safeParse(req.body ?? {});
+  const parsed = updateConversationTitleBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     sendError(res, invalidChannelTitle());
     return;
@@ -96,7 +91,7 @@ export const renameClubChannel = async (
     return;
   }
 
-  const parsed = channelTitleSchema.safeParse(req.body ?? {});
+  const parsed = updateConversationTitleBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     sendError(res, invalidChannelTitle());
     return;
