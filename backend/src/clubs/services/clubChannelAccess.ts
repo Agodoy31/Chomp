@@ -14,7 +14,6 @@ import {
 } from '../../messaging/services/conversation.service';
 import { messagingPublisher } from '../../messaging/sockets/messagingPublisher';
 import { CONVERSATION_TITLE_REGEX } from '../../messaging/validators/conversation.validator';
-import { User } from '../../user/models/User';
 import { type ClientError } from '../interfaces/clubs.interface';
 import {
   channelNotFound,
@@ -236,20 +235,6 @@ function titleTaken(clubId: Types.ObjectId, title: string, session?: ClientSessi
   return query;
 }
 
-async function activeChannelRoster(clubId: Types.ObjectId, session: ClientSession) {
-  const memberships = await Membership.find({ clubId, status: 'ACTIVE' }).select('userId role').session(session).lean();
-  if (memberships.length === 0) {
-    return [];
-  }
-
-  const users = await User.find({ _id: { $in: memberships.map((membership) => membership.userId) } })
-    .select('_id')
-    .session(session)
-    .lean();
-  const existing = new Set(users.map((user) => user._id.toString()));
-  return memberships.filter((membership) => existing.has(membership.userId.toString()));
-}
-
 export async function createClubChannel(input: { clubId: Types.ObjectId; title: string }): Promise<ChannelCommandResult> {
   const title = readableTitle(input.title);
   if (!title) {
@@ -263,21 +248,22 @@ export async function createClubChannel(input: { clubId: Types.ObjectId; title: 
         throw new ChannelCommandError(channelTitleExists());
       }
 
-      const created = await createChannel(input.clubId, title, [], session);
+      const roster = await Membership.find({ clubId: input.clubId, status: 'ACTIVE' })
+        .select('userId role')
+        .session(session)
+        .lean();
       // Joining later walks every club channel, so the people already here have to be seated now.
-      // Officers moderate and members write, which is the same split a role change applies.
-      const roster = await activeChannelRoster(input.clubId, session);
-      if (roster.length > 0) {
-        await addParticipantsToConversation(
-          created._id,
-          roster.map((membership) => membership.userId),
-          session
-        );
-        const updates: PermissionUpdate[] = roster.map((membership) => [
-          membership.userId,
-          CHANNEL_PERMISSION_BY_ROLE[membership.role],
-        ]);
-        await updateParticipantPermissions(created._id, undefined, updates, session);
+      const created = await createChannel(
+        input.clubId,
+        title,
+        roster.map((membership) => membership.userId),
+        session
+      );
+      const officerUpdates: PermissionUpdate[] = roster
+        .filter((membership) => membership.role === 'OFFICER')
+        .map((membership) => [membership.userId, CHANNEL_PERMISSION_BY_ROLE.OFFICER]);
+      if (officerUpdates.length > 0) {
+        await updateParticipantPermissions(created._id, undefined, officerUpdates, session);
       }
       return { _id: created._id.toString(), title: created.title ?? title };
     });
