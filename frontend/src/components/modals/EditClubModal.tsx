@@ -1,4 +1,4 @@
-import { useEffect, useState, type SyntheticEvent } from 'react';
+import { useState, type SyntheticEvent } from 'react';
 import { Alert, Button, Form, Modal } from 'react-bootstrap';
 import { updateClub, type UpdateClubPayload } from '../../api/clubApi';
 import type { Club, ClubCategory } from '../../types/club';
@@ -18,28 +18,33 @@ const CLUB_CATEGORY_OPTIONS: { value: ClubCategory; label: string }[] = [
 ];
 
 export function EditClubModal({ show, club, onHide, onSuccess }: EditClubModalProps) {
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState<ClubCategory | ''>('');
-  const [description, setDescription] = useState('');
-  const [meetingDay, setMeetingDay] = useState('');
-  const [meetingTime, setMeetingTime] = useState('');
-  const [meetingLocation, setMeetingLocation] = useState('');
+  return (
+    <Modal
+      show={show}
+      onHide={onHide}
+      centered
+      aria-labelledby="edit-club-modal-title"
+    >
+      {club && <EditClubForm club={club} onHide={onHide} onSuccess={onSuccess} />}
+    </Modal>
+  );
+}
+
+type EditClubFormProps = {
+  club: Club;
+  onHide: () => void;
+  onSuccess?: (updatedClub: Club) => void;
+};
+
+function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
+  const [name, setName] = useState(club.name ?? '');
+  const [category, setCategory] = useState<ClubCategory | ''>(club.category ?? '');
+  const [description, setDescription] = useState(club.description ?? '');
+  const [meetingDay, setMeetingDay] = useState(club.meeting?.day ?? '');
+  const [meetingTime, setMeetingTime] = useState(club.meeting?.time ?? '');
+  const [meetingLocation, setMeetingLocation] = useState(club.meeting?.location ?? '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (show && club) {
-      setName(club.name ?? '');
-      setCategory(club.category ?? '');
-      setDescription(club.description ?? '');
-      setMeetingDay(club.meeting?.day ?? '');
-      setMeetingTime(club.meeting?.time ?? '');
-      setMeetingLocation(club.meeting?.location ?? '');
-      setError(null);
-    }
-  }, [show, club]);
-
-  
 
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -93,12 +98,7 @@ export function EditClubModal({ show, club, onHide, onSuccess }: EditClubModalPr
   }
 
   return (
-    <Modal
-      show={show}
-      onHide={onHide}
-      centered
-      aria-labelledby="edit-club-modal-title"
-    >
+    <>
       <Modal.Header 
         closeButton 
         closeLabel="Close edit club modal"
@@ -210,6 +210,6 @@ export function EditClubModal({ show, club, onHide, onSuccess }: EditClubModalPr
           </Button>
         </Modal.Footer>
       </Form>
-    </Modal>
+    </>
   );
 }
