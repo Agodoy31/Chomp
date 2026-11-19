@@ -13,16 +13,8 @@ import {
   type PermissionUpdate,
 } from '../../messaging/services/conversation.service';
 import { messagingPublisher } from '../../messaging/sockets/messagingPublisher';
-import { CONVERSATION_TITLE_REGEX } from '../../messaging/validators/conversation.validator';
 import { type ClientError } from '../interfaces/clubs.interface';
-import {
-  channelNotFound,
-  channelTitleExists,
-  clubNotFound,
-  invalidChannelTitle,
-  isDuplicateKey,
-  lastChannel,
-} from '../errors';
+import { cannotRenameGeneral, channelNotFound, channelTitleExists, clubNotFound, lastChannel } from '../errors';
 import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
 
@@ -192,62 +184,24 @@ class ChannelCommandError extends Error {
   }
 }
 
-function readableTitle(title: string): string | null {
-  const trimmed = title.trim();
-  if (trimmed.length < 1 || trimmed.length > 100 || !CONVERSATION_TITLE_REGEX.test(trimmed)) {
-    return null;
-  }
-  return trimmed;
-}
-
 function ruledChannelError(error: unknown): ClientError | null {
   return error instanceof ChannelCommandError ? error.clientError : null;
 }
 
 function channelWriteError(error: unknown): ClientError | null {
-  if (isDuplicateKey(error) || (error instanceof MessagingError && error.code === MessagingErrorCode.CHANNEL_TITLE_EXISTS)) {
+  if (error instanceof MessagingError && error.code === MessagingErrorCode.CHANNEL_TITLE_EXISTS) {
     return channelTitleExists();
   }
   if (error instanceof MessagingError && error.code === MessagingErrorCode.CLUB_NOT_FOUND) {
     return clubNotFound();
   }
-  if (
-    error instanceof MessagingError &&
-    (error.code === MessagingErrorCode.TITLE_REQUIRED ||
-      error.code === MessagingErrorCode.VALIDATION_FAILED ||
-      error.code === MessagingErrorCode.INVALID_INPUT)
-  ) {
-    return invalidChannelTitle();
-  }
   return null;
 }
 
-function titleTaken(clubId: Types.ObjectId, title: string, session?: ClientSession, exceptChannelId?: Types.ObjectId) {
-  const query = Conversation.exists({
-    clubId,
-    type: ConversationType.CHANNEL,
-    title,
-    ...(exceptChannelId ? { _id: { $ne: exceptChannelId } } : {}),
-  }).collation({ locale: 'en', strength: 2 });
-  if (session) {
-    query.session(session);
-  }
-  return query;
-}
-
 export async function createClubChannel(input: { clubId: Types.ObjectId; title: string }): Promise<ChannelCommandResult> {
-  const title = readableTitle(input.title);
-  if (!title) {
-    return { error: invalidChannelTitle() };
-  }
-
   const session = await mongoose.startSession();
   try {
     const channel = await session.withTransaction(async () => {
-      if (await titleTaken(input.clubId, title, session)) {
-        throw new ChannelCommandError(channelTitleExists());
-      }
-
       const roster = await Membership.find({ clubId: input.clubId, status: 'ACTIVE' })
         .select('userId role')
         .session(session)
@@ -255,7 +209,7 @@ export async function createClubChannel(input: { clubId: Types.ObjectId; title: 
       // Joining later walks every club channel, so the people already here have to be seated now.
       const created = await createChannel(
         input.clubId,
-        title,
+        input.title,
         roster.map((membership) => membership.userId),
         session
       );
@@ -265,11 +219,11 @@ export async function createClubChannel(input: { clubId: Types.ObjectId; title: 
       if (officerUpdates.length > 0) {
         await updateParticipantPermissions(created._id, undefined, officerUpdates, session);
       }
-      return { _id: created._id.toString(), title: created.title ?? title };
+      return { _id: created._id.toString(), title: created.title ?? input.title };
     });
     return { channel };
   } catch (error) {
-    const ruled = ruledChannelError(error) ?? channelWriteError(error);
+    const ruled = channelWriteError(error);
     if (ruled) {
       return { error: ruled };
     }
@@ -285,11 +239,6 @@ export async function renameClubChannel(input: {
   title: string;
   requesterId: Types.ObjectId;
 }): Promise<ChannelCommandResult> {
-  const title = readableTitle(input.title);
-  if (!title) {
-    return { error: invalidChannelTitle() };
-  }
-
   const channel = await Conversation.findOne({
     _id: input.channelId,
     clubId: input.clubId,
@@ -300,16 +249,16 @@ export async function renameClubChannel(input: {
   if (!channel) {
     return { error: channelNotFound() };
   }
-  if (channel.title === title) {
-    return { channel: { _id: input.channelId.toString(), title } };
+  if (channel.title === input.title) {
+    return { channel: { _id: input.channelId.toString(), title: input.title } };
   }
-  if (await titleTaken(input.clubId, title, undefined, input.channelId)) {
-    return { error: channelTitleExists() };
+  if (channel.title === GENERAL_CHANNEL_TITLE) {
+    return { error: cannotRenameGeneral() };
   }
 
   try {
-    const updated = await updateConversationTitle(input.channelId, input.requesterId, title);
-    const savedTitle = updated.title ?? title;
+    const updated = await updateConversationTitle(input.channelId, input.requesterId, input.title);
+    const savedTitle = updated.title ?? input.title;
     messagingPublisher.conversationRenamed(input.channelId.toString(), savedTitle);
     return { channel: { _id: updated._id.toString(), title: savedTitle } };
   } catch (error) {

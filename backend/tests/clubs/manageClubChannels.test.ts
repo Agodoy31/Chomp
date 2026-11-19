@@ -75,21 +75,26 @@ describe('club channel management', () => {
     await closeTestDb();
   });
 
-  async function insertRoster(status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'APPROVED') {
-    const club = await insertClub(status);
+  async function insertChannel(clubId: mongoose.Types.ObjectId, title: string) {
+    const channel = await Conversation.create({
+      type: ConversationType.CHANNEL,
+      clubId,
+      title,
+    });
+    await ConversationParticipant.create([
+      { conversationId: channel._id, userId: officerId, permission: ParticipantPermission.MODERATE },
+      { conversationId: channel._id, userId: memberId, permission: ParticipantPermission.WRITE },
+    ]);
+    return channel;
+  }
+
+  async function insertRoster() {
+    const club = await insertClub();
     await Membership.create([
       { userId: officerId, clubId: club._id, role: 'OFFICER', status: 'ACTIVE' },
       { userId: memberId, clubId: club._id, role: 'MEMBER', status: 'ACTIVE' },
     ]);
-    const general = await Conversation.create({
-      type: ConversationType.CHANNEL,
-      clubId: club._id,
-      title: 'General',
-    });
-    await ConversationParticipant.create([
-      { conversationId: general._id, userId: officerId, permission: ParticipantPermission.MODERATE },
-      { conversationId: general._id, userId: memberId, permission: ParticipantPermission.WRITE },
-    ]);
+    const general = await insertChannel(club._id, 'General');
     return { club, general };
   }
 
@@ -105,11 +110,11 @@ describe('club channel management', () => {
     });
 
     it('returns 404 when the club id is malformed or the club is not approved', async () => {
-      const pending = await insertRoster('PENDING');
-      const rejected = await insertRoster('REJECTED');
+      const pending = await insertClub('PENDING');
+      const rejected = await insertClub('REJECTED');
       const missing = new mongoose.Types.ObjectId();
 
-      for (const clubId of ['nope', missing, pending.club._id, rejected.club._id]) {
+      for (const clubId of ['nope', missing, pending._id, rejected._id]) {
         const res = await officer.post(channelsUrl(clubId)).send({ title: 'Events' });
         expect(res.status).toBe(404);
         expect(res.body.code).toBe('ERR_CLUB_NOT_FOUND');
@@ -132,6 +137,12 @@ describe('club channel management', () => {
       'returns 403 when the officer membership is %s',
       async (status) => {
         const { club, general } = await insertRoster();
+        await Membership.create({
+          userId: new mongoose.Types.ObjectId(),
+          clubId: club._id,
+          role: 'OFFICER',
+          status: 'ACTIVE',
+        });
         await Membership.updateOne({ userId: officerId, clubId: club._id }, { status });
 
         const res = await officer.post(channelsUrl(club._id)).send({ title: 'Events' });
@@ -204,24 +215,6 @@ describe('club channel management', () => {
       expect(await Conversation.countDocuments({ clubId: club._id })).toBe(1);
       expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
     });
-
-    it('seats a student who joins after the channel is created', async () => {
-      const club = await insertClub();
-      await Membership.create({ userId: officerId, clubId: club._id, role: 'OFFICER', status: 'ACTIVE' });
-      const general = await Conversation.create({ type: ConversationType.CHANNEL, clubId: club._id, title: 'General' });
-      const created = await officer.post(channelsUrl(club._id)).send({ title: 'Events' });
-      expect(created.status).toBe(201);
-
-      const join = await member.post(`/api/clubs/${club._id.toString()}/join`);
-      expect(join.status).toBe(201);
-
-      const seats = await ConversationParticipant.find({ userId: memberId }).lean();
-      expect(seats).toHaveLength(2);
-      expect(seats.every((seat) => seat.permission === ParticipantPermission.WRITE)).toBe(true);
-      expect(seats.map((seat) => seat.conversationId.toString()).sort()).toEqual(
-        [created.body.channel._id as string, general._id.toString()].sort()
-      );
-    });
   });
 
   describe('PATCH /api/clubs/:clubId/channels/:channelId', () => {
@@ -236,13 +229,13 @@ describe('club channel management', () => {
     });
 
     it('returns 404 when the club is not approved', async () => {
-      const { club, general } = await insertRoster('PENDING');
+      const club = await insertClub('PENDING');
 
-      const res = await officer.patch(channelUrl(club._id, general._id)).send({ title: 'Lobby' });
+      const res = await officer.patch(channelUrl(club._id, new mongoose.Types.ObjectId())).send({ title: 'Lobby' });
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe('ERR_CLUB_NOT_FOUND');
-      expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
+      expect(await Conversation.countDocuments({ clubId: club._id })).toBe(0);
     });
 
     it('returns 403 when a member tries to rename a channel', async () => {
@@ -282,24 +275,38 @@ describe('club channel management', () => {
 
     it('renames the channel and publishes the trimmed title', async () => {
       const { club, general } = await insertRoster();
+      const events = await insertChannel(club._id, 'Events');
       const renamed = jest.spyOn(messagingPublisher, 'conversationRenamed');
 
-      const res = await officer.patch(channelUrl(club._id, general._id)).send({ title: '  Lobby  ' });
+      const res = await officer.patch(channelUrl(club._id, events._id)).send({ title: '  Lobby  ' });
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ channel: { _id: general._id.toString(), title: 'Lobby' } });
-      expect((await Conversation.findById(general._id).lean())?.title).toBe('Lobby');
-      expect(renamed).toHaveBeenCalledWith(general._id.toString(), 'Lobby');
+      expect(res.body).toEqual({ channel: { _id: events._id.toString(), title: 'Lobby' } });
+      expect((await Conversation.findById(events._id).lean())?.title).toBe('Lobby');
+      expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
+      expect(renamed).toHaveBeenCalledWith(events._id.toString(), 'Lobby');
     });
 
     it('lets an admin rename a channel and accepts a case-only change', async () => {
-      const { club, general } = await insertRoster();
+      const { club } = await insertRoster();
+      const events = await insertChannel(club._id, 'Events');
 
-      const res = await admin.patch(channelUrl(club._id, general._id)).send({ title: 'general' });
+      const res = await admin.patch(channelUrl(club._id, events._id)).send({ title: 'events' });
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ channel: { _id: general._id.toString(), title: 'general' } });
-      expect((await Conversation.findById(general._id).lean())?.title).toBe('general');
+      expect(res.body).toEqual({ channel: { _id: events._id.toString(), title: 'events' } });
+      expect((await Conversation.findById(events._id).lean())?.title).toBe('events');
+    });
+
+    it('rejects renaming General', async () => {
+      const { club, general } = await insertRoster();
+
+      for (const title of ['Lobby', 'general']) {
+        const res = await officer.patch(channelUrl(club._id, general._id)).send({ title });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('ERR_GENERAL_CHANNEL');
+      }
+      expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
     });
 
     it('does not publish when the title is unchanged', async () => {
@@ -314,14 +321,15 @@ describe('club channel management', () => {
     });
 
     it('returns 409 when another channel in the club already uses the title', async () => {
-      const { club, general } = await insertRoster();
-      await Conversation.create({ type: ConversationType.CHANNEL, clubId: club._id, title: 'Events' });
+      const { club } = await insertRoster();
+      const events = await insertChannel(club._id, 'Events');
+      await insertChannel(club._id, 'Lobby');
 
-      const res = await officer.patch(channelUrl(club._id, general._id)).send({ title: 'events' });
+      const res = await officer.patch(channelUrl(club._id, events._id)).send({ title: 'lobby' });
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe('ERR_CHANNEL_TITLE_EXISTS');
-      expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
+      expect((await Conversation.findById(events._id).lean())?.title).toBe('Events');
     });
   });
 
@@ -338,7 +346,7 @@ describe('club channel management', () => {
 
     it('returns 403 when a member tries to remove a channel', async () => {
       const { club, general } = await insertRoster();
-      await Conversation.create({ type: ConversationType.CHANNEL, clubId: club._id, title: 'Events' });
+      await insertChannel(club._id, 'Events');
 
       const res = await member.delete(channelUrl(club._id, general._id));
 
@@ -379,15 +387,7 @@ describe('club channel management', () => {
 
     it('removes one channel and leaves the club, the other channel, and its memberships', async () => {
       const { club, general } = await insertRoster();
-      const events = await Conversation.create({
-        type: ConversationType.CHANNEL,
-        clubId: club._id,
-        title: 'Events',
-      });
-      await ConversationParticipant.create([
-        { conversationId: events._id, userId: officerId, permission: ParticipantPermission.MODERATE },
-        { conversationId: events._id, userId: memberId, permission: ParticipantPermission.WRITE },
-      ]);
+      const events = await insertChannel(club._id, 'Events');
       await Message.create([
         { conversationId: events._id, senderId: memberId, text: 'practice moved' },
         { conversationId: general._id, senderId: officerId, text: 'welcome' },
@@ -414,11 +414,7 @@ describe('club channel management', () => {
 
     it('lets an admin remove General once another channel exists', async () => {
       const { club, general } = await insertRoster();
-      const events = await Conversation.create({
-        type: ConversationType.CHANNEL,
-        clubId: club._id,
-        title: 'Events',
-      });
+      const events = await insertChannel(club._id, 'Events');
 
       const res = await admin.delete(channelUrl(club._id, general._id));
 

@@ -85,6 +85,9 @@ export function channelTitleExists(): ClientError {
         message: 'A channel with this title already exists in the club',
     };
 }
+export function cannotRenameGeneral(): ClientError {
+    return { status: 409, code: 'ERR_GENERAL_CHANNEL', message: 'The General channel cannot be renamed' };
+}
 export function lastChannel(): ClientError {
     return { status: 409, code: 'ERR_LAST_CHANNEL', message: 'A club must keep at least one channel' };
 }
