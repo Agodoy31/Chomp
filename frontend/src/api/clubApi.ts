@@ -1,4 +1,5 @@
 import type { Club, ClubCategory } from '../types/club';
+import type { ClubChannel, ClubDetails, ClubMember } from '../types/club';
 
 export type UpdateClubPayload = {
   name?: string;
@@ -27,22 +28,75 @@ async function readJson(response: Response) {
   }
 }
 
+function clubUrl(clubId: string, suffix = ''): string {
+  return `/api/clubs/${encodeURIComponent(clubId)}${suffix}`;
+}
+
+async function request(url: string, init?: RequestInit) {
+  const response = await fetch(url, {
+    credentials: 'include',
+    ...init,
+  });
+  const data = await readJson(response);
+
+  if (!response.ok) {
+    const message = data?.message || 'Something went wrong. Please try again.';
+    throw createApiError(message, response.status, data?.code);
+  }
+
+  return data;
+}
 
 /**
- * Updates club's details 
+ * Approved club details for the member info view.
+ * Endpoint: GET /api/clubs/:clubId
+ */
+export async function getClub(clubId: string, signal?: AbortSignal): Promise<ClubDetails> {
+  const data = await request(clubUrl(clubId), { signal });
+  if (!data?.club) {
+    throw createApiError('Could not load this club. Please try again.', 500);
+  }
+  return data.club;
+}
+
+/**
+ * Channels a member can open from the club info view.
+ * Endpoint: GET /api/clubs/:clubId/channels
+ */
+export async function getClubChannels(clubId: string, signal?: AbortSignal): Promise<ClubChannel[]> {
+  const data = await request(clubUrl(clubId, '/channels'), { signal });
+  return data?.channels ?? [];
+}
+
+/**
+ * Active members, officers first.
+ * Endpoint: GET /api/clubs/:clubId/members
+ */
+export async function getClubMembers(clubId: string, signal?: AbortSignal): Promise<ClubMember[]> {
+  const data = await request(clubUrl(clubId, '/members'), { signal });
+  return data?.members ?? [];
+}
+
+/**
+ * Leaves the club and drops the member from its channels.
+ * Endpoint: POST /api/clubs/:clubId/leave
+ */
+export async function leaveClub(clubId: string): Promise<void> {
+  await request(clubUrl(clubId, '/leave'), { method: 'POST' });
+}
+
+/**
+ * Updates club's details
  * Endpoint: PATCH /api/clubs/:clubId
  */
 export async function updateClub(clubId: string, payload: UpdateClubPayload): Promise<UpdatedClubResponse> {
-  const url = `/api/clubs/${encodeURIComponent(clubId)}`;
- 
-  const response = await fetch(url, {
+  const response = await fetch(clubUrl(clubId), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify(payload),
   });
 
-  
   const data = await readJson(response);
   if (!response.ok) {
     if (data?.code === 'ERR_REQUIRE_AUTH') {
@@ -63,7 +117,5 @@ export async function updateClub(clubId: string, payload: UpdateClubPayload): Pr
     );
   }
 
-
   return data.club;
-
 }
