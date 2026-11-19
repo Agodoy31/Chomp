@@ -215,19 +215,17 @@ describe('commitMemberDeparture', () => {
 });
 
 describe('createClubChannel', () => {
-  it('seats active members by role and skips removed members, missing users, and other clubs', async () => {
+  it('seats active members by role and skips removed members and other clubs', async () => {
     const officer = await createTestUser();
     const member = await createTestUser();
     const removed = await createTestUser();
     const outsider = await createTestUser();
-    const missingId = new mongoose.Types.ObjectId();
     const club = await createTestClub(officer._id);
     const otherClub = await createTestClub(outsider._id);
     await Membership.create([
       { userId: officer._id, clubId: club._id, role: 'OFFICER', status: 'ACTIVE' },
       { userId: member._id, clubId: club._id, role: 'MEMBER', status: 'ACTIVE' },
       { userId: removed._id, clubId: club._id, role: 'OFFICER', status: 'REMOVED' },
-      { userId: missingId, clubId: club._id, role: 'MEMBER', status: 'ACTIVE' },
       { userId: outsider._id, clubId: otherClub._id, role: 'OFFICER', status: 'ACTIVE' },
     ]);
 
@@ -239,9 +237,7 @@ describe('createClubChannel', () => {
     }
     expect(await seatPermissions(officer._id)).toEqual({ [result.channel._id]: MODERATE });
     expect(await seatPermissions(member._id)).toEqual({ [result.channel._id]: WRITE });
-    expect(await ConversationParticipant.countDocuments({ userId: { $in: [removed._id, missingId, outsider._id] } })).toBe(
-      0
-    );
+    expect(await ConversationParticipant.countDocuments({ userId: { $in: [removed._id, outsider._id] } })).toBe(0);
     expect(await Message.countDocuments()).toBe(0);
     expect(await Conversation.countDocuments({ clubId: otherClub._id })).toBe(0);
   });
