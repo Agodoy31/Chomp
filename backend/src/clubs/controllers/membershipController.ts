@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
 import { z } from 'zod';
+import { approvedClubExists, canManageMembers, isActiveMemberOrAdmin } from '../clubAccess';
 import { addMemberToClubChannels, commitMemberDeparture, commitMemberRole } from '../services/clubChannelAccess';
-import { isAdmin } from '../isAdmin';
 import { Club } from '../model/clubModel';
 import { Membership, type Membership as MembershipShape } from '../model/membershipModel';
 import { type MembershipStatus, type ClientError } from '../interfaces/clubs.interface';
@@ -74,20 +74,6 @@ async function isLastActiveOfficer(clubId: string, userId: string): Promise<bool
     userId: { $ne: userId },
   });
   return !otherOfficer;
-}
-
-async function approvedClubExists(clubId: string): Promise<boolean> {
-  return mongoose.isValidObjectId(clubId) && Boolean(await Club.exists({ _id: clubId, status: 'APPROVED' }));
-}
-
-async function isActiveMemberOrAdmin(userId: string, clubId: string): Promise<boolean> {
-  const isMember = await Membership.exists({ userId, clubId, status: 'ACTIVE' });
-  return Boolean(isMember) || Boolean(await isAdmin(userId));
-}
-
-async function canManageMembers(userId: string, clubId: string): Promise<boolean> {
-  const isOfficer = await Membership.exists({ userId, clubId, role: 'OFFICER', status: 'ACTIVE' });
-  return Boolean(isOfficer) || Boolean(await isAdmin(userId));
 }
 
 function findActiveMembership(userId: string, clubId: string) {

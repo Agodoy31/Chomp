@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { CONVERSATION_TITLE_REGEX } from '../../messaging/validators/conversation.validator';
 import { getClubChannels } from '../../messaging/services/conversation.service';
+import { approvedClubExists, canManageChannels, isActiveMemberOrAdmin } from '../clubAccess';
 import {
   channelNotFound,
   clubNotFound,
@@ -11,9 +12,6 @@ import {
   officerRequired,
   sendError,
 } from '../errors';
-import { isAdmin } from '../isAdmin';
-import { Club } from '../model/clubModel';
-import { Membership } from '../model/membershipModel';
 import {
   type ChannelCommandResult,
   createClubChannel as commitClubChannel,
@@ -24,20 +22,6 @@ import {
 const channelTitleSchema = z.object({
   title: z.string().trim().min(1).max(100).regex(CONVERSATION_TITLE_REGEX),
 });
-
-async function approvedClubExists(clubId: string): Promise<boolean> {
-  return mongoose.isValidObjectId(clubId) && Boolean(await Club.exists({ _id: clubId, status: 'APPROVED' }));
-}
-
-async function isActiveMemberOrAdmin(userId: string, clubId: string): Promise<boolean> {
-  const isMember = await Membership.exists({ userId, clubId, status: 'ACTIVE' });
-  return Boolean(isMember) || Boolean(await isAdmin(userId));
-}
-
-async function canManageChannels(userId: string, clubId: string): Promise<boolean> {
-  const isOfficer = await Membership.exists({ userId, clubId, role: 'OFFICER', status: 'ACTIVE' });
-  return Boolean(isOfficer) || Boolean(await isAdmin(userId));
-}
 
 function sendChannel(res: Response, status: number, result: ChannelCommandResult): void {
   if ('error' in result) {
