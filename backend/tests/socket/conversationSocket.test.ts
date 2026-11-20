@@ -336,4 +336,35 @@ describe('real conversation sockets', () => {
     expect(await secondMessageEvent).toMatchObject({ text: 'Need to reserve shoes' });
     expect(duplicateInboxSpy).not.toHaveBeenCalled();
   }, 60000);
+
+  test('rejects chat:join_room for a soft-deleted conversation even with a stale participant row', async () => {
+    const student = await createSignedInStudent({
+      firstName: 'Turlington',
+      lastName: 'Tabler',
+      email: 'flyer.dodger@ufl.edu',
+    });
+    const peer = await createSignedInStudent({
+      firstName: 'Reitz',
+      lastName: 'FoodCourter',
+      email: 'subway_line_eternal@ufl.edu',
+    });
+
+    const created = await student.agent.post('/api/conversations').send({
+      type: 'GROUP',
+      title: 'Broward Dining Room',
+      participantIds: [peer.user._id.toString()],
+    }).expect(201);
+    const groupId: string = created.body._id;
+
+    await Conversation.updateOne({ _id: groupId }, { $set: { deleted: true } });
+
+    const clientSocket = await connect(student);
+    const ack = await join(clientSocket, groupId);
+    expect(ack).toEqual({
+      ok: false,
+      code: 'ERR_CONVERSATION_NOT_FOUND',
+      message: 'Conversation not found',
+    });
+  }, 60000);
 });
+

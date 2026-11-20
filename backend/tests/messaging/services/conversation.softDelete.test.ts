@@ -13,10 +13,25 @@ import { Conversation, ConversationType } from '../../../src/messaging/models/Co
 import { ConversationParticipant } from '../../../src/messaging/models/ConversationParticipant';
 import { Message } from '../../../src/messaging/models/Message';
 import {
+  addParticipantsToConversation,
   createChannel,
+  createDirectConversation,
+  createGroupConversation,
+  getClubChannels,
+  getConversationDetails,
+  getUserConversationFeedItem,
+  getUserConversations,
+  removeParticipantFromConversation,
   softDeleteConversation,
+  updateConversationTitle,
+  updateParticipantPermissions,
 } from '../../../src/messaging/services/conversation.service';
-import { sendMessage } from '../../../src/messaging/services/message.service';
+import {
+  deleteMessage,
+  getMessages,
+  sendMessage,
+} from '../../../src/messaging/services/message.service';
+import { ParticipantPermission } from '../../../src/messaging/interfaces/conversationParticipant.interfaces';
 import {
   MessagingError,
   MessagingErrorCode,
@@ -165,4 +180,94 @@ describe('softDeleteConversation', () => {
       code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
     });
   });
+
+  it('creates a fresh active DM after an earlier DM between the same users is soft-deleted', async () => {
+    const userA = await createTestUser({ firstName: 'Tim', lastName: 'Tebow' });
+    const userB = await createTestUser({ firstName: 'Danny', lastName: 'Wuerffel' });
+
+    const first = await createDirectConversation(userA._id, userB._id);
+    expect(first.isNew).toBe(true);
+
+    await softDeleteConversation(first.conversation._id);
+
+    const second = await createDirectConversation(userA._id, userB._id);
+    expect(second.isNew).toBe(true);
+    expect(second.conversation._id.toString()).not.toBe(first.conversation._id.toString());
+    expect(second.conversation.deleted).toBe(false);
+  });
+
+  it('excludes soft-deleted channels from getClubChannels', async () => {
+    const officer = await createTestUser();
+    const club = await createTestClub(officer._id);
+    const general = await createChannel(club._id, 'General', [officer._id]);
+    const events = await createChannel(club._id, 'Events', [officer._id]);
+
+    await softDeleteConversation(events._id);
+
+    const channels = await getClubChannels(club._id);
+    expect(channels.map((c) => c._id.toString())).toEqual([general._id.toString()]);
+  });
+
+  it('excludes soft-deleted conversations from details and feeds even with a stale participant row', async () => {
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const group = await createGroupConversation(userA._id, [userB._id], 'Lake Alice Watchers');
+    await sendMessage(group._id, userA._id, 'Spotted three turtles by the dock');
+
+    await Conversation.updateOne({ _id: group._id }, { $set: { deleted: true } });
+
+    expect(await getConversationDetails(group._id, userA._id)).toBeNull();
+    expect(await getUserConversations(userA._id)).toEqual([]);
+    expect(await getUserConversationFeedItem(group._id, userA._id)).toBeNull();
+  });
+
+  it('rejects participant and title mutations on a soft-deleted conversation', async () => {
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const userC = await createTestUser();
+    const group = await createGroupConversation(userA._id, [userB._id], 'Reitz Smash Bros');
+
+    await Conversation.updateOne({ _id: group._id }, { $set: { deleted: true } });
+
+    await expect(
+      addParticipantsToConversation(group._id, [userC._id], userA._id)
+    ).rejects.toMatchObject({ code: MessagingErrorCode.CONVERSATION_NOT_FOUND });
+
+    await expect(
+      updateConversationTitle(group._id, userA._id, 'New Smash Title')
+    ).rejects.toMatchObject({ code: MessagingErrorCode.CONVERSATION_NOT_FOUND });
+
+    await expect(
+      removeParticipantFromConversation(group._id, userA._id, userB._id)
+    ).rejects.toMatchObject({ code: MessagingErrorCode.CONVERSATION_NOT_FOUND });
+
+    await expect(
+      updateParticipantPermissions(group._id, userA._id, [
+        userB._id,
+        ParticipantPermission.READ,
+      ])
+    ).rejects.toMatchObject({ code: MessagingErrorCode.CONVERSATION_NOT_FOUND });
+  });
+
+  it('rejects sendMessage, getMessages, and deleteMessage on a soft-deleted conversation even with a stale participant row', async () => {
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const group = await createGroupConversation(userA._id, [userB._id], 'Marston Basement');
+    const { message } = await sendMessage(group._id, userA._id, 'Table 4 is open');
+
+    await Conversation.updateOne({ _id: group._id }, { $set: { deleted: true } });
+
+    await expect(
+      sendMessage(group._id, userA._id, 'Still open?')
+    ).rejects.toMatchObject({ code: MessagingErrorCode.CONVERSATION_NOT_FOUND });
+
+    await expect(getMessages(group._id, userA._id)).rejects.toMatchObject({
+      code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
+    });
+
+    await expect(
+      deleteMessage(group._id, message._id, userA._id)
+    ).rejects.toMatchObject({ code: MessagingErrorCode.CONVERSATION_NOT_FOUND });
+  });
 });
+

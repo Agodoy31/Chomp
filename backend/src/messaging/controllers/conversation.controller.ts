@@ -223,7 +223,7 @@ export async function updateConversationTitleHandler(req: Request, res: Response
   }
 
   try {
-    const conversation = await Conversation.findById(id).select('type').lean();
+    const conversation = await Conversation.findOne({ _id: id, deleted: false }).select('type').lean();
     if (!conversation) {
       res.status(404).json({
         code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
@@ -283,7 +283,7 @@ export async function addParticipantsHandler(req: Request, res: Response): Promi
   }
 
   try {
-    const conversation = await Conversation.findById(id).select('type').lean();
+    const conversation = await Conversation.findOne({ _id: id, deleted: false }).select('type').lean();
     if (!conversation) {
       res.status(404).json({
         code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
@@ -354,7 +354,7 @@ export async function removeParticipantHandler(req: Request, res: Response): Pro
   }
 
   try {
-    const conversation = await Conversation.findById(id).select('type').lean();
+    const conversation = await Conversation.findOne({ _id: id, deleted: false }).select('type').lean();
     if (!conversation) {
       res.status(404).json({
         code: MessagingErrorCode.CONVERSATION_NOT_FOUND,
@@ -427,7 +427,7 @@ export async function updateParticipantPermissionHandler(
   }
 
   try {
-    const conversation = await Conversation.findById(id).select('type').lean();
+    const conversation = await Conversation.findOne({ _id: id, deleted: false }).select('type').lean();
     if (!conversation) {
       res.status(404).json({
         code: MessagingErrorCode.CONVERSATION_NOT_FOUND,

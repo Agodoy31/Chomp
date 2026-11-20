@@ -80,7 +80,7 @@ export async function createDirectConversation(
   const dmPairKey = [creatorId.toString(), recipientId.toString()].sort().join(':');
 
   // Return existing conversation if already created
-  const existing = await Conversation.findOne({ dmPairKey }).lean<IConversation>().exec();
+  const existing = await Conversation.findOne({ dmPairKey, deleted: false }).lean<IConversation>().exec();
   if (existing) {
     return { conversation: existing, isNew: false };
   }
@@ -124,7 +124,7 @@ export async function createDirectConversation(
 
     // If another request created the chat first during a race, fetch and return the winner
     if (error && error.code === 11000) {
-      const winner = await Conversation.findOne({ dmPairKey }).lean<IConversation>().exec();
+      const winner = await Conversation.findOne({ dmPairKey, deleted: false }).lean<IConversation>().exec();
       if (winner) {
         return { conversation: winner, isNew: false };
       }
@@ -323,7 +323,7 @@ export async function addParticipantsToConversation(
     }
   }
 
-  const conversationQuery = Conversation.findById(conversationId)
+  const conversationQuery = Conversation.findOne({ _id: conversationId, deleted: false })
     .select('type')
     .lean();
   if (activeSession) {
@@ -719,7 +719,7 @@ export async function getConversationDetails(
     return null;
   }
 
-  const conversation = await Conversation.findById(conversationId)
+  const conversation = await Conversation.findOne({ _id: conversationId, deleted: false })
     .select('type title clubId')
     .lean<IConversation>()
     .exec();
@@ -821,7 +821,7 @@ export async function updateConversationTitle(
   session.startTransaction();
 
   try {
-    const conversation = await Conversation.findById(conversationId).session(session);
+    const conversation = await Conversation.findOne({ _id: conversationId, deleted: false }).session(session);
     if (!conversation) {
       throw new MessagingError(
         MessagingErrorCode.CONVERSATION_NOT_FOUND,
@@ -996,7 +996,7 @@ async function executeRemoveParticipantFromConversation(
   targetUserId: Types.ObjectId,
   session: ClientSession
 ): Promise<{ success: boolean; systemMessage?: IHydratedMessage }> {
-  const conversation = await Conversation.findById(conversationId)
+  const conversation = await Conversation.findOne({ _id: conversationId, deleted: false })
     .select('type')
     .session(session)
     .lean()
@@ -1192,7 +1192,7 @@ export async function updateParticipantPermissions(
   }
 
   try {
-    const conversation = await Conversation.findById(conversationId)
+    const conversation = await Conversation.findOne({ _id: conversationId, deleted: false })
       .select('type')
       .session(activeSession)
       .lean()
@@ -1403,6 +1403,11 @@ function getConversationFeedAggregationStages(
     },
     {
       $unwind: '$conversation',
+    },
+    {
+      $match: {
+        'conversation.deleted': false,
+      },
     },
     {
       $lookup: {
@@ -1654,6 +1659,7 @@ export async function getClubChannels(
   return Conversation.find({
     clubId: clubObjectId,
     type: ConversationType.CHANNEL,
+    deleted: false,
   })
     .collation({ locale: 'en', strength: 2 })
     .sort({ title: 1 })

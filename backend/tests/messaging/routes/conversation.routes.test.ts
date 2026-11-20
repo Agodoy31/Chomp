@@ -1463,7 +1463,43 @@ describe('PATCH /api/conversations/:id/participants/:userId', () => {
     expect(errRes.body.code).toBe('ERR_SERVER_ERROR');
     jest.restoreAllMocks();
   });
+
+  it('returns 404 on title and participant mutations for a soft-deleted conversation', async () => {
+    const created = await studentA.agent.post('/api/conversations').send({
+      type: 'GROUP',
+      title: 'Norman Hall Coffee Club',
+      participantIds: [studentB.user._id.toString()],
+    });
+    expect(created.status).toBe(201);
+    const groupId: string = created.body._id;
+
+    await Conversation.updateOne({ _id: groupId }, { $set: { deleted: true } });
+
+    const patchTitle = await studentA.agent
+      .patch('/api/conversations/' + groupId)
+      .send({ title: 'Renamed Coffee Club' });
+    expect(patchTitle.status).toBe(404);
+    expect(patchTitle.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    const addPart = await studentA.agent
+      .post('/api/conversations/' + groupId + '/participants')
+      .send({ userIds: [studentC.user._id.toString()] });
+    expect(addPart.status).toBe(404);
+    expect(addPart.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    const patchPerm = await studentA.agent
+      .patch('/api/conversations/' + groupId + '/participants/' + studentB.user._id.toString())
+      .send({ permission: 'READ' });
+    expect(patchPerm.status).toBe(404);
+    expect(patchPerm.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+
+    const delPart = await studentA.agent
+      .delete('/api/conversations/' + groupId + '/participants/' + studentB.user._id.toString());
+    expect(delPart.status).toBe(404);
+    expect(delPart.body.code).toBe('ERR_CONVERSATION_NOT_FOUND');
+  });
 });
+
 
 
 

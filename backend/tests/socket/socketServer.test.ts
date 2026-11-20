@@ -260,6 +260,36 @@ describe('Socket Server Handshake Authentication', () => {
     expect(roomAfterEvict?.has(client.id) ?? false).toBe(false);
   });
 
+  const connectAuthenticatedClient = async (
+    rawCookie: string | string[]
+  ): Promise<ClientSocket> => {
+    const sessionCookie = Array.isArray(rawCookie)
+      ? rawCookie[0].split(';')[0]
+      : rawCookie.split(';')[0];
+    const client: ClientSocket = Client(serverUrl, {
+      autoConnect: false,
+      transports: ['websocket'],
+      extraHeaders: { cookie: sessionCookie },
+    });
+    activeClients.push(client);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Timed out waiting for connection')),
+        4000
+      );
+      client.on('connect', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      client.on('connect_error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      client.connect();
+    });
+    return client;
+  };
+
   test('Evicts all sockets from a room while leaving other rooms intact', async () => {
     const [firstRes, secondRes] = await Promise.all([
       request(app).post('/api/auth/register').send({
@@ -279,32 +309,9 @@ describe('Socket Server Handshake Authentication', () => {
     expect(firstRes.status).toBe(201);
     expect(secondRes.status).toBe(201);
 
-    const connectClient = async (rawCookie: string | string[]): Promise<ClientSocket> => {
-      const sessionCookie = Array.isArray(rawCookie) ? rawCookie[0].split(';')[0] : rawCookie.split(';')[0];
-      const client: ClientSocket = Client(serverUrl, {
-        autoConnect: false,
-        transports: ['websocket'],
-        extraHeaders: { cookie: sessionCookie },
-      });
-      activeClients.push(client);
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timed out waiting for connection')), 4000);
-        client.on('connect', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-        client.on('connect_error', (err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
-        client.connect();
-      });
-      return client;
-    };
-
     const [client1, client2] = await Promise.all([
-      connectClient(firstRes.headers['set-cookie']),
-      connectClient(secondRes.headers['set-cookie']),
+      connectAuthenticatedClient(firstRes.headers['set-cookie']),
+      connectAuthenticatedClient(secondRes.headers['set-cookie']),
     ]);
 
     const targetRoom = 'conversation:marston_study_room';
@@ -342,32 +349,9 @@ describe('Socket Server Handshake Authentication', () => {
     expect(firstRes.status).toBe(201);
     expect(secondRes.status).toBe(201);
 
-    const connectClient = async (rawCookie: string | string[]): Promise<ClientSocket> => {
-      const sessionCookie = Array.isArray(rawCookie) ? rawCookie[0].split(';')[0] : rawCookie.split(';')[0];
-      const client: ClientSocket = Client(serverUrl, {
-        autoConnect: false,
-        transports: ['websocket'],
-        extraHeaders: { cookie: sessionCookie },
-      });
-      activeClients.push(client);
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timed out waiting for connection')), 4000);
-        client.on('connect', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-        client.on('connect_error', (err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
-        client.connect();
-      });
-      return client;
-    };
-
     const [client1, client2] = await Promise.all([
-      connectClient(firstRes.headers['set-cookie']),
-      connectClient(secondRes.headers['set-cookie']),
+      connectAuthenticatedClient(firstRes.headers['set-cookie']),
+      connectAuthenticatedClient(secondRes.headers['set-cookie']),
     ]);
 
     const conversationId = '507f1f77bcf86cd799439099';
@@ -384,15 +368,6 @@ describe('Socket Server Handshake Authentication', () => {
     client2.on('participant:removed', () => {
       participantRemovedFired = true;
     });
-
-    const waitForInboxRemoved = (client: ClientSocket): Promise<{ conversationId: string }> =>
-      new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timed out waiting for inbox:conversation_removed')), 4000);
-        client.once('inbox:conversation_removed', (payload: { conversationId: string }) => {
-          clearTimeout(timer);
-          resolve(payload);
-        });
-      });
 
     const inboxPromises = Promise.all([
       waitForInboxRemoved(client1),
@@ -413,4 +388,18 @@ describe('Socket Server Handshake Authentication', () => {
     expect(ioInstance?.sockets.adapter.rooms.get(conversationRoom)?.size ?? 0).toBe(0);
   });
 });
+
+function waitForInboxRemoved(client: ClientSocket): Promise<{ conversationId: string }> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('Timed out waiting for inbox:conversation_removed')),
+      4000
+    );
+    client.once('inbox:conversation_removed', (payload: { conversationId: string }) => {
+      clearTimeout(timer);
+      resolve(payload);
+    });
+  });
+}
+
 
