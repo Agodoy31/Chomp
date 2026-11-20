@@ -165,5 +165,51 @@ describe('Conversation Model', () => {
       });
       expect(convInOtherClub._id).toBeDefined();
     });
+
+    it('defaults deleted to false on newly created conversations', async () => {
+      const clubId = new Types.ObjectId();
+      const channel = await Conversation.create({
+        type: ConversationType.CHANNEL,
+        clubId,
+        title: 'Lab Hours',
+      });
+
+      expect(channel.deleted).toBe(false);
+    });
+
+    it('allows reusing a club channel title when the earlier channel is soft-deleted', async () => {
+      const clubId = new Types.ObjectId();
+
+      const original = await Conversation.create({
+        type: ConversationType.CHANNEL,
+        clubId,
+        title: 'Study Rooms',
+      });
+      await Conversation.updateOne({ _id: original._id }, { $set: { deleted: true } });
+
+      const recreated = await Conversation.create({
+        type: ConversationType.CHANNEL,
+        clubId,
+        title: 'study rooms',
+      });
+      expect(recreated._id.toString()).not.toBe(original._id.toString());
+      expect(recreated.deleted).toBe(false);
+    });
+
+    it('allows reusing a DIRECT dmPairKey when the earlier conversation is soft-deleted', async () => {
+      const original = await Conversation.create({
+        type: ConversationType.DIRECT,
+        dmPairKey: 'gator1:gator2',
+      });
+      await Conversation.updateOne({ _id: original._id }, { $set: { deleted: true } });
+
+      const recreated = await Conversation.create({
+        type: ConversationType.DIRECT,
+        dmPairKey: 'gator1:gator2',
+      });
+      expect(recreated._id.toString()).not.toBe(original._id.toString());
+      expect(recreated.deleted).toBe(false);
+    });
   });
 });
+

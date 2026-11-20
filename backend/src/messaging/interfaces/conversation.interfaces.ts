@@ -14,8 +14,14 @@ export interface IConversation {
   dmPairKey?: string;
   title?: string;
   clubId?: Types.ObjectId;
+  deleted: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ISoftDeleteConversationResult {
+  conversation: IConversation;
+  participantUserIds: string[];
 }
 
 export interface IUserSummary {
