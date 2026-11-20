@@ -1,4 +1,4 @@
-import { useEffect, useState, type SyntheticEvent } from 'react';
+import { useState, type SyntheticEvent } from 'react';
 import { Alert, Button, Form, Modal } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -23,21 +23,42 @@ export function UpdateChannelModal({
   onHide,
   onSuccess,
 }: UpdateChannelModalProps) {
+   if (!show || !channel) {
+    return null;
+  }
+
+  return (
+    <UpdateChannelForm
+      key={channel._id}
+      clubId={clubId}
+      channel={channel}
+      onHide={onHide}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
+interface UpdateChannelFormProps {
+  clubId: string;
+  channel: Channel;
+  onHide: () => void;
+  onSuccess?: (updatedChannel: Channel) => void;
+}
+
+function UpdateChannelForm({
+  clubId,
+  channel,
+  onHide,
+  onSuccess,
+}: UpdateChannelFormProps) {
   const navigate = useNavigate();
   const { setUser } = useAuth();
 
-  const [channelName, setChannelName] = useState(channel?.name ?? '');
+  const [channelName, setChannelName] = useState(channel.name ?? '');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [nameInvalid, setNameInvalid] = useState(false);
 
-  useEffect(() => {
-    if (show && channel) {
-      setChannelName(channel.name ?? '');
-      setError('');
-      setNameInvalid(false);
-    }
-  }, [show, channel]);
 
   function normalizeChannelName(raw: string) {
     return raw.trim().replace(/^#+\s*/, '');
@@ -45,7 +66,7 @@ export function UpdateChannelModal({
 
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (submitting || !channel) return;
+    if (submitting) return;
 
     const cleaned = normalizeChannelName(channelName);
 
@@ -80,7 +101,7 @@ export function UpdateChannelModal({
 
   return (
     <Modal
-      show={show && Boolean(channel)}
+      show
       onHide={() => !submitting && onHide()}
       onExited={() => {
         setChannelName(channel?.name ?? '');
