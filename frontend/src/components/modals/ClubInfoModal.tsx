@@ -12,7 +12,8 @@ import { useNavigate } from 'react-router-dom';
 import Modal from 'react-bootstrap/Modal';
 import Alert from 'react-bootstrap/Alert';
 import { useAuth } from '../../hooks/useAuth';
-import ClubSearch, { matchesSearch } from '../ClubSearch';
+import ClubSearch from '../ClubSearch';
+import { matchesSearch } from '../../utils/matchesSearch';
 import {
   getClub,
   getClubChannels,
@@ -25,21 +26,10 @@ import type { ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../../t
 const PREVIEW_COUNT = 3;
 const VISIBLE_LIMIT = 3;
 
-function useListLimit(count: number) {
-  const ref = useRef<HTMLUListElement>(null);
-  const [maxHeight, setMaxHeight] = useState<number>();
-
-  useLayoutEffect(() => {
-    const list = ref.current;
-    const item = list?.children[VISIBLE_LIMIT - 1] as HTMLElement | undefined;
-    if (!list || count <= VISIBLE_LIMIT || !item) {
-      setMaxHeight(undefined);
-      return;
-    }
-    setMaxHeight(item.offsetTop + item.offsetHeight);
-  }, [count]);
-
-  return { ref, maxHeight };
+function measureList(list: HTMLUListElement | null, count: number): number | undefined {
+  const item = list?.children[VISIBLE_LIMIT - 1] as HTMLElement | undefined;
+  if (!list || count <= VISIBLE_LIMIT || !item) return undefined;
+  return item.offsetTop + item.offsetHeight;
 }
 
 const CATEGORY_LABEL: Record<ClubCategory, string> = {
@@ -393,9 +383,19 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, PREVIEW_COUNT);
   const hiddenChannelCount = Math.max(filteredChannels.length - PREVIEW_COUNT, 0);
   const hiddenMemberCount = Math.max(filteredMembers.length - PREVIEW_COUNT, 0);
-  const channelList = useListLimit(visibleChannels.length);
-  const memberList = useListLimit(visibleMembers.length);
+  const channelListRef = useRef<HTMLUListElement>(null);
+  const memberListRef = useRef<HTMLUListElement>(null);
+  const [channelMaxHeight, setChannelMaxHeight] = useState<number>();
+  const [memberMaxHeight, setMemberMaxHeight] = useState<number>();
   const narrow = useNarrowScreen();
+
+  useLayoutEffect(() => {
+    setChannelMaxHeight(measureList(channelListRef.current, visibleChannels.length));
+  }, [visibleChannels.length]);
+
+  useLayoutEffect(() => {
+    setMemberMaxHeight(measureList(memberListRef.current, visibleMembers.length));
+  }, [visibleMembers.length]);
 
   return (
     <Modal
@@ -558,7 +558,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                 <p style={{ margin: 0, color: '#777' }}>No channels match your search.</p>
               ) : (
                 <>
-                  <ul ref={channelList.ref} style={listStyle(channelList.maxHeight, '0.65rem')}>
+                  <ul ref={channelListRef} style={listStyle(channelMaxHeight, '0.65rem')}>
                     {visibleChannels.map((channel) => {
                       const label = channelLabel(channel.title);
                       return (
@@ -638,7 +638,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                 <p style={{ margin: 0, color: '#777' }}>No members match your search.</p>
               ) : (
                 <>
-                  <ul ref={memberList.ref} style={listStyle(memberList.maxHeight)}>
+                  <ul ref={memberListRef} style={listStyle(memberMaxHeight)}>
                     {visibleMembers.map((member) => (
                       <li
                         key={member.userId}
