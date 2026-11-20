@@ -15,7 +15,12 @@ const CLUB_CATEGORY_OPTIONS: { value: ClubCategory; label: string }[] = [
   { value: 'CULTURAL', label: 'Cultural' },
   { value: 'SPORTS', label: 'Sports' },
   { value: 'OTHER', label: 'Other' },
+
 ];
+
+const NAME_MAX_LENGTH = 100;
+const DESCRIPTION_MAX_LENGTH = 1000;
+const LOCATION_MAX_LENGTH = 120;
 
 
 const WEEKDAY_PATTERN = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
@@ -147,6 +152,7 @@ function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
             <Form.Label>Club Name</Form.Label>
             <Form.Control
               type="text"
+              maxLength={NAME_MAX_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={submitting}
@@ -173,6 +179,7 @@ function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
             <Form.Control
               as="textarea"
               rows={3}
+              maxLength={DESCRIPTION_MAX_LENGTH}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={submitting}
@@ -211,6 +218,7 @@ function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
               <Form.Control
                 type="text"
                 placeholder="e.g. Reitz Union 2320"
+                maxLength={LOCATION_MAX_LENGTH}
                 value={meetingLocation}
                 onChange={(e) => setMeetingLocation(e.target.value)}
               />
