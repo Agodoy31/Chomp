@@ -6,6 +6,7 @@ import Modal from 'react-bootstrap/Modal';
 import ClubCard from '../components/ClubCard';
 import type { Club } from '../types/club';
 import { useAuth } from '../hooks/useAuth';
+import ClubInfoModal from '../components/modals/ClubInfoModal';
 
 
 async function readJson(response: Response) {
@@ -19,6 +20,7 @@ async function readJson(response: Response) {
 
 export default function MyClubs() {
   const navigate = useNavigate();
+  const [infoClubId, setInfoClubId] = useState<string | null>(null);
   const { user, loading, setUser } = useAuth();
 
   const [clubs, setClubs] = useState<Club[]>([]);
@@ -174,12 +176,19 @@ export default function MyClubs() {
           {clubs.map((club) => (
             <div key={club._id} className="col-12 col-md-6 col-lg-4">
               <ClubCard club={club} onLeave={setClubToLeave}
-                onOpen={(clubId) => navigate(`/clubs/${clubId}`)}
+                onOpen={(clubId) => setInfoClubId(clubId)}
               />
             </div>
           ))}
         </div>
       )}
+
+      <ClubInfoModal
+        show={infoClubId !== null}
+        clubId={infoClubId}
+        onHide={() => setInfoClubId(null)}
+        onLeft={(leftId) => setClubs((current) => current.filter((club) => club._id !== leftId))}
+      />
 
        {/* Confirm before leaving, since it removes the student from the club chat */}
       <Modal
