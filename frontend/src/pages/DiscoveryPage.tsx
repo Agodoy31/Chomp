@@ -1,12 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import ClubCard from '../components/ClubCard';
+import ClubSearch, { matchesSearch } from '../components/ClubSearch';
 import type { Club, ClubCategory } from '../types/club';
 import Alert from 'react-bootstrap/Alert';
-import Form from 'react-bootstrap/Form';
 import Button from 'react-bootstrap/Button';
-import { Search, X } from 'react-bootstrap-icons';
-import './ClubDiscovery.css';
 
 
 
@@ -141,11 +139,6 @@ export default function ClubDiscovery() {
       });
   }
 
-  function clearSearch() {
-    setQuery('');
-    searchRef.current?.focus();
-  }
-
   function clearCategories() {
     setCategories([]);
     searchRef.current?.focus();
@@ -157,14 +150,7 @@ export default function ClubDiscovery() {
     searchRef.current?.focus();
   }
 
-  const search = query.trim().toLowerCase();
-  const visibleClubs = clubs.filter((club) => {
-    const matchesSearch =
-      search === '' ||
-      club.name.toLowerCase().includes(search) ||
-      club.description.toLowerCase().includes(search);
-    return matchesSearch;
-  });
+  const visibleClubs = clubs.filter((club) => matchesSearch(query, club.name, club.description));
 
   
   const hasActiveFilters = Boolean(query.trim() || categories.length > 0);
@@ -209,36 +195,14 @@ export default function ClubDiscovery() {
 
         {showControls && (
           <>
-            <div className="position-relative mb-3" role="search">
-              <span
-                className="position-absolute top-50 start-0 translate-middle-y ms-3 text-secondary d-flex"
-                style={{ pointerEvents: 'none' }}
-              >
-                <Search size={18} aria-hidden="true" focusable="false" />
-              </span>
-
-              <Form.Control
-                ref={searchRef}
-                type="text"
-                size="lg"
-                placeholder="Search Clubs by Name or Description"
-                aria-label="Search clubs"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="club-search rounded-4 ps-5 pe-5"
-              />
-
-              {query && (
-                <button
-                  type="button"
-                  aria-label="Clear search"
-                  onClick={clearSearch}
-                  className="position-absolute top-50 end-0 translate-middle-y me-3 btn p-1 border-0 bg-transparent text-secondary d-flex"
-                >
-                  <X size={30} aria-hidden="true" focusable="false" />
-                </button>
-              )}
-            </div>
+            <ClubSearch
+              value={query}
+              onChange={setQuery}
+              label="Search clubs"
+              placeholder="Search Clubs by Name or Description"
+              inputRef={searchRef}
+              className="mb-3"
+            />
 
             <div className="d-flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter by category">
               {CATEGORY_FILTERS.map((filter) => {
