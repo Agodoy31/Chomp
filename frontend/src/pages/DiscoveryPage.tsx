@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import ClubCard from '../components/ClubCard';
-import ClubSearch, { matchesSearch } from '../components/ClubSearch';
+import ClubSearch from '../components/ClubSearch';
+import { matchesSearch } from '../utils/matchesSearch';
 import type { Club, ClubCategory } from '../types/club';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
@@ -200,7 +201,9 @@ export default function ClubDiscovery() {
               onChange={setQuery}
               label="Search clubs"
               placeholder="Search Clubs by Name or Description"
-              inputRef={searchRef}
+              inputRef={(node) => {
+                searchRef.current = node;
+              }}
               className="mb-3"
             />
 

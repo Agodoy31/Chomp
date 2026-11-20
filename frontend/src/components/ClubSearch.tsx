@@ -1,4 +1,4 @@
-import { useRef, useState, type Ref } from 'react';
+import { useRef, useState } from 'react';
 import Form from 'react-bootstrap/Form';
 import { Search, X } from 'react-bootstrap-icons';
 
@@ -7,16 +7,10 @@ type ClubSearchProps = {
   onChange: (value: string) => void;
   label: string;
   placeholder: string;
-  inputRef?: Ref<HTMLInputElement>;
+  inputRef?: (node: HTMLInputElement | null) => void;
   size?: 'sm' | 'lg';
   className?: string;
 };
-
-export function matchesSearch(query: string, ...values: Array<string | undefined>): boolean {
-  const search = query.trim().toLowerCase();
-  if (search === '') return true;
-  return values.some((value) => (value ?? '').toLowerCase().includes(search));
-}
 
 export default function ClubSearch({
   value,
@@ -33,13 +27,7 @@ export default function ClubSearch({
 
   function setInput(node: HTMLInputElement | null) {
     localRef.current = node;
-    if (typeof inputRef === 'function') {
-      inputRef(node);
-      return;
-    }
-    if (inputRef) {
-      inputRef.current = node;
-    }
+    inputRef?.(node);
   }
 
   return (
