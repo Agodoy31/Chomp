@@ -26,7 +26,7 @@ export function CreateChannelModal({
   const { setUser } = useAuth();
 
   const [channelName, setChannelName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [nameInvalid, setNameInvalid] = useState(false);
 
@@ -45,7 +45,7 @@ export function CreateChannelModal({
     }
 
     setSubmitting(true);
-    setError(null);
+    setError('');
 
     try {
       const created = await createChannel(clubId, { name: cleaned });
@@ -73,7 +73,7 @@ export function CreateChannelModal({
       onHide={() => !submitting && onHide()}
       onExited={() => {
         setChannelName('');
-        setError(null);
+        setError('');
         setNameInvalid(false);
       }}
       backdrop="static"
