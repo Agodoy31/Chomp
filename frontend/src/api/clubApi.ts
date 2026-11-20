@@ -1,9 +1,9 @@
 import type { ClubChannel, ClubDetails, ClubMember } from '../types/club';
 
-type ApiError = Error & { status?: number; code?: string };
+type ApiError = Error & { status?: number };
 
-function createApiError(message: string, status: number, code?: string): ApiError {
-  return Object.assign(new Error(message), { status, code });
+function createApiError(message: string, status: number): ApiError {
+  return Object.assign(new Error(message), { status });
 }
 
 export function isUnauthorizedError(err: unknown): boolean {
@@ -31,7 +31,7 @@ async function request(url: string, init?: RequestInit) {
 
   if (!response.ok) {
     const message = data?.message || 'Something went wrong. Please try again.';
-    throw createApiError(message, response.status, data?.code);
+    throw createApiError(message, response.status);
   }
 
   return data;
@@ -50,7 +50,7 @@ export async function getClub(clubId: string, signal?: AbortSignal): Promise<Clu
 }
 
 /**
- * Channels a member can open from the club info view.
+ * Channels shown in the club info view.
  * Endpoint: GET /api/clubs/:clubId/channels
  */
 export async function getClubChannels(clubId: string, signal?: AbortSignal): Promise<ClubChannel[]> {
