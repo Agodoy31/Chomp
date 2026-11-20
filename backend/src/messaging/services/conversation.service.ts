@@ -11,6 +11,7 @@ import {
   IConversationDetails,
   IConversationFeedItem,
   IConversationParticipantSummary,
+  ISoftDeleteConversationResult,
   IUserSummary,
 } from '../interfaces/conversation.interfaces';
 import {
@@ -1659,5 +1660,79 @@ export async function getClubChannels(
     .lean<IConversation[]>()
     .exec();
 }
+
+export async function softDeleteConversation(
+  conversationId: Types.ObjectId,
+  session?: ClientSession
+): Promise<ISoftDeleteConversationResult> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid conversationId is required'
+    );
+  }
+
+  const runSoftDelete = async (
+    activeSession: ClientSession
+  ): Promise<ISoftDeleteConversationResult> => {
+    const conversation = await Conversation.findOneAndUpdate(
+      { _id: conversationId, deleted: false },
+      { $set: { deleted: true } },
+      { new: true, session: activeSession }
+    )
+      .lean<IConversation>()
+      .exec();
+
+    if (!conversation) {
+      throw new MessagingError(
+        MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        'Conversation not found'
+      );
+    }
+
+    const participants = await ConversationParticipant.find({ conversationId })
+      .select('userId')
+      .session(activeSession)
+      .lean()
+      .exec();
+
+    const participantUserIds = participants.map((participant) =>
+      participant.userId.toString()
+    );
+
+    if (participantUserIds.length > 0) {
+      await ConversationParticipant.deleteMany({ conversationId }).session(
+        activeSession
+      );
+    }
+
+    return {
+      conversation,
+      participantUserIds,
+    };
+  };
+
+  if (session) {
+    return runSoftDelete(session);
+  }
+
+  const ownSession = await mongoose.startSession();
+  try {
+    let result: ISoftDeleteConversationResult | undefined;
+    await ownSession.withTransaction(async () => {
+      result = await runSoftDelete(ownSession);
+    });
+    if (!result) {
+      throw new MessagingError(
+        MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        'Conversation not found'
+      );
+    }
+    return result;
+  } finally {
+    await ownSession.endSession();
+  }
+}
+
 
 
