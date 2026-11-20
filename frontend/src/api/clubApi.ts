@@ -60,7 +60,7 @@ export async function getClub(clubId: string, signal?: AbortSignal): Promise<Clu
 }
 
 /**
- * Channels a member can open from the club info view.
+ * Channels shown in the club info view.
  * Endpoint: GET /api/clubs/:clubId/channels
  */
 export async function getClubChannels(clubId: string, signal?: AbortSignal): Promise<ClubChannel[]> {

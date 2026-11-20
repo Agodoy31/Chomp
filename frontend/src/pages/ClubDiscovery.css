@@ -1,0 +1,10 @@
+.form-control.club-search {
+  background-color: #d9d9d9;
+  border: 1px solid #333;
+}
+ 
+.form-control.club-search:focus {
+  background-color: #d9d9d9;
+  border-color: #3046c3;
+  box-shadow: 0 0 0 0.25rem #3046c340;
+}

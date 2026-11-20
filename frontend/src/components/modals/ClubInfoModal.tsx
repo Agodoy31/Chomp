@@ -1,7 +1,6 @@
 import {
+  useCallback,
   useEffect,
-  useLayoutEffect,
-  useRef,
   useState,
   type ButtonHTMLAttributes,
   type ComponentProps,
@@ -12,8 +11,6 @@ import { useNavigate } from 'react-router-dom';
 import Modal from 'react-bootstrap/Modal';
 import Alert from 'react-bootstrap/Alert';
 import { useAuth } from '../../hooks/useAuth';
-import ClubSearch from '../ClubSearch';
-import { matchesSearch } from '../../utils/matchesSearch';
 import {
   getClub,
   getClubChannels,
@@ -22,15 +19,6 @@ import {
   leaveClub,
 } from '../../api/clubApi';
 import type { ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../../types/club';
-
-const PREVIEW_COUNT = 3;
-const VISIBLE_LIMIT = 3;
-
-function measureList(list: HTMLUListElement | null, count: number): number | undefined {
-  const item = list?.children[VISIBLE_LIMIT - 1] as HTMLElement | undefined;
-  if (!list || count <= VISIBLE_LIMIT || !item) return undefined;
-  return item.offsetTop + item.offsetHeight;
-}
 
 const CATEGORY_LABEL: Record<ClubCategory, string> = {
   ACADEMIC: 'Academic',
@@ -56,6 +44,11 @@ function errorMessage(err: unknown): string {
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
+}
+
+function failureMessage(result: PromiseSettledResult<unknown>): string {
+  if (result.status === 'fulfilled' || isAbortError(result.reason)) return '';
+  return errorMessage(result.reason);
 }
 
 function formatMeetingTime(meeting: ClubDetails['meeting']): string {
@@ -135,16 +128,6 @@ const cancelButtonStyle: CSSProperties = {
   border: '1px solid #cfcfcf',
 };
 
-const moreButtonStyle: CSSProperties = {
-  ...buttonFont,
-  background: 'none',
-  border: 'none',
-  padding: 0,
-  color: '#3a3a3a',
-  fontSize: '0.78rem',
-  whiteSpace: 'nowrap',
-};
-
 type ActionButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   base: CSSProperties;
   hover?: CSSProperties;
@@ -188,67 +171,39 @@ function ActionButton({ base, hover, disabled, style, children, ...props }: Acti
   );
 }
 
-type SectionProps = {
-  title: string;
-  search?: ReactNode;
-  children: ReactNode;
-};
-
-function Section({ title, search, children }: SectionProps) {
-  const narrow = useNarrowScreen();
-
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section style={{ border: '1px solid #d7d7d7', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
-      <div
+      <h2
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.75rem',
           margin: 0,
           padding: '0.55rem 1rem',
           background: '#c5c6c7',
           borderBottom: '1px solid #e4e4e4',
           color: '#000',
-          flexWrap: narrow ? 'wrap' : 'nowrap',
+          fontSize: '1.15rem',
+          fontWeight: 700,
         }}
       >
-        <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, flex: '0 0 auto' }}>{title}</h2>
-        {search && (
-          <div
-            style={{
-              flex: narrow ? '1 1 100%' : '1 1 140px',
-              maxWidth: narrow ? 'none' : 220,
-              minWidth: 0,
-            }}
-          >
-            {search}
-          </div>
-        )}
-      </div>
+        {title}
+      </h2>
       <div style={{ padding: '1rem 1.1rem 0.95rem' }}>{children}</div>
     </section>
   );
 }
 
-function listStyle(maxHeight: number | undefined, gap?: string): CSSProperties {
-  return {
-    position: 'relative',
-    display: 'flex',
-    flexDirection: 'column',
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-    gap,
-    ...(maxHeight !== undefined
-      ? { maxHeight, overflowY: 'auto', overscrollBehavior: 'contain' }
-      : {}),
-  };
-}
+const listStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+};
 
 export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfoModalProps) {
   const navigate = useNavigate();
   const { setUser } = useAuth();
+  const narrow = useNarrowScreen();
 
   const [club, setClub] = useState<ClubDetails | null>(null);
   const [channels, setChannels] = useState<ClubChannel[]>([]);
@@ -259,29 +214,26 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const [leaveError, setLeaveError] = useState('');
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [showAllChannels, setShowAllChannels] = useState(false);
-  const [showAllMembers, setShowAllMembers] = useState(false);
-  const [channelQuery, setChannelQuery] = useState('');
-  const [memberQuery, setMemberQuery] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+
+  const reset = useCallback(() => {
+    setClub(null);
+    setChannels([]);
+    setMembers([]);
+    setLoadError('');
+    setChannelsError('');
+    setMembersError('');
+    setLeaveError('');
+    setConfirmingLeave(false);
+    setLeaving(false);
+  }, []);
 
   useEffect(() => {
     if (!show || !clubId) return;
     const controller = new AbortController();
 
     async function load(id: string) {
-      setLoadError('');
-      setChannelsError('');
-      setMembersError('');
-      setLeaveError('');
-      setConfirmingLeave(false);
-      setClub(null);
-      setChannels([]);
-      setMembers([]);
-      setShowAllChannels(false);
-      setShowAllMembers(false);
-      setChannelQuery('');
-      setMemberQuery('');
+      reset();
 
       const [clubResult, channelResult, memberResult] = await Promise.allSettled([
         getClub(id, controller.signal),
@@ -298,29 +250,14 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
         return;
       }
 
-      if (clubResult.status === 'rejected') {
-        if (!isAbortError(clubResult.reason)) {
-          setLoadError(errorMessage(clubResult.reason));
-        }
-      } else {
-        setClub(clubResult.value);
-      }
+      setLoadError(failureMessage(clubResult));
+      if (clubResult.status === 'fulfilled') setClub(clubResult.value);
 
-      if (channelResult.status === 'rejected') {
-        if (!isAbortError(channelResult.reason)) {
-          setChannelsError(errorMessage(channelResult.reason));
-        }
-      } else {
-        setChannels(channelResult.value);
-      }
+      setChannelsError(failureMessage(channelResult));
+      if (channelResult.status === 'fulfilled') setChannels(channelResult.value);
 
-      if (memberResult.status === 'rejected') {
-        if (!isAbortError(memberResult.reason)) {
-          setMembersError(errorMessage(memberResult.reason));
-        }
-      } else {
-        setMembers(memberResult.value);
-      }
+      setMembersError(failureMessage(memberResult));
+      if (memberResult.status === 'fulfilled') setMembers(memberResult.value);
     }
 
     load(clubId);
@@ -328,23 +265,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     return () => {
       controller.abort();
     };
-  }, [show, clubId, reloadKey, navigate, setUser]);
-
-  function reset() {
-    setClub(null);
-    setChannels([]);
-    setMembers([]);
-    setLoadError('');
-    setChannelsError('');
-    setMembersError('');
-    setLeaveError('');
-    setConfirmingLeave(false);
-    setLeaving(false);
-    setShowAllChannels(false);
-    setShowAllMembers(false);
-    setChannelQuery('');
-    setMemberQuery('');
-  }
+  }, [show, clubId, reloadKey, navigate, setUser, reset]);
 
   async function confirmLeave() {
     if (!clubId || leaving) return;
@@ -366,36 +287,6 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
       setLeaving(false);
     }
   }
-
-  function openChannel(channelId: string) {
-    if (leaving) return;
-    onHide();
-    navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
-  }
-
-  const filteredChannels = channels.filter((channel) =>
-    matchesSearch(channelQuery, channel.title, channelLabel(channel.title))
-  );
-  const filteredMembers = members.filter((member) =>
-    matchesSearch(memberQuery, memberName(member), member.firstName, member.lastName)
-  );
-  const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);
-  const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, PREVIEW_COUNT);
-  const hiddenChannelCount = Math.max(filteredChannels.length - PREVIEW_COUNT, 0);
-  const hiddenMemberCount = Math.max(filteredMembers.length - PREVIEW_COUNT, 0);
-  const channelListRef = useRef<HTMLUListElement>(null);
-  const memberListRef = useRef<HTMLUListElement>(null);
-  const [channelMaxHeight, setChannelMaxHeight] = useState<number>();
-  const [memberMaxHeight, setMemberMaxHeight] = useState<number>();
-  const narrow = useNarrowScreen();
-
-  useLayoutEffect(() => {
-    setChannelMaxHeight(measureList(channelListRef.current, visibleChannels.length));
-  }, [visibleChannels.length]);
-
-  useLayoutEffect(() => {
-    setMemberMaxHeight(measureList(memberListRef.current, visibleMembers.length));
-  }, [visibleMembers.length]);
 
   return (
     <Modal
@@ -536,159 +427,71 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
               )}
             </Section>
 
-            <Section
-              title="Channels"
-              search={
-                <ClubSearch
-                  value={channelQuery}
-                  onChange={setChannelQuery}
-                  label="Search channels"
-                  placeholder="Search channels"
-                  size="sm"
-                />
-              }
-            >
+            <Section title="Channels">
               {channelsError ? (
                 <Alert variant="danger" className="mb-0">
                   {channelsError}
                 </Alert>
               ) : channels.length === 0 ? (
                 <p style={{ margin: 0, color: '#777' }}>No channels yet.</p>
-              ) : filteredChannels.length === 0 ? (
-                <p style={{ margin: 0, color: '#777' }}>No channels match your search.</p>
               ) : (
-                <>
-                  <ul ref={channelListRef} style={listStyle(channelMaxHeight, '0.65rem')}>
-                    {visibleChannels.map((channel) => {
-                      const label = channelLabel(channel.title);
-                      return (
-                        <li key={channel._id}>
-                          <ActionButton
-                            type="button"
-                            disabled={leaving}
-                            aria-label={`Open ${label} in Messages`}
-                            onClick={() => openChannel(channel._id)}
-                            base={{
-                              ...buttonFont,
-                              width: '100%',
-                              display: 'flex',
-                              alignItems: narrow ? 'flex-start' : 'center',
-                              justifyContent: 'space-between',
-                              flexDirection: narrow ? 'column' : 'row',
-                              gap: narrow ? '0.25rem' : '1rem',
-                              border: '1px solid #d5d5d5',
-                              borderRadius: 8,
-                              background: '#fff',
-                              color: '#4a4a4a',
-                              padding: '0.5rem 0.9rem',
-                              textAlign: 'left',
-                            }}
-                            hover={{ background: '#fafafa' }}
-                          >
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {label}
-                            </span>
-                            <span style={{ flexShrink: 0, color: '#5c5c5c' }}>Open in Messages →</span>
-                          </ActionButton>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {hiddenChannelCount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.35rem' }}>
-                      <ActionButton
-                        type="button"
-                        base={moreButtonStyle}
-                        hover={{ textDecoration: 'underline' }}
-                        aria-expanded={showAllChannels}
-                        aria-label={
-                          showAllChannels
-                            ? 'Show fewer channels'
-                            : `See ${hiddenChannelCount} more channels`
-                        }
-                        onClick={() => setShowAllChannels((current) => !current)}
-                      >
-                        {showAllChannels ? 'Show less' : `See ${hiddenChannelCount} more`}
-                      </ActionButton>
-                    </div>
-                  )}
-                </>
+                <ul style={listStyle}>
+                  {channels.map((channel) => (
+                    <li
+                      key={channel._id}
+                      style={{
+                        padding: '0.55rem 0.15rem',
+                        borderBottom: '1px solid #e5e5e5',
+                        color: '#333',
+                      }}
+                    >
+                      {channelLabel(channel.title)}
+                    </li>
+                  ))}
+                </ul>
               )}
             </Section>
 
-            <Section
-              title={membersError ? 'Members' : `Members (${members.length})`}
-              search={
-                <ClubSearch
-                  value={memberQuery}
-                  onChange={setMemberQuery}
-                  label="Search members"
-                  placeholder="Search members"
-                  size="sm"
-                />
-              }
-            >
+            <Section title={membersError ? 'Members' : `Members (${members.length})`}>
               {membersError ? (
                 <Alert variant="danger" className="mb-0">
                   {membersError}
                 </Alert>
               ) : members.length === 0 ? (
                 <p style={{ margin: 0, color: '#777' }}>No members to show.</p>
-              ) : filteredMembers.length === 0 ? (
-                <p style={{ margin: 0, color: '#777' }}>No members match your search.</p>
               ) : (
-                <>
-                  <ul ref={memberListRef} style={listStyle(memberMaxHeight)}>
-                    {visibleMembers.map((member) => (
-                      <li
-                        key={member.userId}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.6rem',
-                          padding: '0.8rem 0.15rem',
-                          borderBottom: '1px solid #e5e5e5',
-                          color: '#333',
-                        }}
-                      >
-                        <span>{memberName(member)}</span>
-                        {member.role === 'OFFICER' && (
-                          <span
-                            style={{
-                              background: '#ffedd5',
-                              color: '#c2410c',
-                              borderRadius: 999,
-                              fontSize: '0.68rem',
-                              fontWeight: 700,
-                              letterSpacing: '0.03em',
-                              padding: '0.18rem 0.5rem',
-                            }}
-                          >
-                            OFFICER
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {hiddenMemberCount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.35rem' }}>
-                      <ActionButton
-                        type="button"
-                        base={moreButtonStyle}
-                        hover={{ textDecoration: 'underline' }}
-                        aria-expanded={showAllMembers}
-                        aria-label={
-                          showAllMembers
-                            ? 'Show fewer members'
-                            : `See ${hiddenMemberCount} more members`
-                        }
-                        onClick={() => setShowAllMembers((current) => !current)}
-                      >
-                        {showAllMembers ? 'Show less' : `See ${hiddenMemberCount} more`}
-                      </ActionButton>
-                    </div>
-                  )}
-                </>
+                <ul style={listStyle}>
+                  {members.map((member) => (
+                    <li
+                      key={member.userId}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        padding: '0.8rem 0.15rem',
+                        borderBottom: '1px solid #e5e5e5',
+                        color: '#333',
+                      }}
+                    >
+                      <span>{memberName(member)}</span>
+                      {member.role === 'OFFICER' && (
+                        <span
+                          style={{
+                            background: '#ffedd5',
+                            color: '#c2410c',
+                            borderRadius: 999,
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            letterSpacing: '0.03em',
+                            padding: '0.18rem 0.5rem',
+                          }}
+                        >
+                          OFFICER
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
             </Section>
           </>
