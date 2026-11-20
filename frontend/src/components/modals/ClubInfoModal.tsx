@@ -1,6 +1,8 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type ComponentProps,
@@ -19,6 +21,8 @@ import {
   leaveClub,
 } from '../../api/clubApi';
 import type { ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../../types/club';
+
+const PREVIEW_COUNT = 3;
 
 const CATEGORY_LABEL: Record<ClubCategory, string> = {
   ACADEMIC: 'Academic',
@@ -173,15 +177,15 @@ function ActionButton({ base, hover, disabled, style, children, ...props }: Acti
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section style={{ border: '1px solid #d7d7d7', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
+    <section style={{ border: '1px solid #d5d5d5', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
       <h2
         style={{
           margin: 0,
-          padding: '0.55rem 1rem',
-          background: '#c5c6c7',
-          borderBottom: '1px solid #e4e4e4',
-          color: '#000',
-          fontSize: '1.15rem',
+          padding: '0.7rem 1rem',
+          background: '#f3f3f3',
+          borderBottom: '1px solid #e6e6e6',
+          color: '#111',
+          fontSize: '1.2rem',
           fontWeight: 700,
         }}
       >
@@ -192,13 +196,27 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-const listStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  margin: 0,
-  padding: 0,
-  listStyle: 'none',
-};
+function measuredListHeight(list: HTMLUListElement | null, count: number): number | undefined {
+  const item = list?.children[PREVIEW_COUNT - 1] as HTMLElement | undefined;
+  if (!list || count <= PREVIEW_COUNT || !item) return undefined;
+  const top = list.getBoundingClientRect().top;
+  const bottom = item.getBoundingClientRect().bottom;
+  return Math.ceil(bottom - top);
+}
+
+function listBoxStyle(maxHeight: number | undefined, gap?: string): CSSProperties {
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    gap,
+    ...(maxHeight !== undefined
+      ? { maxHeight, overflowY: 'auto', overscrollBehavior: 'contain' }
+      : {}),
+  };
+}
 
 export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfoModalProps) {
   const navigate = useNavigate();
@@ -215,6 +233,10 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [channelMaxHeight, setChannelMaxHeight] = useState<number>();
+  const [memberMaxHeight, setMemberMaxHeight] = useState<number>();
+  const channelListRef = useRef<HTMLUListElement>(null);
+  const memberListRef = useRef<HTMLUListElement>(null);
 
   const reset = useCallback(() => {
     setClub(null);
@@ -226,6 +248,8 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     setLeaveError('');
     setConfirmingLeave(false);
     setLeaving(false);
+    setChannelMaxHeight(undefined);
+    setMemberMaxHeight(undefined);
   }, []);
 
   useEffect(() => {
@@ -267,6 +291,14 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     };
   }, [show, clubId, reloadKey, navigate, setUser, reset]);
 
+  useLayoutEffect(() => {
+    setChannelMaxHeight(measuredListHeight(channelListRef.current, channels.length));
+  }, [channels, narrow]);
+
+  useLayoutEffect(() => {
+    setMemberMaxHeight(measuredListHeight(memberListRef.current, members.length));
+  }, [members, narrow]);
+
   async function confirmLeave() {
     if (!clubId || leaving) return;
     setLeaving(true);
@@ -286,6 +318,12 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     } finally {
       setLeaving(false);
     }
+  }
+
+  function openChannel(channelId: string) {
+    if (leaving) return;
+    onHide();
+    navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
   }
 
   return (
@@ -435,20 +473,47 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
               ) : channels.length === 0 ? (
                 <p style={{ margin: 0, color: '#777' }}>No channels yet.</p>
               ) : (
-                <ul style={listStyle}>
-                  {channels.map((channel) => (
-                    <li
-                      key={channel._id}
-                      style={{
-                        padding: '0.55rem 0.15rem',
-                        borderBottom: '1px solid #e5e5e5',
-                        color: '#333',
-                      }}
-                    >
-                      {channelLabel(channel.title)}
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul
+                    ref={channelListRef}
+                    style={listBoxStyle(channelMaxHeight, '0.55rem')}
+                  >
+                    {channels.map((channel) => {
+                      const label = channelLabel(channel.title);
+                      return (
+                        <li key={channel._id}>
+                          <ActionButton
+                            type="button"
+                            disabled={leaving}
+                            aria-label={`Open ${label} in Messages`}
+                            onClick={() => openChannel(channel._id)}
+                            base={{
+                              ...buttonFont,
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: narrow ? 'flex-start' : 'center',
+                              justifyContent: 'space-between',
+                              flexDirection: narrow ? 'column' : 'row',
+                              gap: narrow ? '0.25rem' : '1rem',
+                              border: '1px solid #d0d0d0',
+                              borderRadius: 8,
+                              background: '#fff',
+                              color: '#4a4a4a',
+                              padding: '0.55rem 0.9rem',
+                              textAlign: 'left',
+                            }}
+                            hover={{ background: '#fafafa' }}
+                          >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {label}
+                            </span>
+                            <span style={{ flexShrink: 0, color: '#6b6b6b' }}>Open in Messages →</span>
+                          </ActionButton>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
               )}
             </Section>
 
@@ -460,38 +525,40 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
               ) : members.length === 0 ? (
                 <p style={{ margin: 0, color: '#777' }}>No members to show.</p>
               ) : (
-                <ul style={listStyle}>
-                  {members.map((member) => (
-                    <li
-                      key={member.userId}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.6rem',
-                        padding: '0.8rem 0.15rem',
-                        borderBottom: '1px solid #e5e5e5',
-                        color: '#333',
-                      }}
-                    >
-                      <span>{memberName(member)}</span>
-                      {member.role === 'OFFICER' && (
-                        <span
-                          style={{
-                            background: '#ffedd5',
-                            color: '#c2410c',
-                            borderRadius: 999,
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            letterSpacing: '0.03em',
-                            padding: '0.18rem 0.5rem',
-                          }}
-                        >
-                          OFFICER
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul ref={memberListRef} style={listBoxStyle(memberMaxHeight)}>
+                    {members.map((member) => (
+                      <li
+                        key={member.userId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.6rem',
+                          padding: '0.85rem 0.15rem',
+                          borderBottom: '1px solid #e4e4e4',
+                          color: '#333',
+                        }}
+                      >
+                        <span>{memberName(member)}</span>
+                        {member.role === 'OFFICER' && (
+                          <span
+                            style={{
+                              background: '#ffedd5',
+                              color: '#c2410c',
+                              borderRadius: 999,
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.03em',
+                              padding: '0.15rem 0.5rem',
+                            }}
+                          >
+                            OFFICER
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </Section>
           </>
