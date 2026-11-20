@@ -12,6 +12,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import Modal from 'react-bootstrap/Modal';
 import Alert from 'react-bootstrap/Alert';
+import { Search } from 'react-bootstrap-icons';
 import { useAuth } from '../../hooks/useAuth';
 import {
   getClub,
@@ -75,6 +76,12 @@ function memberName(member: ClubMember): string {
   return name || 'Unknown member';
 }
 
+function matchesQuery(query: string, ...values: Array<string | undefined>): boolean {
+  const search = query.trim().toLowerCase();
+  if (search === '') return true;
+  return values.some((value) => (value ?? '').toLowerCase().includes(search));
+}
+
 function useNarrowScreen() {
   const query = '(max-width: 576px)';
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
@@ -132,6 +139,16 @@ const cancelButtonStyle: CSSProperties = {
   border: '1px solid #cfcfcf',
 };
 
+const moreButtonStyle: CSSProperties = {
+  ...buttonFont,
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: '#5c5c5c',
+  fontSize: '0.78rem',
+  whiteSpace: 'nowrap',
+};
+
 type ActionButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   base: CSSProperties;
   hover?: CSSProperties;
@@ -175,22 +192,71 @@ function ActionButton({ base, hover, disabled, style, children, ...props }: Acti
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function ListSearch({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
   return (
-    <section style={{ border: '1px solid #d5d5d5', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
-      <h2
+    <div style={{ position: 'relative', width: 'min(180px, 100%)', flex: '1 1 140px', maxWidth: 180 }}>
+      <span
         style={{
-          margin: 0,
-          padding: '0.7rem 1rem',
-          background: '#f3f3f3',
-          borderBottom: '1px solid #e6e6e6',
-          color: '#111',
-          fontSize: '1.2rem',
-          fontWeight: 700,
+          position: 'absolute',
+          top: '50%',
+          left: '0.55rem',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          color: '#6c757d',
+          pointerEvents: 'none',
         }}
       >
-        {title}
-      </h2>
+        <Search size={16} aria-hidden="true" focusable="false" />
+      </span>
+      <input
+        type="search"
+        value={value}
+        aria-label={label}
+        placeholder="Search"
+        onChange={(event) => onChange(event.target.value)}
+        style={{
+          width: '100%',
+          border: '1px solid #d0d0d0',
+          borderRadius: 8,
+          background: '#fff',
+          color: '#222',
+          font: 'inherit',
+          fontSize: '0.85rem',
+          padding: '0.35rem 0.55rem 0.35rem 1.7rem',
+        }}
+      />
+    </div>
+  );
+}
+
+function Section({ title, search, children }: { title: string; search?: ReactNode; children: ReactNode }) {
+  const narrow = useNarrowScreen();
+
+  return (
+    <section style={{ border: '1px solid #d5d5d5', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          padding: '0.55rem 1rem',
+          background: '#f3f3f3',
+          borderBottom: '1px solid #e6e6e6',
+          flexWrap: narrow ? 'wrap' : 'nowrap',
+        }}
+      >
+        <h2 style={{ margin: 0, color: '#111', fontSize: '1.2rem', fontWeight: 700, flex: '0 0 auto' }}>{title}</h2>
+        {search}
+      </div>
       <div style={{ padding: '1rem 1.1rem 0.95rem' }}>{children}</div>
     </section>
   );
@@ -202,6 +268,50 @@ function measuredListHeight(list: HTMLUListElement | null, count: number): numbe
   const top = list.getBoundingClientRect().top;
   const bottom = item.getBoundingClientRect().bottom;
   return Math.ceil(bottom - top);
+}
+
+function snapListToNextGroup(list: HTMLUListElement | null) {
+  const next = list?.children[PREVIEW_COUNT] as HTMLElement | undefined;
+  if (!list || !next) return;
+  const delta = next.getBoundingClientRect().top - list.getBoundingClientRect().top;
+  list.scrollTop += delta;
+}
+
+function ListToggle({
+  expanded,
+  hiddenCount,
+  onToggle,
+}: {
+  expanded: boolean;
+  hiddenCount: number;
+  onToggle: () => void;
+}) {
+  if (hiddenCount <= 0) return null;
+
+  return (
+    <div
+      style={{
+        position: expanded ? 'sticky' : 'static',
+        bottom: 0,
+        zIndex: 1,
+        display: 'flex',
+        justifyContent: 'flex-end',
+        marginTop: '0.45rem',
+        paddingTop: expanded ? '0.4rem' : 0,
+        background: '#fff',
+      }}
+    >
+      <ActionButton
+        type="button"
+        base={moreButtonStyle}
+        hover={{ textDecoration: 'underline' }}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        {expanded ? 'Show less' : `See ${hiddenCount} more`}
+      </ActionButton>
+    </div>
+  );
 }
 
 function listBoxStyle(maxHeight: number | undefined, gap?: string): CSSProperties {
@@ -232,11 +342,17 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const [leaveError, setLeaveError] = useState('');
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [showAllChannels, setShowAllChannels] = useState(false);
+  const [showAllMembers, setShowAllMembers] = useState(false);
+  const [channelQuery, setChannelQuery] = useState('');
+  const [memberQuery, setMemberQuery] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [channelMaxHeight, setChannelMaxHeight] = useState<number>();
   const [memberMaxHeight, setMemberMaxHeight] = useState<number>();
   const channelListRef = useRef<HTMLUListElement>(null);
   const memberListRef = useRef<HTMLUListElement>(null);
+  const snapChannelsRef = useRef(false);
+  const snapMembersRef = useRef(false);
 
   const reset = useCallback(() => {
     setClub(null);
@@ -248,8 +364,14 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     setLeaveError('');
     setConfirmingLeave(false);
     setLeaving(false);
+    setShowAllChannels(false);
+    setShowAllMembers(false);
+    setChannelQuery('');
+    setMemberQuery('');
     setChannelMaxHeight(undefined);
     setMemberMaxHeight(undefined);
+    snapChannelsRef.current = false;
+    snapMembersRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -291,13 +413,36 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     };
   }, [show, clubId, reloadKey, navigate, setUser, reset]);
 
-  useLayoutEffect(() => {
-    setChannelMaxHeight(measuredListHeight(channelListRef.current, channels.length));
-  }, [channels, narrow]);
+  const filteredChannels = channels.filter((channel) =>
+    matchesQuery(channelQuery, channel.title, channelLabel(channel.title)),
+  );
+  const filteredMembers = members.filter((member) =>
+    matchesQuery(memberQuery, memberName(member), member.firstName, member.lastName),
+  );
 
   useLayoutEffect(() => {
-    setMemberMaxHeight(measuredListHeight(memberListRef.current, members.length));
-  }, [members, narrow]);
+    setChannelMaxHeight(
+      showAllChannels ? measuredListHeight(channelListRef.current, filteredChannels.length) : undefined,
+    );
+  }, [filteredChannels.length, narrow, showAllChannels]);
+
+  useLayoutEffect(() => {
+    setMemberMaxHeight(
+      showAllMembers ? measuredListHeight(memberListRef.current, filteredMembers.length) : undefined,
+    );
+  }, [filteredMembers.length, narrow, showAllMembers]);
+
+  useLayoutEffect(() => {
+    if (!showAllChannels || channelMaxHeight === undefined || !snapChannelsRef.current) return;
+    snapListToNextGroup(channelListRef.current);
+    snapChannelsRef.current = false;
+  }, [showAllChannels, channelMaxHeight, filteredChannels.length]);
+
+  useLayoutEffect(() => {
+    if (!showAllMembers || memberMaxHeight === undefined || !snapMembersRef.current) return;
+    snapListToNextGroup(memberListRef.current);
+    snapMembersRef.current = false;
+  }, [showAllMembers, memberMaxHeight, filteredMembers.length]);
 
   async function confirmLeave() {
     if (!clubId || leaving) return;
@@ -325,6 +470,11 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     onHide();
     navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
   }
+
+  const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);
+  const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, PREVIEW_COUNT);
+  const hiddenChannelCount = Math.max(filteredChannels.length - PREVIEW_COUNT, 0);
+  const hiddenMemberCount = Math.max(filteredMembers.length - PREVIEW_COUNT, 0);
 
   return (
     <Modal
@@ -465,20 +615,25 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
               )}
             </Section>
 
-            <Section title="Channels">
+            <Section
+              title="Channels"
+              search={<ListSearch value={channelQuery} onChange={setChannelQuery} label="Search channels" />}
+            >
               {channelsError ? (
                 <Alert variant="danger" className="mb-0">
                   {channelsError}
                 </Alert>
               ) : channels.length === 0 ? (
                 <p style={{ margin: 0, color: '#777' }}>No channels yet.</p>
+              ) : filteredChannels.length === 0 ? (
+                <p style={{ margin: 0, color: '#777' }}>No channels match your search.</p>
               ) : (
                 <>
                   <ul
                     ref={channelListRef}
-                    style={listBoxStyle(channelMaxHeight, '0.55rem')}
+                    style={listBoxStyle(showAllChannels ? channelMaxHeight : undefined, '0.55rem')}
                   >
-                    {channels.map((channel) => {
+                    {visibleChannels.map((channel) => {
                       const label = channelLabel(channel.title);
                       return (
                         <li key={channel._id}>
@@ -513,21 +668,36 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                       );
                     })}
                   </ul>
+                  <ListToggle
+                    expanded={showAllChannels}
+                    hiddenCount={hiddenChannelCount}
+                    onToggle={() =>
+                      setShowAllChannels((current) => {
+                        if (!current) snapChannelsRef.current = true;
+                        return !current;
+                      })
+                    }
+                  />
                 </>
               )}
             </Section>
 
-            <Section title={membersError ? 'Members' : `Members (${members.length})`}>
+            <Section
+              title={membersError ? 'Members' : `Members (${members.length})`}
+              search={<ListSearch value={memberQuery} onChange={setMemberQuery} label="Search members" />}
+            >
               {membersError ? (
                 <Alert variant="danger" className="mb-0">
                   {membersError}
                 </Alert>
               ) : members.length === 0 ? (
                 <p style={{ margin: 0, color: '#777' }}>No members to show.</p>
+              ) : filteredMembers.length === 0 ? (
+                <p style={{ margin: 0, color: '#777' }}>No members match your search.</p>
               ) : (
                 <>
-                  <ul ref={memberListRef} style={listBoxStyle(memberMaxHeight)}>
-                    {members.map((member) => (
+                  <ul ref={memberListRef} style={listBoxStyle(showAllMembers ? memberMaxHeight : undefined)}>
+                    {visibleMembers.map((member) => (
                       <li
                         key={member.userId}
                         style={{
@@ -558,6 +728,16 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                       </li>
                     ))}
                   </ul>
+                  <ListToggle
+                    expanded={showAllMembers}
+                    hiddenCount={hiddenMemberCount}
+                    onToggle={() =>
+                      setShowAllMembers((current) => {
+                        if (!current) snapMembersRef.current = true;
+                        return !current;
+                      })
+                    }
+                  />
                 </>
               )}
             </Section>
