@@ -1,13 +1,21 @@
 import mongoose, { type ClientSession, type Types } from 'mongoose';
-import { type IConversation } from '../../messaging/interfaces/conversation.interfaces';
+import { ConversationType, type IConversation } from '../../messaging/interfaces/conversation.interfaces';
+import { MessagingError, MessagingErrorCode } from '../../messaging/errors/messagingError';
+import { Conversation } from '../../messaging/models/Conversation';
 import { ConversationParticipant, ParticipantPermission } from '../../messaging/models/ConversationParticipant';
+import { Message } from '../../messaging/models/Message';
 import {
   addParticipantsToConversation,
   createChannel,
   getClubChannels,
+  updateConversationTitle,
   updateParticipantPermissions,
+  type PermissionUpdate,
 } from '../../messaging/services/conversation.service';
 import { messagingPublisher } from '../../messaging/sockets/messagingPublisher';
+import { type ClientError } from '../interfaces/clubs.interface';
+import { cannotRenameGeneral, channelNotFound, channelTitleExists, clubNotFound, lastChannel } from '../errors';
+import { Club } from '../model/clubModel';
 import { Membership } from '../model/membershipModel';
 
 const GENERAL_CHANNEL_TITLE = 'General';
@@ -163,4 +171,168 @@ async function deleteMemberChannelSeats(
     channelIds.push(channel._id.toString());
   }
   return channelIds;
+}
+
+type ChannelBody = { _id: string; title: string };
+
+export type ChannelCommandResult = { channel: ChannelBody } | { error: ClientError };
+
+class ChannelCommandError extends Error {
+  constructor(readonly clientError: ClientError) {
+    super(clientError.message);
+    this.name = 'ChannelCommandError';
+  }
+}
+
+function ruledChannelError(error: unknown): ClientError | null {
+  return error instanceof ChannelCommandError ? error.clientError : null;
+}
+
+function channelWriteError(error: unknown): ClientError | null {
+  if (error instanceof MessagingError && error.code === MessagingErrorCode.CHANNEL_TITLE_EXISTS) {
+    return channelTitleExists();
+  }
+  if (error instanceof MessagingError && error.code === MessagingErrorCode.CLUB_NOT_FOUND) {
+    return clubNotFound();
+  }
+  return null;
+}
+
+export async function createClubChannel(input: { clubId: Types.ObjectId; title: string }): Promise<ChannelCommandResult> {
+  const session = await mongoose.startSession();
+  try {
+    const channel = await session.withTransaction(async () => {
+      const roster = await Membership.find({ clubId: input.clubId, status: 'ACTIVE' })
+        .select('userId role')
+        .session(session)
+        .lean();
+      // Joining later walks every club channel, so the people already here have to be seated now.
+      const created = await createChannel(
+        input.clubId,
+        input.title,
+        roster.map((membership) => membership.userId),
+        session
+      );
+      const officerUpdates: PermissionUpdate[] = roster
+        .filter((membership) => membership.role === 'OFFICER')
+        .map((membership) => [membership.userId, CHANNEL_PERMISSION_BY_ROLE.OFFICER]);
+      if (officerUpdates.length > 0) {
+        await updateParticipantPermissions(created._id, undefined, officerUpdates, session);
+      }
+      return { _id: created._id.toString(), title: created.title ?? input.title };
+    });
+    return { channel };
+  } catch (error) {
+    const ruled = channelWriteError(error);
+    if (ruled) {
+      return { error: ruled };
+    }
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+}
+
+export async function renameClubChannel(input: {
+  clubId: Types.ObjectId;
+  channelId: Types.ObjectId;
+  title: string;
+  requesterId: Types.ObjectId;
+}): Promise<ChannelCommandResult> {
+  const channel = await Conversation.findOne({
+    _id: input.channelId,
+    clubId: input.clubId,
+    type: ConversationType.CHANNEL,
+  })
+    .select('title')
+    .lean();
+  if (!channel) {
+    return { error: channelNotFound() };
+  }
+  if (channel.title === input.title) {
+    return { channel: { _id: input.channelId.toString(), title: input.title } };
+  }
+  if (channel.title === GENERAL_CHANNEL_TITLE) {
+    return { error: cannotRenameGeneral() };
+  }
+
+  try {
+    const updated = await updateConversationTitle(input.channelId, input.requesterId, input.title);
+    const savedTitle = updated.title ?? input.title;
+    messagingPublisher.conversationRenamed(input.channelId.toString(), savedTitle);
+    return { channel: { _id: updated._id.toString(), title: savedTitle } };
+  } catch (error) {
+    if (error instanceof MessagingError && error.code === MessagingErrorCode.CONVERSATION_NOT_FOUND) {
+      return { error: channelNotFound() };
+    }
+    const ruled = channelWriteError(error);
+    if (ruled) {
+      return { error: ruled };
+    }
+    throw error;
+  }
+}
+
+export async function removeClubChannel(input: {
+  clubId: Types.ObjectId;
+  channelId: Types.ObjectId;
+}): Promise<ChannelCommandResult> {
+  const session = await mongoose.startSession();
+  try {
+    const removed = await session.withTransaction(async () => {
+      // Touch the club row so two removals conflict and retry. The retry then sees the
+      // channel that remains and keeps the club from losing its last channel.
+      const locked = await Club.updateOne(
+        { _id: input.clubId, status: 'APPROVED' },
+        { $set: { status: 'APPROVED' } },
+        { session, timestamps: true }
+      );
+      if (locked.matchedCount === 0) {
+        throw new ChannelCommandError(clubNotFound());
+      }
+
+      const channel = await Conversation.findOne({
+        _id: input.channelId,
+        clubId: input.clubId,
+        type: ConversationType.CHANNEL,
+      }).session(session);
+      if (!channel?.title) {
+        throw new ChannelCommandError(channelNotFound());
+      }
+
+      const another = await Conversation.exists({
+        clubId: input.clubId,
+        type: ConversationType.CHANNEL,
+        _id: { $ne: channel._id },
+      }).session(session);
+      if (!another) {
+        throw new ChannelCommandError(lastChannel());
+      }
+
+      const seats = await ConversationParticipant.find({ conversationId: channel._id })
+        .select('userId')
+        .session(session)
+        .lean();
+      await Message.deleteMany({ conversationId: channel._id }, { session });
+      await ConversationParticipant.deleteMany({ conversationId: channel._id }, { session });
+      await channel.deleteOne({ session });
+      return {
+        channel: { _id: channel._id.toString(), title: channel.title },
+        participantIds: seats.map((seat) => seat.userId.toString()),
+      };
+    });
+
+    for (const userId of removed.participantIds) {
+      messagingPublisher.participantRemoved(removed.channel._id, userId);
+    }
+    return { channel: removed.channel };
+  } catch (error) {
+    const ruled = ruledChannelError(error);
+    if (ruled) {
+      return { error: ruled };
+    }
+    throw error;
+  } finally {
+    await session.endSession();
+  }
 }
