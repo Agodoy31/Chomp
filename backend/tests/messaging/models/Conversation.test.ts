@@ -177,6 +177,18 @@ describe('Conversation Model', () => {
       expect(channel.deleted).toBe(false);
     });
 
+    it('rejects null for deleted on conversation creation', async () => {
+      const clubId = new Types.ObjectId();
+      await expect(
+        Conversation.create({
+          type: ConversationType.CHANNEL,
+          clubId,
+          title: 'Null Deleted Channel',
+          deleted: null as unknown as boolean,
+        })
+      ).rejects.toThrow();
+    });
+
     it('allows reusing a club channel title when the earlier channel is soft-deleted', async () => {
       const clubId = new Types.ObjectId();
 

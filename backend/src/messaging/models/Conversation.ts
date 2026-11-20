@@ -35,6 +35,7 @@ const conversationSchema = new Schema<IConversation>(
     },
     deleted: {
       type: Boolean,
+      required: true,
       default: false,
     },
   },

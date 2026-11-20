@@ -318,13 +318,17 @@ describe('Socket Server Handshake Authentication', () => {
     const otherRoom = 'conversation:lib_west_quiet_floor';
     const socket1 = connectedServerSockets.find((s) => s.data.userId === firstRes.body.user.id);
     const socket2 = connectedServerSockets.find((s) => s.data.userId === secondRes.body.user.id);
+    expect(socket1).toBeDefined();
+    expect(socket2).toBeDefined();
     await socket1?.join(targetRoom);
     await socket2?.join(targetRoom);
     await socket2?.join(otherRoom);
 
+    const ioInstance = getIO();
+    expect(ioInstance?.sockets.adapter.rooms.get(targetRoom)?.size).toBe(2);
+
     evictRoom(targetRoom);
 
-    const ioInstance = getIO();
     expect(ioInstance?.sockets.adapter.rooms.get(targetRoom)?.size ?? 0).toBe(0);
     expect(ioInstance?.sockets.adapter.rooms.get(otherRoom)?.has(client2.id)).toBe(true);
     expect(ioInstance?.sockets.adapter.rooms.get(getUserRoom(firstRes.body.user.id))?.has(client1.id)).toBe(true);
@@ -358,8 +362,13 @@ describe('Socket Server Handshake Authentication', () => {
     const conversationRoom = getConversationRoom(conversationId);
     const socket1 = connectedServerSockets.find((s) => s.data.userId === firstRes.body.user.id);
     const socket2 = connectedServerSockets.find((s) => s.data.userId === secondRes.body.user.id);
+    expect(socket1).toBeDefined();
+    expect(socket2).toBeDefined();
     await socket1?.join(conversationRoom);
     await socket2?.join(conversationRoom);
+
+    const ioInstance = getIO();
+    expect(ioInstance?.sockets.adapter.rooms.get(conversationRoom)?.size).toBe(2);
 
     let participantRemovedFired = false;
     client1.on('participant:removed', () => {
@@ -384,7 +393,6 @@ describe('Socket Server Handshake Authentication', () => {
     expect(payload2).toEqual({ conversationId });
     expect(participantRemovedFired).toBe(false);
 
-    const ioInstance = getIO();
     expect(ioInstance?.sockets.adapter.rooms.get(conversationRoom)?.size ?? 0).toBe(0);
   });
 });
