@@ -17,6 +17,26 @@ const CLUB_CATEGORY_OPTIONS: { value: ClubCategory; label: string }[] = [
   { value: 'OTHER', label: 'Other' },
 ];
 
+
+const WEEKDAY_PATTERN = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
+const TIME_PATTERN = /^(1[0-2]|0?[1-9]):[0-5][0-9]\s?(AM|PM)$/i;
+
+function formatMeetingDay(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function formatMeetingTime(value: string): string {
+  const match = value.trim().match(/^(1[0-2]|0?[1-9]):([0-5][0-9])\s?(AM|PM)$/i);
+  if (!match) return value.trim();
+
+  const hour = String(Number(match[1]));
+  const minute = match[2];
+  const period = match[3].toUpperCase();
+
+  return `${hour}:${minute} ${period}`;
+}
+
 export function EditClubModal({ show, club, onHide, onSuccess }: EditClubModalProps) {
   return (
     <Modal
@@ -25,7 +45,7 @@ export function EditClubModal({ show, club, onHide, onSuccess }: EditClubModalPr
       centered
       aria-labelledby="edit-club-modal-title"
     >
-      {club && <EditClubForm club={club} onHide={onHide} onSuccess={onSuccess} />}
+      {club && <EditClubForm  key={club._id} club={club} onHide={onHide} onSuccess={onSuccess} />}
     </Modal>
   );
 }
@@ -38,7 +58,8 @@ type EditClubFormProps = {
 
 function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
   const [name, setName] = useState(club.name ?? '');
-  const [category, setCategory] = useState<ClubCategory | ''>(club.category ?? '');
+
+  const [category, setCategory] = useState<ClubCategory>(club.category);
   const [description, setDescription] = useState(club.description ?? '');
   const [meetingDay, setMeetingDay] = useState(club.meeting?.day ?? '');
   const [meetingTime, setMeetingTime] = useState(club.meeting?.time ?? '');
@@ -48,6 +69,7 @@ function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
 
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
+
     if (!club){
       return;
     }
@@ -68,28 +90,35 @@ function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
       return;
     }
 
+    if (trimmedDay && !WEEKDAY_PATTERN.test(trimmedDay)) {
+      setError('Meeting day must be a day of the week, like Monday.');
+      return;
+    }
+
+    if (trimmedTime && !TIME_PATTERN.test(trimmedTime)) {
+      setError('Meeting time must look like 6:30 PM.');
+      return;
+    }
+
     const meetingPayload: NonNullable<UpdateClubPayload['meeting']> = {};
-    if (trimmedDay) meetingPayload.day = trimmedDay;
-    if (trimmedTime) meetingPayload.time = trimmedTime;
+    if (trimmedDay) meetingPayload.day = formatMeetingDay(trimmedDay);
+    if (trimmedTime) meetingPayload.time = formatMeetingTime(trimmedTime);
     if (trimmedLocation) meetingPayload.location = trimmedLocation;
 
     const payload: UpdateClubPayload = {
       name: trimmedName,
       description: trimmedDescription,
+      category,
+      meeting: meetingPayload
     };
-
-    if (category) payload.category = category;
-    if (Object.keys(meetingPayload).length > 0) {
-      payload.meeting = meetingPayload;
-    }
 
     setSubmitting(true);
     setError(null);
 
     try {
       const updatedClub = await updateClub(club._id, payload);
-      onSuccess?.(updatedClub);
-      onHide();
+       onSuccess?.({ ...club, ...updatedClub, meeting: updatedClub.meeting ?? {} });      
+       onHide();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update club.');
     } finally {
@@ -128,10 +157,9 @@ function EditClubForm({ club, onHide, onSuccess }: EditClubFormProps) {
             <Form.Label>Category</Form.Label>
             <Form.Select
               value={category}
-              onChange={(e) => setCategory(e.target.value as ClubCategory | '')}
+              onChange={(e) => setCategory(e.target.value as ClubCategory)}
               disabled={submitting}
             >
-              <option value="">Select a category...</option>
               {CLUB_CATEGORY_OPTIONS.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
