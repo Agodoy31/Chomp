@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Modal from 'react-bootstrap/Modal';
 import Alert from 'react-bootstrap/Alert';
 import { useAuth } from '../../hooks/useAuth';
+import ClubSearch, { matchesSearch } from '../ClubSearch';
 import {
   getClub,
   getClubChannels,
@@ -14,6 +15,24 @@ import type { ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../../t
 import './ClubInfoModal.css';
 
 const PREVIEW_COUNT = 3;
+const VISIBLE_LIMIT = 3;
+
+function useListLimit(count: number) {
+  const ref = useRef<HTMLUListElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number>();
+
+  useLayoutEffect(() => {
+    const list = ref.current;
+    const item = list?.children[VISIBLE_LIMIT - 1] as HTMLElement | undefined;
+    if (!list || count <= VISIBLE_LIMIT || !item) {
+      setMaxHeight(undefined);
+      return;
+    }
+    setMaxHeight(item.offsetTop + item.offsetHeight);
+  }, [count]);
+
+  return { ref, maxHeight };
+}
 
 const CATEGORY_LABEL: Record<ClubCategory, string> = {
   ACADEMIC: 'Academic',
@@ -63,13 +82,17 @@ function memberName(member: ClubMember): string {
 
 type SectionProps = {
   title: string;
+  search?: ReactNode;
   children: ReactNode;
 };
 
-function Section({ title, children }: SectionProps) {
+function Section({ title, search, children }: SectionProps) {
   return (
     <section className="club-info-section">
-      <h2 className="club-info-section-title">{title}</h2>
+      <div className="club-info-section-title">
+        <h2 className="club-info-section-heading">{title}</h2>
+        {search}
+      </div>
       <div className="club-info-section-body">{children}</div>
     </section>
   );
@@ -90,6 +113,8 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const [leaving, setLeaving] = useState(false);
   const [showAllChannels, setShowAllChannels] = useState(false);
   const [showAllMembers, setShowAllMembers] = useState(false);
+  const [channelQuery, setChannelQuery] = useState('');
+  const [memberQuery, setMemberQuery] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -107,6 +132,8 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
       setMembers([]);
       setShowAllChannels(false);
       setShowAllMembers(false);
+      setChannelQuery('');
+      setMemberQuery('');
 
       const [clubResult, channelResult, memberResult] = await Promise.allSettled([
         getClub(id, controller.signal),
@@ -167,6 +194,8 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     setLeaving(false);
     setShowAllChannels(false);
     setShowAllMembers(false);
+    setChannelQuery('');
+    setMemberQuery('');
   }
 
   async function confirmLeave() {
@@ -196,10 +225,18 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
   }
 
-  const visibleChannels = showAllChannels ? channels : channels.slice(0, PREVIEW_COUNT);
-  const visibleMembers = showAllMembers ? members : members.slice(0, PREVIEW_COUNT);
-  const hiddenChannelCount = Math.max(channels.length - PREVIEW_COUNT, 0);
-  const hiddenMemberCount = Math.max(members.length - PREVIEW_COUNT, 0);
+  const filteredChannels = channels.filter((channel) =>
+    matchesSearch(channelQuery, channel.title, channelLabel(channel.title))
+  );
+  const filteredMembers = members.filter((member) =>
+    matchesSearch(memberQuery, memberName(member), member.firstName, member.lastName)
+  );
+  const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);
+  const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, PREVIEW_COUNT);
+  const hiddenChannelCount = Math.max(filteredChannels.length - PREVIEW_COUNT, 0);
+  const hiddenMemberCount = Math.max(filteredMembers.length - PREVIEW_COUNT, 0);
+  const channelList = useListLimit(visibleChannels.length);
+  const memberList = useListLimit(visibleMembers.length);
 
   return (
     <Modal
@@ -308,16 +345,38 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
               )}
             </Section>
 
-            <Section title="Channels">
+            <Section
+              title="Channels"
+              search={
+                <ClubSearch
+                  value={channelQuery}
+                  onChange={setChannelQuery}
+                  label="Search channels"
+                  placeholder="Search channels"
+                  size="sm"
+                  className="club-info-section-search"
+                />
+              }
+            >
               {channelsError ? (
                 <Alert variant="danger" className="mb-0">
                   {channelsError}
                 </Alert>
               ) : channels.length === 0 ? (
                 <p className="club-info-empty">No channels yet.</p>
+              ) : filteredChannels.length === 0 ? (
+                <p className="club-info-empty">No channels match your search.</p>
               ) : (
                 <>
-                  <ul className="club-info-channels">
+                  <ul
+                    ref={channelList.ref}
+                    className={
+                      channelList.maxHeight
+                        ? 'club-info-channels club-info-list-scroll'
+                        : 'club-info-channels'
+                    }
+                    style={channelList.maxHeight ? { maxHeight: channelList.maxHeight } : undefined}
+                  >
                     {visibleChannels.map((channel) => {
                       const label = channelLabel(channel.title);
                       return (
@@ -342,10 +401,14 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                         type="button"
                         className="club-info-more"
                         aria-expanded={showAllChannels}
+                        aria-label={
+                          showAllChannels
+                            ? 'Show fewer channels'
+                            : `See ${hiddenChannelCount} more channels`
+                        }
                         onClick={() => setShowAllChannels((current) => !current)}
                       >
                         {showAllChannels ? 'Show less' : `See ${hiddenChannelCount} more`}
-                        <span className="visually-hidden"> channels</span>
                       </button>
                     </div>
                   )}
@@ -353,16 +416,38 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
               )}
             </Section>
 
-            <Section title={membersError ? 'Members' : `Members (${members.length})`}>
+            <Section
+              title={membersError ? 'Members' : `Members (${members.length})`}
+              search={
+                <ClubSearch
+                  value={memberQuery}
+                  onChange={setMemberQuery}
+                  label="Search members"
+                  placeholder="Search members"
+                  size="sm"
+                  className="club-info-section-search"
+                />
+              }
+            >
               {membersError ? (
                 <Alert variant="danger" className="mb-0">
                   {membersError}
                 </Alert>
               ) : members.length === 0 ? (
                 <p className="club-info-empty">No members to show.</p>
+              ) : filteredMembers.length === 0 ? (
+                <p className="club-info-empty">No members match your search.</p>
               ) : (
                 <>
-                  <ul className="club-info-members">
+                  <ul
+                    ref={memberList.ref}
+                    className={
+                      memberList.maxHeight
+                        ? 'club-info-members club-info-list-scroll'
+                        : 'club-info-members'
+                    }
+                    style={memberList.maxHeight ? { maxHeight: memberList.maxHeight } : undefined}
+                  >
                     {visibleMembers.map((member) => (
                       <li key={member.userId} className="club-info-member">
                         <span>{memberName(member)}</span>
@@ -378,10 +463,14 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                         type="button"
                         className="club-info-more"
                         aria-expanded={showAllMembers}
+                        aria-label={
+                          showAllMembers
+                            ? 'Show fewer members'
+                            : `See ${hiddenMemberCount} more members`
+                        }
                         onClick={() => setShowAllMembers((current) => !current)}
                       >
                         {showAllMembers ? 'Show less' : `See ${hiddenMemberCount} more`}
-                        <span className="visually-hidden"> members</span>
                       </button>
                     </div>
                   )}
