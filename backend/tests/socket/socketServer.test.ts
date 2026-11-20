@@ -7,7 +7,16 @@ import type { Socket } from 'socket.io';
 import app from '../../src/app';
 import { clearTestDb, closeTestDb, connectTestDb } from '../helpers/db';
 import { User } from '../../src/user/models/User';
-import { closeSocketServer, evictUserFromRoom, getIO, getUserRoom, initSocketServer } from '../../src/socket/socketServer';
+import {
+  closeSocketServer,
+  evictRoom,
+  evictUserFromRoom,
+  getConversationRoom,
+  getIO,
+  getUserRoom,
+  initSocketServer,
+} from '../../src/socket/socketServer';
+import { messagingPublisher } from '../../src/messaging/sockets/messagingPublisher';
 import type { SocketHandlerRegistrar } from '../../src/socket/socket.interfaces';
 
 describe('Socket Server Handshake Authentication', () => {
@@ -250,4 +259,158 @@ describe('Socket Server Handshake Authentication', () => {
     const roomAfterEvict = ioInstance?.sockets.adapter.rooms.get(targetRoom);
     expect(roomAfterEvict?.has(client.id) ?? false).toBe(false);
   });
+
+  test('Evicts all sockets from a room while leaving other rooms intact', async () => {
+    const [firstRes, secondRes] = await Promise.all([
+      request(app).post('/api/auth/register').send({
+        email: 'reitz_bowler@ufl.edu',
+        password: 'BowlerPassword123!',
+        firstName: 'Reitz',
+        lastName: 'Bowler',
+      }),
+      request(app).post('/api/auth/register').send({
+        email: 'sw_rec_lifter@ufl.edu',
+        password: 'LifterPassword123!',
+        firstName: 'Southwest',
+        lastName: 'Lifter',
+      }),
+    ]);
+
+    expect(firstRes.status).toBe(201);
+    expect(secondRes.status).toBe(201);
+
+    const connectClient = async (rawCookie: string | string[]): Promise<ClientSocket> => {
+      const sessionCookie = Array.isArray(rawCookie) ? rawCookie[0].split(';')[0] : rawCookie.split(';')[0];
+      const client: ClientSocket = Client(serverUrl, {
+        autoConnect: false,
+        transports: ['websocket'],
+        extraHeaders: { cookie: sessionCookie },
+      });
+      activeClients.push(client);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Timed out waiting for connection')), 4000);
+        client.on('connect', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        client.on('connect_error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        client.connect();
+      });
+      return client;
+    };
+
+    const [client1, client2] = await Promise.all([
+      connectClient(firstRes.headers['set-cookie']),
+      connectClient(secondRes.headers['set-cookie']),
+    ]);
+
+    const targetRoom = 'conversation:marston_study_room';
+    const otherRoom = 'conversation:lib_west_quiet_floor';
+    const socket1 = connectedServerSockets.find((s) => s.data.userId === firstRes.body.user.id);
+    const socket2 = connectedServerSockets.find((s) => s.data.userId === secondRes.body.user.id);
+    await socket1?.join(targetRoom);
+    await socket2?.join(targetRoom);
+    await socket2?.join(otherRoom);
+
+    evictRoom(targetRoom);
+
+    const ioInstance = getIO();
+    expect(ioInstance?.sockets.adapter.rooms.get(targetRoom)?.size ?? 0).toBe(0);
+    expect(ioInstance?.sockets.adapter.rooms.get(otherRoom)?.has(client2.id)).toBe(true);
+    expect(ioInstance?.sockets.adapter.rooms.get(getUserRoom(firstRes.body.user.id))?.has(client1.id)).toBe(true);
+  });
+
+  test('conversationDeleted evicts room and emits inbox:conversation_removed without participant:removed', async () => {
+    const [firstRes, secondRes] = await Promise.all([
+      request(app).post('/api/auth/register').send({
+        email: 'plaza_hammock@ufl.edu',
+        password: 'HammockPassword123!',
+        firstName: 'Plaza',
+        lastName: 'Student',
+      }),
+      request(app).post('/api/auth/register').send({
+        email: 'century_tower@ufl.edu',
+        password: 'TowerPassword123!',
+        firstName: 'Century',
+        lastName: 'Bell',
+      }),
+    ]);
+
+    expect(firstRes.status).toBe(201);
+    expect(secondRes.status).toBe(201);
+
+    const connectClient = async (rawCookie: string | string[]): Promise<ClientSocket> => {
+      const sessionCookie = Array.isArray(rawCookie) ? rawCookie[0].split(';')[0] : rawCookie.split(';')[0];
+      const client: ClientSocket = Client(serverUrl, {
+        autoConnect: false,
+        transports: ['websocket'],
+        extraHeaders: { cookie: sessionCookie },
+      });
+      activeClients.push(client);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Timed out waiting for connection')), 4000);
+        client.on('connect', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        client.on('connect_error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        client.connect();
+      });
+      return client;
+    };
+
+    const [client1, client2] = await Promise.all([
+      connectClient(firstRes.headers['set-cookie']),
+      connectClient(secondRes.headers['set-cookie']),
+    ]);
+
+    const conversationId = '507f1f77bcf86cd799439099';
+    const conversationRoom = getConversationRoom(conversationId);
+    const socket1 = connectedServerSockets.find((s) => s.data.userId === firstRes.body.user.id);
+    const socket2 = connectedServerSockets.find((s) => s.data.userId === secondRes.body.user.id);
+    await socket1?.join(conversationRoom);
+    await socket2?.join(conversationRoom);
+
+    let participantRemovedFired = false;
+    client1.on('participant:removed', () => {
+      participantRemovedFired = true;
+    });
+    client2.on('participant:removed', () => {
+      participantRemovedFired = true;
+    });
+
+    const waitForInboxRemoved = (client: ClientSocket): Promise<{ conversationId: string }> =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Timed out waiting for inbox:conversation_removed')), 4000);
+        client.once('inbox:conversation_removed', (payload: { conversationId: string }) => {
+          clearTimeout(timer);
+          resolve(payload);
+        });
+      });
+
+    const inboxPromises = Promise.all([
+      waitForInboxRemoved(client1),
+      waitForInboxRemoved(client2),
+    ]);
+
+    messagingPublisher.conversationDeleted(conversationId, [
+      firstRes.body.user.id,
+      secondRes.body.user.id,
+    ]);
+
+    const [payload1, payload2] = await inboxPromises;
+    expect(payload1).toEqual({ conversationId });
+    expect(payload2).toEqual({ conversationId });
+    expect(participantRemovedFired).toBe(false);
+
+    const ioInstance = getIO();
+    expect(ioInstance?.sockets.adapter.rooms.get(conversationRoom)?.size ?? 0).toBe(0);
+  });
 });
+

@@ -8,7 +8,7 @@ import type {
   ClientToServerEvents,
   ServerToClientEvents,
 } from '../interfaces/messaging.events';
-import { getIO, evictUserFromRoom } from '../../socket/socketServer';
+import { getIO, evictRoom, evictUserFromRoom } from '../../socket/socketServer';
 import { getConversationRoom, getUserRoom } from '../../socket/rooms';
 import { toMessageResponse } from '../serializers/messageResponse';
 
@@ -93,5 +93,20 @@ export const messagingPublisher = {
     io.to(getUserRoom(userId)).emit('inbox:conversation_removed', {
       conversationId,
     });
+  },
+
+  conversationDeleted(conversationId: string, participantUserIds: string[]): void {
+    const io: Server<ClientToServerEvents, ServerToClientEvents> | null =
+      getIO() as Server<ClientToServerEvents, ServerToClientEvents> | null;
+    if (!io) {
+      return;
+    }
+    const conversationRoom = getConversationRoom(conversationId);
+    evictRoom(conversationRoom);
+    for (const userId of participantUserIds) {
+      io.to(getUserRoom(userId)).emit('inbox:conversation_removed', {
+        conversationId,
+      });
+    }
   },
 };
