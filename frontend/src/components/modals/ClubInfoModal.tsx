@@ -1,15 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type ButtonHTMLAttributes,
-  type ComponentProps,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Modal from 'react-bootstrap/Modal';
 import Alert from 'react-bootstrap/Alert';
+import Badge from 'react-bootstrap/Badge';
+import Button from 'react-bootstrap/Button';
+import Form from 'react-bootstrap/Form';
+import Modal from 'react-bootstrap/Modal';
 import { Search } from 'react-bootstrap-icons';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -22,6 +17,7 @@ import {
 import type { ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../../types/club';
 
 const PREVIEW_COUNT = 3;
+const EXPANDED_LIST_MAX_HEIGHT = '10.5rem';
 
 const CATEGORY_LABEL: Record<ClubCategory, string> = {
   ACADEMIC: 'Academic',
@@ -80,116 +76,6 @@ function matchesQuery(query: string, ...values: Array<string | undefined>): bool
   return values.some((value) => (value ?? '').toLowerCase().includes(search));
 }
 
-function useNarrowScreen() {
-  const query = '(max-width: 576px)';
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const update = () => setMatches(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-
-  return matches;
-}
-
-function ClubInfoDialog({ style, ...props }: ComponentProps<typeof Modal.Dialog>) {
-  const narrow = useNarrowScreen();
-
-  return (
-    <Modal.Dialog
-      {...props}
-      style={{
-        width: narrow ? 'calc(100% - 1rem)' : 'calc(100% - 2rem)',
-        maxWidth: narrow ? 'calc(100vw - 1rem)' : 'min(720px, calc(100vw - 2rem))',
-        marginLeft: 'auto',
-        marginRight: 'auto',
-        fontFamily: 'Inter, system-ui, sans-serif',
-        color: '#222',
-        ...style,
-      }}
-    />
-  );
-}
-
-const buttonFont: CSSProperties = { fontFamily: 'inherit' };
-
-const leaveButtonStyle: CSSProperties = {
-  ...buttonFont,
-  borderRadius: 6,
-  padding: '0.45rem 0.95rem',
-  fontWeight: 600,
-  fontSize: '0.95rem',
-  background: '#e2554d',
-  color: '#fff',
-  border: 'none',
-};
-
-const cancelButtonStyle: CSSProperties = {
-  ...buttonFont,
-  borderRadius: 6,
-  padding: '0.45rem 0.95rem',
-  fontWeight: 600,
-  fontSize: '0.95rem',
-  background: '#fff',
-  color: '#333',
-  border: '1px solid #cfcfcf',
-};
-
-const moreButtonStyle: CSSProperties = {
-  ...buttonFont,
-  background: 'none',
-  border: 'none',
-  padding: 0,
-  color: '#5c5c5c',
-  fontSize: '0.78rem',
-  whiteSpace: 'nowrap',
-};
-
-type ActionButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  base: CSSProperties;
-  hover?: CSSProperties;
-};
-
-function ActionButton({ base, hover, disabled, style, children, ...props }: ActionButtonProps) {
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-
-  return (
-    <button
-      {...props}
-      disabled={disabled}
-      onMouseEnter={(event) => {
-        setHovered(true);
-        props.onMouseEnter?.(event);
-      }}
-      onMouseLeave={(event) => {
-        setHovered(false);
-        props.onMouseLeave?.(event);
-      }}
-      onFocus={(event) => {
-        setFocused(true);
-        props.onFocus?.(event);
-      }}
-      onBlur={(event) => {
-        setFocused(false);
-        props.onBlur?.(event);
-      }}
-      style={{
-        ...base,
-        ...(hovered && !disabled ? hover : {}),
-        ...(disabled ? { opacity: 0.65, cursor: 'not-allowed' } : {}),
-        outline: focused ? '2px solid #3046c3' : 'none',
-        outlineOffset: focused ? 2 : 0,
-        ...style,
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 function ListSearch({
   value,
   onChange,
@@ -200,62 +86,31 @@ function ListSearch({
   label: string;
 }) {
   return (
-    <div style={{ position: 'relative', width: 'min(180px, 100%)', flex: '1 1 140px', maxWidth: 180 }}>
-      <span
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '0.55rem',
-          transform: 'translateY(-50%)',
-          display: 'flex',
-          color: '#6c757d',
-          pointerEvents: 'none',
-        }}
-      >
+    <div className="position-relative" style={{ width: 'min(11.25rem, 100%)' }}>
+      <span className="position-absolute top-50 start-0 translate-middle-y ms-2 d-flex text-secondary pe-none">
         <Search size={16} aria-hidden="true" focusable="false" />
       </span>
-      <input
+      <Form.Control
         type="search"
+        size="sm"
         value={value}
         aria-label={label}
         placeholder="Search"
+        className="ps-4"
         onChange={(event) => onChange(event.target.value)}
-        style={{
-          width: '100%',
-          border: '1px solid #d0d0d0',
-          borderRadius: 8,
-          background: '#fff',
-          color: '#222',
-          font: 'inherit',
-          fontSize: '0.85rem',
-          padding: '0.35rem 0.55rem 0.35rem 1.7rem',
-        }}
       />
     </div>
   );
 }
 
 function Section({ title, search, children }: { title: string; search?: ReactNode; children: ReactNode }) {
-  const narrow = useNarrowScreen();
-
   return (
-    <section style={{ border: '1px solid #d5d5d5', borderRadius: 4, background: '#fff', overflow: 'hidden' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.75rem',
-          padding: '0.55rem 1rem',
-          background: '#f3f3f3',
-          borderBottom: '1px solid #e6e6e6',
-          flexWrap: narrow ? 'wrap' : 'nowrap',
-        }}
-      >
-        <h2 style={{ margin: 0, color: '#111', fontSize: '1.2rem', fontWeight: 700, flex: '0 0 auto' }}>{title}</h2>
+    <section className="border rounded overflow-hidden">
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 bg-light border-bottom">
+        <h3 className="h5 mb-0">{title}</h3>
         {search}
       </div>
-      <div style={{ padding: '1rem 1.1rem 0.95rem' }}>{children}</div>
+      <div className="p-3">{children}</div>
     </section>
   );
 }
@@ -272,51 +127,32 @@ function ListToggle({
   if (hiddenCount <= 0) return null;
 
   return (
-    <div
-      style={{
-        position: expanded ? 'sticky' : 'static',
-        bottom: 0,
-        zIndex: 1,
-        display: 'flex',
-        justifyContent: 'flex-end',
-        marginTop: '0.45rem',
-        paddingTop: expanded ? '0.4rem' : 0,
-        background: '#fff',
-      }}
-    >
-      <ActionButton
+    <div className="d-flex justify-content-end mt-2">
+      <Button
         type="button"
-        base={moreButtonStyle}
-        hover={{ textDecoration: 'underline' }}
+        variant="link"
+        className="p-0 link-secondary"
         aria-expanded={expanded}
         onClick={onToggle}
       >
         {expanded ? 'Show less' : `See ${hiddenCount} more`}
-      </ActionButton>
+      </Button>
     </div>
   );
 }
 
-const EXPANDED_LIST_MAX_HEIGHT = '10.5rem';
-
-function listBoxStyle(scroll: boolean, gap?: string): CSSProperties {
+function expandedListStyle(scroll: boolean) {
+  if (!scroll) return undefined;
   return {
-    display: 'flex',
-    flexDirection: 'column',
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-    gap,
-    ...(scroll
-      ? { maxHeight: EXPANDED_LIST_MAX_HEIGHT, overflowY: 'auto', overscrollBehavior: 'contain' }
-      : {}),
+    maxHeight: EXPANDED_LIST_MAX_HEIGHT,
+    overflowY: 'auto' as const,
+    overscrollBehavior: 'contain' as const,
   };
 }
 
 export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfoModalProps) {
   const navigate = useNavigate();
   const { setUser } = useAuth();
-  const narrow = useNarrowScreen();
 
   const [club, setClub] = useState<ClubDetails | null>(null);
   const [channels, setChannels] = useState<ClubChannel[]>([]);
@@ -436,19 +272,18 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
       onExited={reset}
       centered
       scrollable
+      size="lg"
       backdrop={leaving ? 'static' : true}
       keyboard={!leaving}
-      dialogAs={ClubInfoDialog}
-      contentClassName="border-0"
       aria-labelledby="club-info-title"
     >
-      <Modal.Header closeButton={!leaving} className="border-0 pb-0" closeLabel="Close club information">
-        <Modal.Title id="club-info-title" as="h2" className="visually-hidden">
-          {club ? `${club.name} information` : 'Club information'}
+      <Modal.Header closeButton={!leaving} closeLabel="Close club information">
+        <Modal.Title id="club-info-title" as="h2" className="h4 mb-0">
+          {club ? club.name : 'Club information'}
         </Modal.Title>
       </Modal.Header>
 
-      <Modal.Body style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', paddingTop: '0.25rem' }}>
+      <Modal.Body className="d-flex flex-column gap-4">
         {show && clubId && !club && !loadError && (
           <p className="text-center text-secondary my-4" role="status">
             Loading club...
@@ -458,73 +293,39 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
         {loadError && (
           <Alert variant="danger" className="mb-0">
             <p className="mb-2">{loadError}</p>
-            <ActionButton type="button" base={cancelButtonStyle} hover={{ background: '#f7f7f7' }} onClick={() => setReloadKey((key) => key + 1)}>
+            <Button type="button" variant="outline-secondary" onClick={() => setReloadKey((key) => key + 1)}>
               Try again
-            </ActionButton>
+            </Button>
           </Alert>
         )}
 
         {club && (
           <>
             <Section title="Club Overview">
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.65rem' }}>
-                <p style={{ margin: 0, color: '#3046c3', fontSize: '1.7rem', fontWeight: 700, lineHeight: 1.2 }}>
-                  {club.name}
-                </p>
-                {club.category && (
-                  <span
-                    style={{
-                      background: '#e6e4fb',
-                      color: '#5c54b8',
-                      borderRadius: 999,
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      padding: '0.22rem 0.75rem',
-                    }}
-                  >
-                    {CATEGORY_LABEL[club.category] ?? club.category}
-                  </span>
-                )}
-              </div>
-              <p style={{ margin: '0.95rem 0 1.15rem', color: '#3f3f3f', whiteSpace: 'pre-wrap' }}>
+              {club.category && (
+                <Badge bg="primary-subtle" text="primary-emphasis" pill className="fw-semibold mb-3">
+                  {CATEGORY_LABEL[club.category] ?? club.category}
+                </Badge>
+              )}
+              <p className="mb-3" style={{ whiteSpace: 'pre-wrap' }}>
                 {club.description || 'No description yet.'}
               </p>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: narrow ? 'stretch' : 'flex-end',
-                  justifyContent: 'space-between',
-                  gap: '1rem',
-                  flexWrap: 'wrap',
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: '0 0 0.45rem', color: '#3a3a3a' }}>
-                    Meeting time: {formatMeetingTime(club.meeting)}
-                  </p>
-                  <p style={{ margin: 0, color: '#3a3a3a' }}>
-                    Meeting Location: {formatMeetingLocation(club.meeting)}
-                  </p>
+              <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-end justify-content-between gap-3">
+                <div>
+                  <p className="mb-2">Meeting time: {formatMeetingTime(club.meeting)}</p>
+                  <p className="mb-0">Meeting Location: {formatMeetingLocation(club.meeting)}</p>
                 </div>
-                <div style={{ marginLeft: narrow ? 0 : 'auto', maxWidth: '100%' }}>
+                <div>
                   {confirmingLeave ? (
                     <>
-                      <p
-                        style={{
-                          margin: '0 0 0.5rem',
-                          color: '#555',
-                          fontSize: '0.85rem',
-                          textAlign: narrow ? 'left' : 'right',
-                        }}
-                      >
+                      <p className="text-secondary small mb-2 text-start text-sm-end">
                         You&apos;ll lose access to this club&apos;s channels.
                       </p>
-                      <div style={{ display: 'flex', justifyContent: narrow ? 'flex-start' : 'flex-end', gap: '0.5rem' }}>
-                        <ActionButton
+                      <div className="d-flex justify-content-start justify-content-sm-end gap-2">
+                        <Button
                           type="button"
-                          base={cancelButtonStyle}
-                          hover={{ background: '#f7f7f7' }}
+                          variant="outline-secondary"
+                          className="fw-semibold"
                           disabled={leaving}
                           onClick={() => {
                             setConfirmingLeave(false);
@@ -532,30 +333,30 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                           }}
                         >
                           Cancel
-                        </ActionButton>
-                        <ActionButton
+                        </Button>
+                        <Button
                           type="button"
-                          base={leaveButtonStyle}
-                          hover={{ background: '#cf453e' }}
+                          variant="danger"
+                          className="fw-semibold"
                           disabled={leaving}
                           onClick={confirmLeave}
                         >
                           {leaving ? 'Leaving...' : 'Leave Club'}
-                        </ActionButton>
+                        </Button>
                       </div>
                     </>
                   ) : (
-                    <ActionButton
+                    <Button
                       type="button"
-                      base={leaveButtonStyle}
-                      hover={{ background: '#cf453e' }}
+                      variant="danger"
+                      className="fw-semibold"
                       onClick={() => {
                         setLeaveError('');
                         setConfirmingLeave(true);
                       }}
                     >
                       Leave Club
-                    </ActionButton>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -575,43 +376,30 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                   {channelsError}
                 </Alert>
               ) : channels.length === 0 ? (
-                <p style={{ margin: 0, color: '#777' }}>No channels yet.</p>
+                <p className="text-secondary mb-0">No channels yet.</p>
               ) : filteredChannels.length === 0 ? (
-                <p style={{ margin: 0, color: '#777' }}>No channels match your search.</p>
+                <p className="text-secondary mb-0">No channels match your search.</p>
               ) : (
                 <>
-                  <ul style={listBoxStyle(showAllChannels && hiddenChannelCount > 0, '0.55rem')}>
+                  <ul
+                    className="list-unstyled d-flex flex-column gap-2 mb-0"
+                    style={expandedListStyle(showAllChannels && hiddenChannelCount > 0)}
+                  >
                     {visibleChannels.map((channel) => {
                       const label = channelLabel(channel.title);
                       return (
                         <li key={channel._id}>
-                          <ActionButton
+                          <Button
                             type="button"
+                            variant="outline-secondary"
+                            className="w-100 d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-1 gap-sm-3 text-start"
                             disabled={leaving}
                             aria-label={`Open ${label} in Messages`}
                             onClick={() => openChannel(channel._id)}
-                            base={{
-                              ...buttonFont,
-                              width: '100%',
-                              display: 'flex',
-                              alignItems: narrow ? 'flex-start' : 'center',
-                              justifyContent: 'space-between',
-                              flexDirection: narrow ? 'column' : 'row',
-                              gap: narrow ? '0.25rem' : '1rem',
-                              border: '1px solid #d0d0d0',
-                              borderRadius: 8,
-                              background: '#fff',
-                              color: '#4a4a4a',
-                              padding: '0.55rem 0.9rem',
-                              textAlign: 'left',
-                            }}
-                            hover={{ background: '#fafafa' }}
                           >
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {label}
-                            </span>
-                            <span style={{ flexShrink: 0, color: '#6b6b6b' }}>Open in Messages →</span>
-                          </ActionButton>
+                            <span className="text-truncate min-w-0">{label}</span>
+                            <span className="flex-shrink-0">Open in Messages →</span>
+                          </Button>
                         </li>
                       );
                     })}
@@ -634,39 +422,22 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                   {membersError}
                 </Alert>
               ) : members.length === 0 ? (
-                <p style={{ margin: 0, color: '#777' }}>No members to show.</p>
+                <p className="text-secondary mb-0">No members to show.</p>
               ) : filteredMembers.length === 0 ? (
-                <p style={{ margin: 0, color: '#777' }}>No members match your search.</p>
+                <p className="text-secondary mb-0">No members match your search.</p>
               ) : (
                 <>
-                  <ul style={listBoxStyle(showAllMembers && hiddenMemberCount > 0)}>
+                  <ul
+                    className="list-group list-group-flush mb-0"
+                    style={expandedListStyle(showAllMembers && hiddenMemberCount > 0)}
+                  >
                     {visibleMembers.map((member) => (
-                      <li
-                        key={member.userId}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.6rem',
-                          padding: '0.85rem 0.15rem',
-                          borderBottom: '1px solid #e4e4e4',
-                          color: '#333',
-                        }}
-                      >
+                      <li key={member.userId} className="list-group-item d-flex align-items-center gap-2 px-0">
                         <span>{memberName(member)}</span>
                         {member.role === 'OFFICER' && (
-                          <span
-                            style={{
-                              background: '#ffedd5',
-                              color: '#c2410c',
-                              borderRadius: 999,
-                              fontSize: '0.68rem',
-                              fontWeight: 700,
-                              letterSpacing: '0.03em',
-                              padding: '0.15rem 0.5rem',
-                            }}
-                          >
+                          <Badge bg="warning-subtle" text="warning-emphasis" pill className="fw-semibold">
                             OFFICER
-                          </span>
+                          </Badge>
                         )}
                       </li>
                     ))}
