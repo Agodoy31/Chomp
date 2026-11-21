@@ -18,6 +18,7 @@ function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
 interface MessageAreaProps {
   conversation: ConversationDetails | null;
   clubName?: string;
+  isLoadingDetails?: boolean;
   detailsError?: string | null;
   onRetryDetails?: () => void;
   onOpenDetails: () => void;
@@ -27,6 +28,7 @@ interface MessageAreaProps {
 export default function MessageArea({
   conversation,
   clubName,
+  isLoadingDetails = false,
   detailsError = null,
   onRetryDetails,
   onOpenDetails,
@@ -94,7 +96,11 @@ export default function MessageArea({
         className="d-flex flex-column flex-grow-1 h-100 align-items-center justify-content-center text-muted"
         style={{ backgroundColor: '#F5F6FA', minWidth: 0 }}
       >
-        {detailsError ? (
+        {isLoadingDetails ? (
+          <div role="status" aria-live="polite" className="text-center px-4">
+            Loading conversation...
+          </div>
+        ) : detailsError ? (
           <div role="alert" className="text-center px-4">
             <div>{detailsError}</div>
             {onRetryDetails && (
@@ -328,7 +334,11 @@ export default function MessageArea({
                 ? 'You do not have permission to send messages in this conversation'
                 : inputText
             }
-            onChange={(e) => canSend && setInputText(e.target.value)}
+            onChange={(e) => {
+              if (!canSend) return;
+              pendingClientIdRef.current = null;
+              setInputText(e.target.value);
+            }}
             disabled={!canSend}
             style={{
               fontSize: '14px',

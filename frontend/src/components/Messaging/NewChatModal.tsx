@@ -45,7 +45,11 @@ export default function NewChatModal({
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error('Failed to search users:', err);
-        setSearchError('Failed to search users. Please try again.');
+        setSearchError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to search users. Please try again.'
+        );
       } finally {
         if (!controller.signal.aborted) setIsLoadingUsers(false);
       }

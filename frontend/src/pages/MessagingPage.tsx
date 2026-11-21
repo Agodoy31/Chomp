@@ -223,6 +223,9 @@ export default function MessagingPage() {
               ? clubNamesById[displayedDetails.clubId]
               : undefined
           }
+          isLoadingDetails={Boolean(
+            activeConversationId && !displayedDetails && !detailsError
+          )}
           detailsError={detailsError}
           onRetryDetails={() => {
             setDetailsError(null);
