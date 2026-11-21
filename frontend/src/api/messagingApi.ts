@@ -1,11 +1,32 @@
 import type {
-  Conversation,
+  ConversationDetails,
+  ConversationFeedItem,
+  ConversationParticipant,
   ParticipantPermission,
-  RawConversationResponse,
-  ChatUser,
+  UserSummary,
 } from '../types/Messaging/Conversation';
-import { flattenConversation } from '../types/Messaging/Conversation';
 import type { IMessage } from '../types/Messaging/Message';
+
+type ApiError = Error & { status?: number };
+
+function createApiError(message: string, status: number): ApiError {
+  if (status === 401) {
+    window.dispatchEvent(new Event('auth:unauthorized'));
+  }
+  return Object.assign(new Error(message), { status });
+}
+
+async function parseApiErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  const errBody = await response.json().catch(() => null);
+  return (
+    (typeof errBody?.message === 'string' && errBody.message) ||
+    (typeof errBody?.error === 'string' && errBody.error) ||
+    fallback
+  );
+}
 
 export type CreateConversationPayload =
   | {
@@ -22,17 +43,20 @@ export type CreateConversationPayload =
  * Fetches the user's active conversations feed.
  * Endpoint: GET /api/conversations
  */
-export async function fetchConversations(): Promise<Conversation[]> {
+export async function fetchConversations(): Promise<ConversationFeedItem[]> {
   const response = await fetch('/api/conversations', {
     credentials: 'include',
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch conversations: ${response.status}`);
+    throw createApiError(
+      `Failed to fetch conversations: ${response.status}`,
+      response.status
+    );
   }
 
-  const data: RawConversationResponse[] = await response.json();
-  return Array.isArray(data) ? data.map(flattenConversation) : [];
+  const data: ConversationFeedItem[] = await response.json();
+  return Array.isArray(data) ? data : [];
 }
 
 /**
@@ -41,17 +65,20 @@ export async function fetchConversations(): Promise<Conversation[]> {
  */
 export async function fetchConversationDetails(
   conversationId: string
-): Promise<Conversation> {
+): Promise<ConversationDetails> {
   const response = await fetch(`/api/conversations/${conversationId}`, {
     credentials: 'include',
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch conversation details: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch conversation details: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
-  const data: RawConversationResponse = await response.json();
-  return flattenConversation(data);
+  return response.json();
 }
 
 /**
@@ -69,7 +96,10 @@ export async function fetchMessages(
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch messages: ${response.status}`);
+    throw createApiError(
+      `Failed to fetch messages: ${response.status}`,
+      response.status
+    );
   }
 
   const data: IMessage[] = await response.json();
@@ -84,8 +114,8 @@ export async function fetchMessages(
 export async function postMessage(
   conversationId: string,
   text: string,
-  isAnnouncement = false
-  
+  isAnnouncement = false,
+  clientId?: string
 ): Promise<IMessage> {
   const response = await fetch(
     `/api/conversations/${conversationId}/messages`,
@@ -95,24 +125,18 @@ export async function postMessage(
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ text, isAnnouncement }),
+      body: JSON.stringify(
+        clientId ? { text, isAnnouncement, clientId } : { text, isAnnouncement }
+      ),
     }
   );
 
   if (!response.ok) {
-    let errorMessage = `Failed to send message: ${response.status}`;
-    try {
-      const errorData = await response.json();
-      if (errorData?.message || errorData?.error) {
-        errorMessage = errorData.message || errorData.error;
-      }
-    } catch {
-      // Fall back to default status message if response is not JSON
-    }
-
-    const error = new Error(errorMessage) as Error & { status?: number };
-    error.status = response.status;
-    throw error;
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to send message: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
   return response.json();
@@ -124,7 +148,7 @@ export async function postMessage(
  */
 export async function createConversation(
   payload: CreateConversationPayload
-): Promise<Conversation> {
+): Promise<ConversationDetails> {
   const response = await fetch('/api/conversations', {
     method: 'POST',
     headers: {
@@ -135,24 +159,41 @@ export async function createConversation(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create conversation: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to create conversation: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
-  const data: RawConversationResponse = await response.json();
-  return flattenConversation(data);
+  return response.json();
 }
 
 /**
- * Fetches available users from the server.
- * Endpoint: GET /api/users
+ * Searches users from the server.
+ * Endpoint: GET /api/users/search?search=...
  */
-export async function fetchUsers(): Promise<ChatUser[]> {
-  const response = await fetch('/api/users', {
+export async function searchUsers(
+  search: string,
+  signal?: AbortSignal
+): Promise<UserSummary[]> {
+  const trimmed = search.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const params = new URLSearchParams({ search: trimmed });
+  const response = await fetch(`/api/users/search?${params.toString()}`, {
     credentials: 'include',
+    signal,
   });
 
   if (!response.ok) {
-    throw new Error(`The server did not respond with users: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `The server did not respond with users: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
   return response.json();
@@ -165,7 +206,7 @@ export async function fetchUsers(): Promise<ChatUser[]> {
 export async function addParticipantsToConversation(
   conversationId: string,
   userIds: string[]
-): Promise<unknown> {
+): Promise<ConversationParticipant[]> {
   const response = await fetch(
     `/api/conversations/${conversationId}/participants`,
     {
@@ -203,7 +244,11 @@ export async function updateConversationTitle(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to update conversation title: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to update conversation title: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 }
 
@@ -215,7 +260,7 @@ export async function updateParticipantPermission(
   conversationId: string,
   userId: string,
   permission: ParticipantPermission
-): Promise<unknown> {
+): Promise<ConversationParticipant> {
   const response = await fetch(
     `/api/conversations/${conversationId}/participants/${userId}`,
     {
@@ -277,4 +322,26 @@ export async function deleteMessage(
   }
 
   return response.json();
+}
+
+/**
+ * Fetches the signed-in user's approved clubs so channel rows can display club names.
+ * Endpoint: GET /api/clubs/me
+ */
+export async function fetchMyClubNames(): Promise<Record<string, string>> {
+  const response = await fetch('/api/clubs/me', {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw createApiError(
+      `Failed to fetch clubs: ${response.status}`,
+      response.status
+    );
+  }
+
+  const data: { clubs?: Array<{ _id: string; name: string }> } =
+    await response.json();
+  if (!Array.isArray(data?.clubs)) return {};
+  return Object.fromEntries(data.clubs.map((club) => [club._id, club.name]));
 }

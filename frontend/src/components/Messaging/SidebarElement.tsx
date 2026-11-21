@@ -1,17 +1,23 @@
-import type { Conversation } from '../../types/Messaging/Conversation';
+import type { ConversationFeedItem } from '../../types/Messaging/Conversation';
 
 interface SidebarElementProps {
-  conversation: Conversation;
-  isActive?: boolean;
-  onSelect?: (conversation: Conversation) => void;
+  conversation: ConversationFeedItem;
+  clubName?: string;
+  isActive: boolean;
+  onSelect: (conversation: ConversationFeedItem) => void;
 }
 
 export default function SidebarElement({
   conversation,
-  isActive = false,
+  clubName,
+  isActive,
   onSelect,
 }: SidebarElementProps) {
-  const initial = conversation.displayName?.charAt(0)?.toUpperCase() ?? '';
+  const isChannel = conversation.type === 'CHANNEL';
+  const primaryTitle = isChannel
+    ? clubName || `# ${conversation.displayName}`
+    : conversation.displayName;
+  const initial = primaryTitle.charAt(0).toUpperCase();
 
   const previewText = conversation.lastMessage
     ? `${conversation.lastMessage.senderName}: ${conversation.lastMessage.text}`
@@ -20,7 +26,7 @@ export default function SidebarElement({
   return (
     <button
       type="button"
-      onClick={() => onSelect?.(conversation)}
+      onClick={() => onSelect(conversation)}
       aria-current={isActive ? 'true' : undefined}
       className="btn text-start p-3 w-100 border-0"
       style={{
@@ -52,9 +58,17 @@ export default function SidebarElement({
             className="fw-bold text-dark text-truncate"
             style={{ fontSize: '15px', lineHeight: '1.2' }}
           >
-            {conversation.displayName}
+            {primaryTitle}
           </div>
 
+          {isChannel && clubName && (
+            <div
+              className="fw-bold text-truncate mt-1"
+              style={{ color: '#3046C3', fontSize: '13px', lineHeight: '1.2' }}
+            >
+              # {conversation.displayName}
+            </div>
+          )}
           {previewText && (
             <div
               className="text-truncate mt-1"

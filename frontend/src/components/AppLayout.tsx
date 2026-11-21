@@ -9,11 +9,11 @@ export default function AppLayout() {
   if (loading) return null 
 
   return (
-    <div className="d-flex flex-column min-vh-100">
+    <div className="d-flex flex-column vh-100 overflow-hidden">
       <Header />
-      <div className="d-flex flex-grow-1 position-relative">
+      <div className="d-flex flex-grow-1 position-relative overflow-hidden" style={{ minHeight: 0 }}>
         {user && <Sidebar />}
-        <main className="flex-grow-1 bg-light p-0 overflow-auto">
+        <main className="flex-grow-1 bg-light p-0 overflow-auto" style={{ minWidth: 0, minHeight: 0 }}>
           <Outlet />
         </main>
       </div>
