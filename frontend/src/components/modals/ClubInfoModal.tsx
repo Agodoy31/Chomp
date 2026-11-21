@@ -1,8 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
-  useRef,
   useState,
   type ButtonHTMLAttributes,
   type ComponentProps,
@@ -262,21 +260,6 @@ function Section({ title, search, children }: { title: string; search?: ReactNod
   );
 }
 
-function measuredListHeight(list: HTMLUListElement | null, count: number): number | undefined {
-  const item = list?.children[PREVIEW_COUNT - 1] as HTMLElement | undefined;
-  if (!list || count <= PREVIEW_COUNT || !item) return undefined;
-  const top = list.getBoundingClientRect().top;
-  const bottom = item.getBoundingClientRect().bottom;
-  return Math.ceil(bottom - top);
-}
-
-function snapListToNextGroup(list: HTMLUListElement | null) {
-  const next = list?.children[PREVIEW_COUNT] as HTMLElement | undefined;
-  if (!list || !next) return;
-  const delta = next.getBoundingClientRect().top - list.getBoundingClientRect().top;
-  list.scrollTop += delta;
-}
-
 function ListToggle({
   expanded,
   hiddenCount,
@@ -314,7 +297,9 @@ function ListToggle({
   );
 }
 
-function listBoxStyle(maxHeight: number | undefined, gap?: string): CSSProperties {
+const EXPANDED_LIST_MAX_HEIGHT = '10.5rem';
+
+function listBoxStyle(scroll: boolean, gap?: string): CSSProperties {
   return {
     display: 'flex',
     flexDirection: 'column',
@@ -322,8 +307,8 @@ function listBoxStyle(maxHeight: number | undefined, gap?: string): CSSPropertie
     padding: 0,
     listStyle: 'none',
     gap,
-    ...(maxHeight !== undefined
-      ? { maxHeight, overflowY: 'auto', overscrollBehavior: 'contain' }
+    ...(scroll
+      ? { maxHeight: EXPANDED_LIST_MAX_HEIGHT, overflowY: 'auto', overscrollBehavior: 'contain' }
       : {}),
   };
 }
@@ -347,12 +332,6 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const [channelQuery, setChannelQuery] = useState('');
   const [memberQuery, setMemberQuery] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
-  const [channelMaxHeight, setChannelMaxHeight] = useState<number>();
-  const [memberMaxHeight, setMemberMaxHeight] = useState<number>();
-  const channelListRef = useRef<HTMLUListElement>(null);
-  const memberListRef = useRef<HTMLUListElement>(null);
-  const snapChannelsRef = useRef(false);
-  const snapMembersRef = useRef(false);
 
   const reset = useCallback(() => {
     setClub(null);
@@ -368,10 +347,6 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     setShowAllMembers(false);
     setChannelQuery('');
     setMemberQuery('');
-    setChannelMaxHeight(undefined);
-    setMemberMaxHeight(undefined);
-    snapChannelsRef.current = false;
-    snapMembersRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -419,30 +394,6 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const filteredMembers = members.filter((member) =>
     matchesQuery(memberQuery, memberName(member), member.firstName, member.lastName),
   );
-
-  useLayoutEffect(() => {
-    setChannelMaxHeight(
-      showAllChannels ? measuredListHeight(channelListRef.current, filteredChannels.length) : undefined,
-    );
-  }, [filteredChannels.length, narrow, showAllChannels]);
-
-  useLayoutEffect(() => {
-    setMemberMaxHeight(
-      showAllMembers ? measuredListHeight(memberListRef.current, filteredMembers.length) : undefined,
-    );
-  }, [filteredMembers.length, narrow, showAllMembers]);
-
-  useLayoutEffect(() => {
-    if (!showAllChannels || channelMaxHeight === undefined || !snapChannelsRef.current) return;
-    snapListToNextGroup(channelListRef.current);
-    snapChannelsRef.current = false;
-  }, [showAllChannels, channelMaxHeight, filteredChannels.length]);
-
-  useLayoutEffect(() => {
-    if (!showAllMembers || memberMaxHeight === undefined || !snapMembersRef.current) return;
-    snapListToNextGroup(memberListRef.current);
-    snapMembersRef.current = false;
-  }, [showAllMembers, memberMaxHeight, filteredMembers.length]);
 
   async function confirmLeave() {
     if (!clubId || leaving) return;
@@ -629,10 +580,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                 <p style={{ margin: 0, color: '#777' }}>No channels match your search.</p>
               ) : (
                 <>
-                  <ul
-                    ref={channelListRef}
-                    style={listBoxStyle(showAllChannels ? channelMaxHeight : undefined, '0.55rem')}
-                  >
+                  <ul style={listBoxStyle(showAllChannels && hiddenChannelCount > 0, '0.55rem')}>
                     {visibleChannels.map((channel) => {
                       const label = channelLabel(channel.title);
                       return (
@@ -671,12 +619,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                   <ListToggle
                     expanded={showAllChannels}
                     hiddenCount={hiddenChannelCount}
-                    onToggle={() =>
-                      setShowAllChannels((current) => {
-                        if (!current) snapChannelsRef.current = true;
-                        return !current;
-                      })
-                    }
+                    onToggle={() => setShowAllChannels((current) => !current)}
                   />
                 </>
               )}
@@ -696,7 +639,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                 <p style={{ margin: 0, color: '#777' }}>No members match your search.</p>
               ) : (
                 <>
-                  <ul ref={memberListRef} style={listBoxStyle(showAllMembers ? memberMaxHeight : undefined)}>
+                  <ul style={listBoxStyle(showAllMembers && hiddenMemberCount > 0)}>
                     {visibleMembers.map((member) => (
                       <li
                         key={member.userId}
@@ -731,12 +674,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                   <ListToggle
                     expanded={showAllMembers}
                     hiddenCount={hiddenMemberCount}
-                    onToggle={() =>
-                      setShowAllMembers((current) => {
-                        if (!current) snapMembersRef.current = true;
-                        return !current;
-                      })
-                    }
+                    onToggle={() => setShowAllMembers((current) => !current)}
                   />
                 </>
               )}
