@@ -142,6 +142,17 @@ function ListToggle({
   );
 }
 
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Alert variant="danger" className="mb-0">
+      <p className="mb-2">{message}</p>
+      <Button type="button" variant="outline-secondary" onClick={onRetry}>
+        Try again
+      </Button>
+    </Alert>
+  );
+}
+
 function expandedListStyle(scroll: boolean) {
   if (!scroll) return undefined;
   return {
@@ -151,9 +162,9 @@ function expandedListStyle(scroll: boolean) {
   };
 }
 
-export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfoModalProps) {
+function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: () => void; onLeft?: (clubId: string) => void }) {
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const { user, setUser } = useAuth();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const cancelLeaveRef = useRef<HTMLButtonElement>(null);
   const leaveClubRef = useRef<HTMLButtonElement>(null);
@@ -191,7 +202,6 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   }, []);
 
   useEffect(() => {
-    if (!show || !clubId) return;
     const controller = new AbortController();
 
     async function load(id: string) {
@@ -227,7 +237,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     return () => {
       controller.abort();
     };
-  }, [show, clubId, reloadKey, navigate, setUser, reset]);
+  }, [clubId, reloadKey, navigate, setUser, reset]);
 
   const filteredChannels = channels.filter((channel) =>
     matchesQuery(channelQuery, channel.title, channelLabel(channel.title)),
@@ -248,7 +258,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   }
 
   async function confirmLeave() {
-    if (!clubId || leaving) return;
+    if (leaving) return;
     setLeaving(true);
     setLeaveError('');
 
@@ -259,6 +269,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     } catch (err) {
       if (isUnauthorizedError(err)) {
         setUser(null);
+        onHide();
         navigate('/login');
         return;
       }
@@ -278,14 +289,14 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
   const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, PREVIEW_COUNT);
   const hiddenChannelCount = Math.max(filteredChannels.length - PREVIEW_COUNT, 0);
   const hiddenMemberCount = Math.max(filteredMembers.length - PREVIEW_COUNT, 0);
+  const viewerIsMember = members.some((member) => String(member.userId) === user?.id);
 
   return (
     <Modal
-      show={show}
+      show
       onHide={() => {
         if (!leaving) onHide();
       }}
-      onExited={reset}
       centered
       scrollable
       size="lg"
@@ -300,20 +311,13 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
       </Modal.Header>
 
       <Modal.Body className="d-flex flex-column gap-4">
-        {show && clubId && !club && !loadError && (
+        {!club && !loadError && (
           <p className="text-center text-secondary my-4" role="status">
             Loading club...
           </p>
         )}
 
-        {loadError && (
-          <Alert variant="danger" className="mb-0">
-            <p className="mb-2">{loadError}</p>
-            <Button type="button" variant="outline-secondary" onClick={retry}>
-              Try again
-            </Button>
-          </Alert>
-        )}
+        {loadError && <LoadError message={loadError} onRetry={retry} />}
 
         {club && (
           <>
@@ -331,54 +335,56 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                   <p className="mb-2">Meeting time: {formatMeetingTime(club.meeting)}</p>
                   <p className="mb-0">Meeting Location: {formatMeetingLocation(club.meeting)}</p>
                 </div>
-                <div>
-                  {confirmingLeave ? (
-                    <>
-                      <p className="text-secondary small mb-2 text-start text-sm-end" role="status">
-                        You&apos;ll lose access to this club&apos;s channels.
-                      </p>
-                      <div className="d-flex justify-content-start justify-content-sm-end gap-2">
-                        <Button
-                          ref={cancelLeaveRef}
-                          type="button"
-                          variant="outline-secondary"
-                          className="fw-semibold"
-                          disabled={leaving}
-                          onClick={() => {
-                            leaveFocusTarget.current = 'leave';
-                            setConfirmingLeave(false);
-                            setLeaveError('');
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          className="fw-semibold"
-                          disabled={leaving}
-                          onClick={confirmLeave}
-                        >
-                          {leaving ? 'Leaving...' : 'Leave Club'}
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <Button
-                      ref={leaveClubRef}
-                      type="button"
-                      variant="danger"
-                      className="fw-semibold"
-                      onClick={() => {
-                        setLeaveError('');
-                        leaveFocusTarget.current = 'cancel';
-                        setConfirmingLeave(true);
-                      }}
-                    >
-                      Leave Club
-                    </Button>
-                  )}
-                </div>
+                {viewerIsMember && (
+                  <div>
+                    {confirmingLeave ? (
+                      <>
+                        <p className="text-secondary small mb-2 text-start text-sm-end" role="status">
+                          You&apos;ll lose access to this club&apos;s channels.
+                        </p>
+                        <div className="d-flex justify-content-start justify-content-sm-end gap-2">
+                          <Button
+                            ref={cancelLeaveRef}
+                            type="button"
+                            variant="outline-secondary"
+                            className="fw-semibold"
+                            disabled={leaving}
+                            onClick={() => {
+                              leaveFocusTarget.current = 'leave';
+                              setConfirmingLeave(false);
+                              setLeaveError('');
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            className="fw-semibold"
+                            disabled={leaving}
+                            onClick={confirmLeave}
+                          >
+                            {leaving ? 'Leaving...' : 'Leave Club'}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <Button
+                        ref={leaveClubRef}
+                        type="button"
+                        variant="danger"
+                        className="fw-semibold"
+                        onClick={() => {
+                          setLeaveError('');
+                          leaveFocusTarget.current = 'cancel';
+                          setConfirmingLeave(true);
+                        }}
+                      >
+                        Leave Club
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
               {leaveError && (
                 <Alert variant="danger" className="py-2 px-3 mt-3 mb-0">
@@ -395,9 +401,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                 {channelsError ? '' : matchCount(filteredChannels.length, 'channel', 'channels', channelQuery)}
               </p>
               {channelsError ? (
-                <Alert variant="danger" className="mb-0">
-                  {channelsError}
-                </Alert>
+                <LoadError message={channelsError} onRetry={retry} />
               ) : channels.length === 0 ? (
                 <p className="text-secondary mb-0">No channels yet.</p>
               ) : filteredChannels.length === 0 ? (
@@ -449,9 +453,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                 {membersError ? '' : matchCount(filteredMembers.length, 'member', 'members', memberQuery)}
               </p>
               {membersError ? (
-                <Alert variant="danger" className="mb-0">
-                  {membersError}
-                </Alert>
+                <LoadError message={membersError} onRetry={retry} />
               ) : members.length === 0 ? (
                 <p className="text-secondary mb-0">No members to show.</p>
               ) : filteredMembers.length === 0 ? (
@@ -487,4 +489,9 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
       </Modal.Body>
     </Modal>
   );
+}
+
+export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfoModalProps) {
+  if (!show || !clubId) return null;
+  return <ClubInfoContent clubId={clubId} onHide={onHide} onLeft={onLeft} />;
 }
