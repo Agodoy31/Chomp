@@ -33,6 +33,11 @@ const conversationSchema = new Schema<IConversation>(
       ref: 'Club',
       default: undefined,
     },
+    deleted: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -81,7 +86,7 @@ conversationSchema.index(
   { dmPairKey: 1 },
   {
     unique: true,
-    partialFilterExpression: { type: 'DIRECT' },
+    partialFilterExpression: { type: 'DIRECT', deleted: false },
   }
 );
 
@@ -90,7 +95,7 @@ conversationSchema.index(
   { clubId: 1, title: 1 },
   {
     unique: true,
-    partialFilterExpression: { type: 'CHANNEL' },
+    partialFilterExpression: { type: 'CHANNEL', deleted: false },
     collation: { locale: 'en', strength: 2 },
   }
 );
