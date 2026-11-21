@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
@@ -76,6 +76,11 @@ function matchesQuery(query: string, ...values: Array<string | undefined>): bool
   return values.some((value) => (value ?? '').toLowerCase().includes(search));
 }
 
+function matchCount(count: number, singular: string, plural: string, query: string): string {
+  const noun = count === 1 ? singular : plural;
+  return query.trim() ? `${count} matching ${noun}` : `${count} ${noun}`;
+}
+
 function ListSearch({
   value,
   onChange,
@@ -118,24 +123,20 @@ function Section({ title, search, children }: { title: string; search?: ReactNod
 function ListToggle({
   expanded,
   hiddenCount,
+  itemLabel,
   onToggle,
 }: {
   expanded: boolean;
   hiddenCount: number;
+  itemLabel: 'channels' | 'members';
   onToggle: () => void;
 }) {
   if (hiddenCount <= 0) return null;
 
   return (
     <div className="d-flex justify-content-end mt-2">
-      <Button
-        type="button"
-        variant="link"
-        className="p-0 link-secondary"
-        aria-expanded={expanded}
-        onClick={onToggle}
-      >
-        {expanded ? 'Show less' : `See ${hiddenCount} more`}
+      <Button type="button" variant="link" className="p-0 link-secondary" aria-expanded={expanded} onClick={onToggle}>
+        {expanded ? `Show fewer ${itemLabel}` : `See ${hiddenCount} more ${itemLabel}`}
       </Button>
     </div>
   );
@@ -153,6 +154,10 @@ function expandedListStyle(scroll: boolean) {
 export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfoModalProps) {
   const navigate = useNavigate();
   const { setUser } = useAuth();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const cancelLeaveRef = useRef<HTMLButtonElement>(null);
+  const leaveClubRef = useRef<HTMLButtonElement>(null);
+  const leaveFocusTarget = useRef<'cancel' | 'leave' | null>(null);
 
   const [club, setClub] = useState<ClubDetails | null>(null);
   const [channels, setChannels] = useState<ClubChannel[]>([]);
@@ -231,6 +236,17 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
     matchesQuery(memberQuery, memberName(member), member.firstName, member.lastName),
   );
 
+  useLayoutEffect(() => {
+    if (leaveFocusTarget.current === 'cancel') cancelLeaveRef.current?.focus();
+    else if (leaveFocusTarget.current === 'leave') leaveClubRef.current?.focus();
+    leaveFocusTarget.current = null;
+  }, [confirmingLeave]);
+
+  function retry() {
+    titleRef.current?.focus();
+    setReloadKey((key) => key + 1);
+  }
+
   async function confirmLeave() {
     if (!clubId || leaving) return;
     setLeaving(true);
@@ -278,7 +294,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
       aria-labelledby="club-info-title"
     >
       <Modal.Header closeButton={!leaving} closeLabel="Close club information">
-        <Modal.Title id="club-info-title" as="h2" className="h4 mb-0">
+        <Modal.Title ref={titleRef} id="club-info-title" as="h2" tabIndex={-1} className="h4 mb-0">
           {club ? club.name : 'Club information'}
         </Modal.Title>
       </Modal.Header>
@@ -293,7 +309,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
         {loadError && (
           <Alert variant="danger" className="mb-0">
             <p className="mb-2">{loadError}</p>
-            <Button type="button" variant="outline-secondary" onClick={() => setReloadKey((key) => key + 1)}>
+            <Button type="button" variant="outline-secondary" onClick={retry}>
               Try again
             </Button>
           </Alert>
@@ -318,16 +334,18 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                 <div>
                   {confirmingLeave ? (
                     <>
-                      <p className="text-secondary small mb-2 text-start text-sm-end">
+                      <p className="text-secondary small mb-2 text-start text-sm-end" role="status">
                         You&apos;ll lose access to this club&apos;s channels.
                       </p>
                       <div className="d-flex justify-content-start justify-content-sm-end gap-2">
                         <Button
+                          ref={cancelLeaveRef}
                           type="button"
                           variant="outline-secondary"
                           className="fw-semibold"
                           disabled={leaving}
                           onClick={() => {
+                            leaveFocusTarget.current = 'leave';
                             setConfirmingLeave(false);
                             setLeaveError('');
                           }}
@@ -347,11 +365,13 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                     </>
                   ) : (
                     <Button
+                      ref={leaveClubRef}
                       type="button"
                       variant="danger"
                       className="fw-semibold"
                       onClick={() => {
                         setLeaveError('');
+                        leaveFocusTarget.current = 'cancel';
                         setConfirmingLeave(true);
                       }}
                     >
@@ -371,6 +391,9 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
               title="Channels"
               search={<ListSearch value={channelQuery} onChange={setChannelQuery} label="Search channels" />}
             >
+              <p className="visually-hidden" aria-live="polite">
+                {channelsError ? '' : matchCount(filteredChannels.length, 'channel', 'channels', channelQuery)}
+              </p>
               {channelsError ? (
                 <Alert variant="danger" className="mb-0">
                   {channelsError}
@@ -407,6 +430,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                   <ListToggle
                     expanded={showAllChannels}
                     hiddenCount={hiddenChannelCount}
+                    itemLabel="channels"
                     onToggle={() => setShowAllChannels((current) => !current)}
                   />
                 </>
@@ -414,9 +438,16 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
             </Section>
 
             <Section
-              title={membersError ? 'Members' : `Members (${members.length})`}
+              title={
+                membersError
+                  ? 'Members'
+                  : `Members (${memberQuery.trim() ? filteredMembers.length : members.length})`
+              }
               search={<ListSearch value={memberQuery} onChange={setMemberQuery} label="Search members" />}
             >
+              <p className="visually-hidden" aria-live="polite">
+                {membersError ? '' : matchCount(filteredMembers.length, 'member', 'members', memberQuery)}
+              </p>
               {membersError ? (
                 <Alert variant="danger" className="mb-0">
                   {membersError}
@@ -445,6 +476,7 @@ export default function ClubInfoModal({ show, onHide, clubId, onLeft }: ClubInfo
                   <ListToggle
                     expanded={showAllMembers}
                     hiddenCount={hiddenMemberCount}
+                    itemLabel="members"
                     onToggle={() => setShowAllMembers((current) => !current)}
                   />
                 </>
