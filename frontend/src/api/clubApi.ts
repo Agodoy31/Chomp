@@ -1,5 +1,4 @@
-import type { Club, ClubCategory } from '../types/club';
-import type { ClubChannel, ClubDetails, ClubMember } from '../types/club';
+import type { Club, ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../types/club';
 
 export type UpdateClubPayload = {
   name?: string;
@@ -7,8 +6,6 @@ export type UpdateClubPayload = {
   category?: ClubCategory;
   meeting?: Partial<NonNullable<Club['meeting']>> | Record<string, never>;
 };
-
-export type UpdatedClubResponse = Omit<Club, 'status' | 'role'>;
 
 type ApiError = Error & { status?: number; code?: string };
 
@@ -89,7 +86,7 @@ export async function leaveClub(clubId: string): Promise<void> {
  * Updates club's details
  * Endpoint: PATCH /api/clubs/:clubId
  */
-export async function updateClub(clubId: string, payload: UpdateClubPayload): Promise<UpdatedClubResponse> {
+export async function updateClub(clubId: string, payload: UpdateClubPayload): Promise<ClubDetails> {
   const response = await fetch(clubUrl(clubId), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

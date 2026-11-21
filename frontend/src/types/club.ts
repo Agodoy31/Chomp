@@ -17,7 +17,7 @@ export type Club = {
 
 }
 
-// Public club payload from GET /api/clubs/:clubId. Review fields are omitted.
+// Public club fields from GET and PATCH /api/clubs/:clubId. Review status and role are omitted.
 export type ClubDetails = Pick<Club, '_id' | 'name' | 'description' | 'category' | 'meeting'>
 
 export type ClubChannel = {
