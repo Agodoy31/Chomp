@@ -1558,11 +1558,22 @@ function getConversationFeedAggregationStages(
       },
     },
     {
+      $lookup: {
+        from: Club.collection.name,
+        localField: 'conversation.clubId',
+        foreignField: '_id',
+        as: 'clubArray',
+      },
+    },
+    {
       $project: {
         _id: '$conversation._id',
         type: '$conversation.type',
         title: '$conversation.title',
         clubId: '$conversation.clubId',
+        clubName: {
+          $arrayElemAt: ['$clubArray.name', 0],
+        },
         displayName: {
           $cond: [
             {
