@@ -6,7 +6,13 @@ import {
   createChannel,
   isUnauthorizedError,
   type Channel,
-} from '../../api/channelApi';
+} from '../../api/clubApi';
+
+import {
+  MAX_CHANNEL_TITLE_LENGTH,
+  normalizeChannelName,
+  validateChannelTitle,
+} from '../../utils/channelValidation';
 
 interface CreateChannelModalProps {
   show: boolean;
@@ -30,33 +36,42 @@ export function CreateChannelModal({
   const [submitting, setSubmitting] = useState(false);
   const [nameInvalid, setNameInvalid] = useState(false);
 
-  function normalizeChannelName(raw: string) {
-    return raw.trim().replace(/^#+\s*/, '');
-  }
-
+  
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submitting) return;
     const cleaned = normalizeChannelName(channelName);
+    const validationError = validateChannelTitle(cleaned);
 
-    if (!cleaned) {
+    if (validationError) {
       setNameInvalid(true);
-      setError('Channel name is required.');
+      setError(validationError);
       return;
     }
 
+
     setSubmitting(true);
     setError('');
+  
 
     try {
-      const created = await createChannel(clubId, { name: cleaned });
+      const created = await createChannel(clubId, { title: cleaned });
       setChannelName('');
       onSuccess?.(created);
       onHide();
     } catch (err) {
       if (isUnauthorizedError(err)) {
         setUser(null);
+        onHide();
         navigate('/login');
         return;
+      }
+
+      const errorObj = err as { status?: number; response?: { status?: number } } | null;
+      const status = errorObj?.status ?? errorObj?.response?.status;
+
+      if (status === 400 || status === 409) {
+        setNameInvalid(true);
       }
 
       setError(err instanceof Error ? err.message : 'Failed to create channel.');
@@ -87,24 +102,23 @@ export function CreateChannelModal({
         </Modal.Title>
       </Modal.Header>
 
-      <Form onSubmit={handleSubmit} noValidate>
+      <Form onSubmit={handleSubmit} aria-busy={submitting} noValidate>
         <Modal.Body className="py-4">
           {error && (
-            <div aria-live="polite">
               <Alert id="create-channel-error" variant="danger">
                 {error}
               </Alert>
-            </div>
           )}
 
           <Form.Group controlId="create-Channel-Name">
-            <Form.Label>Channel Name<span aria-hidden="true">*</span></Form.Label>
+            <Form.Label>Channel Name <span aria-hidden="true">*</span></Form.Label>
             <Form.Control
               type="text"
               required
+              maxLength={MAX_CHANNEL_TITLE_LENGTH}
               aria-required="true"
               aria-invalid={nameInvalid}
-              placeholder="# e.g, gators"
+              placeholder="e.g, gators"
               value={channelName}
               onChange={(e) => {
                 setChannelName(e.target.value);
@@ -123,7 +137,7 @@ export function CreateChannelModal({
             variant="outline-secondary"
             className="rounded-2 px-4 fw-semibold"
             disabled={submitting}
-            onClick={onHide}
+            onClick={() => !submitting && onHide()}
             aria-label="Cancel and close modal"
           >
             Cancel

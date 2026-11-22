@@ -6,7 +6,14 @@ import {
   isUnauthorizedError,
   renameChannel,
   type Channel,
-} from '../../api/channelApi';
+} from '../../api/clubApi';
+
+import {
+  MAX_CHANNEL_TITLE_LENGTH,
+  normalizeChannelName,
+  validateChannelTitle,
+} from '../../utils/channelValidation';
+
 
 interface UpdateChannelModalProps {
   show: boolean;
@@ -23,6 +30,7 @@ export function UpdateChannelModal({
   onHide,
   onSuccess,
 }: UpdateChannelModalProps) {
+  const [submitting, setSubmitting] = useState(false);
    if (!show || !channel) {
     return null;
   }
@@ -32,6 +40,8 @@ export function UpdateChannelModal({
       key={channel._id}
       clubId={clubId}
       channel={channel}
+      submitting={submitting}
+      setSubmitting={setSubmitting}
       onHide={onHide}
       onSuccess={onSuccess}
     />
@@ -41,6 +51,8 @@ export function UpdateChannelModal({
 interface UpdateChannelFormProps {
   clubId: string;
   channel: Channel;
+  submitting: boolean;
+  setSubmitting: (value: boolean) => void;
   onHide: () => void;
   onSuccess?: (updatedChannel: Channel) => void;
 }
@@ -48,31 +60,42 @@ interface UpdateChannelFormProps {
 function UpdateChannelForm({
   clubId,
   channel,
+  submitting,
+  setSubmitting,
   onHide,
   onSuccess,
 }: UpdateChannelFormProps) {
   const navigate = useNavigate();
   const { setUser } = useAuth();
+  const isGeneralChannel = channel.title.trim().toLowerCase() === 'general';
 
-  const [channelName, setChannelName] = useState(channel.name ?? '');
+  const [channelName, setChannelName] = useState(channel.title ?? '');
   const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [nameInvalid, setNameInvalid] = useState(false);
 
-
-  function normalizeChannelName(raw: string) {
-    return raw.trim().replace(/^#+\s*/, '');
-  }
 
   async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submitting) return;
 
-    const cleaned = normalizeChannelName(channelName);
-
-    if (!cleaned) {
+    if (isGeneralChannel) {
       setNameInvalid(true);
-      setError('Channel name is required.');
+      setError('The General channel cannot be renamed.');
+      return;
+    }
+
+    const cleaned = normalizeChannelName(channelName);
+    const validationError = validateChannelTitle(cleaned);
+
+    if (validationError) {
+      setNameInvalid(true);
+      setError(validationError);
+      return;
+    }
+
+    if (cleaned === channel.title.trim()) {
+      onSuccess?.(channel);
+      onHide();
       return;
     }
 
@@ -80,7 +103,7 @@ function UpdateChannelForm({
     setError('');
 
     try {
-      const updated = await renameChannel(clubId, channel._id, { name: cleaned });
+      const updated = await renameChannel(clubId, channel._id, { title: cleaned });
       onSuccess?.({
         ...channel,
         ...updated,
@@ -89,8 +112,15 @@ function UpdateChannelForm({
     } catch (err) {
       if (isUnauthorizedError(err)) {
         setUser(null);
+        onHide();
         navigate('/login');
         return;
+      }
+      const errorObj = err as { status?: number; response?: { status?: number } } | null;
+      const status = errorObj?.status ?? errorObj?.response?.status;
+
+      if (status === 400 || status === 409) {
+        setNameInvalid(true);
       }
 
       setError(err instanceof Error ? err.message : 'Failed to update channel.');
@@ -103,11 +133,6 @@ function UpdateChannelForm({
     <Modal
       show
       onHide={() => !submitting && onHide()}
-      onExited={() => {
-        setChannelName(channel?.name ?? '');
-        setError('');
-        setNameInvalid(false);
-      }}
       backdrop="static"
       keyboard={!submitting}
       centered
@@ -122,23 +147,22 @@ function UpdateChannelForm({
       <Form onSubmit={handleSubmit} aria-busy={submitting} noValidate>
         <Modal.Body className="py-4">
           {error && (
-            <div aria-live="polite">
               <Alert id="update-channel-error" variant="danger">
                 {error}
               </Alert>
-            </div>
           )}
 
           <Form.Group controlId="update-Channel-Name">
             <Form.Label>
-              Channel Name<span aria-hidden="true">*</span>
+              Channel Name <span aria-hidden="true">*</span>
             </Form.Label>
             <Form.Control
               type="text"
               required
+              maxLength={MAX_CHANNEL_TITLE_LENGTH}
               aria-required="true"
               aria-invalid={nameInvalid}
-              placeholder="# e.g, gators"
+              placeholder="e.g, gators"
               value={channelName}
               onChange={(e) => {
                 setChannelName(e.target.value);

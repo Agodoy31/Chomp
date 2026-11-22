@@ -1,5 +1,18 @@
 import type { Club, ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../types/club';
 
+export interface Channel {
+  _id: string;
+  title: string;
+}
+
+export interface CreateChannelPayload {
+  title: string;
+}
+
+export interface RenameChannelPayload {
+  title: string;
+}
+
 export type UpdateClubPayload = {
   name?: string;
   description?: string;
@@ -115,4 +128,88 @@ export async function updateClub(clubId: string, payload: UpdateClubPayload): Pr
   }
 
   return data.club;
+}
+
+/**
+ * Creates a new channel for a club
+ * Endpoint: POST /api/clubs/:clubId/channels
+ */
+export async function createChannel(
+  clubId: string,
+  payload: CreateChannelPayload
+): Promise<Channel> {
+  const response = await fetch(`/api/clubs/${encodeURIComponent(clubId)}/channels`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+
+  const data = await readJson(response);
+  if (!response.ok) {
+    if (response.status === 401 || data?.message === 'ERR_REQUIRE_AUTH') {
+    throw createApiError(
+      'Your session has expired. Please log in again.',
+      401,
+      'ERR_REQUIRE_AUTH',
+    );
+    }
+  
+    const message = data?.message || data?.error || 'Failed to create channel.';
+  throw createApiError(message, response.status, data?.code);
+  }
+  if (!data?.channel) {
+    throw createApiError(
+      data?.message || 'Could not create channel. Please try again.',
+      response.status,
+      data?.code,
+    );
+  }
+
+  return data.channel;
+
+}
+
+/**
+ * Renames an existing channel in a club
+ * Endpoint: PATCH /api/clubs/:clubId/channels/:channelId
+ */
+export async function renameChannel(
+  clubId: string,
+  channelId: string,
+  payload: RenameChannelPayload
+): Promise<Channel> {
+  const response = await fetch(
+    `/api/clubs/${encodeURIComponent(clubId)}/channels/${encodeURIComponent(channelId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    }
+  );
+  const data = await readJson(response);
+
+  if (!response.ok) {
+    if (response.status === 401 || data?.message === 'ERR_REQUIRE_AUTH') {
+      throw createApiError(
+        'Your session has expired. Please log in again.',
+        401,
+        'ERR_REQUIRE_AUTH',
+      );
+    }
+
+    const message = data?.message || data?.error || 'Failed to rename channel.';
+    throw createApiError(message, response.status, data?.code);
+  }
+
+  if (!data?.channel) {
+    throw createApiError(
+      data?.message || 'Could not rename channel. Please try again.',
+      response.status,
+      data?.code,
+    );
+  }
+
+  return data.channel
 }
