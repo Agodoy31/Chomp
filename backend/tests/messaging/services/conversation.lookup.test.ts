@@ -197,12 +197,16 @@ describe('getConversationDetails service', () => {
     expect(detailsForUser1?._id.toString()).toBe(conversationId.toString());
     expect(detailsForUser1?.type).toBe(ConversationType.DIRECT);
     expect(detailsForUser1?.displayName).toBe('Broward Freshman');
+    expect(detailsForUser1?.clubName).toBeUndefined();
+    expect('clubName' in detailsForUser1!).toBe(false);
 
     const detailsForUser2 = await getConversationDetails(conversationId, user2._id);
     expect(detailsForUser2).not.toBeNull();
     expect(detailsForUser2?._id.toString()).toBe(conversationId.toString());
     expect(detailsForUser2?.type).toBe(ConversationType.DIRECT);
     expect(detailsForUser2?.displayName).toBe('Tim Tebow');
+    expect(detailsForUser2?.clubName).toBeUndefined();
+    expect('clubName' in detailsForUser2!).toBe(false);
 
     expect(detailsForUser1?.participants).toHaveLength(2);
     expect(detailsForUser1?.participants[0].userId._id.toString()).toBe(user2._id.toString());
@@ -230,6 +234,8 @@ describe('getConversationDetails service', () => {
     expect(details?.type).toBe(ConversationType.GROUP);
     expect(details?.title).toBe(groupTitle);
     expect(details?.displayName).toBe(groupTitle);
+    expect(details?.clubName).toBeUndefined();
+    expect('clubName' in details!).toBe(false);
 
     expect(details?.participants).toHaveLength(3);
     expect(details?.participants[0].userId.firstName).toBe('Broward');
@@ -261,6 +267,7 @@ describe('getConversationDetails service', () => {
     expect(details?.title).toBe(channelTitle);
     expect(details?.displayName).toBe(channelTitle);
     expect(details?.clubId?.toString()).toBe(club._id.toString());
+    expect(details?.clubName).toBe(club.name);
 
     expect(details?.participants).toHaveLength(2);
     expect(details?.participants[0].userId.firstName).toBe('Broward');
@@ -270,6 +277,37 @@ describe('getConversationDetails service', () => {
     expect(details?.participants[1].userId.firstName).toBe('Tim');
     expect(details?.participants[1].userId.lastName).toBe('Tebow');
     expect(details?.participants[1].permission).toBe(ParticipantPermission.WRITE);
+  });
+
+  it('returns updated clubName after the club is renamed', async () => {
+    const creator = await createTestUser({ firstName: 'Turlington', lastName: 'Tabler', email: 'flyer.dodger@ufl.edu' });
+    const member = await createTestUser({ firstName: 'Krishna', lastName: 'Regular', email: 'lunch_line@ufl.edu' });
+    const club = await createTestClub(creator._id, { name: 'Krishna Lunch Line Appreciators' });
+    const channel = await createChannel(club._id, 'halava-alerts', [member._id]);
+
+    await Club.findByIdAndUpdate(club._id, { name: 'Cucumber Appreciation Club' });
+
+    const details = await getConversationDetails(channel._id, member._id);
+    expect(details).not.toBeNull();
+    expect(details?.clubId?.toString()).toBe(club._id.toString());
+    expect(details?.clubName).toBe('Cucumber Appreciation Club');
+  });
+
+  it('returns channel details without clubName when referenced club is deleted', async () => {
+    const creator = await createTestUser({ firstName: 'Turlington', lastName: 'Tabler', email: 'flyer.dodger@ufl.edu' });
+    const member = await createTestUser({ firstName: 'Midtown', lastName: 'Survivor', email: 'gator_beverage@ufl.edu' });
+    const club = await createTestClub(creator._id, { name: 'Krishna Lunch Line Appreciators' });
+    const channel = await createChannel(club._id, 'general', [member._id]);
+
+    await Club.deleteOne({ _id: club._id });
+
+    const details = await getConversationDetails(channel._id, member._id);
+    expect(details).not.toBeNull();
+    expect(details?._id.toString()).toBe(channel._id.toString());
+    expect(details?.type).toBe(ConversationType.CHANNEL);
+    expect(details?.clubId?.toString()).toBe(club._id.toString());
+    expect(details?.clubName).toBeUndefined();
+    expect('clubName' in details!).toBe(false);
   });
 
   it('returns null when requesting user is not a participant in the conversation', async () => {

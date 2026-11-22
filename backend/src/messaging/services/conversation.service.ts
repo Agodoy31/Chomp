@@ -730,47 +730,52 @@ export async function getConversationDetails(
 
   const conversationObjectId = new Types.ObjectId(conversationId);
 
-  const participants = await ConversationParticipant.aggregate<IConversationParticipantSummary>([
-    {
-      $match: {
-        conversationId: conversationObjectId,
-      },
-    },
-    {
-      $project: {
-        _id: 1,
-        userId: 1,
-        permission: 1,
-      },
-    },
-    {
-      $lookup: {
-        from: 'users',
-        localField: 'userId',
-        foreignField: '_id',
-        as: 'user',
-      },
-    },
-    {
-      $unwind: '$user',
-    },
-    {
-      $project: {
-        _id: 0,
-        permission: 1,
-        userId: {
-          _id: '$user._id',
-          firstName: '$user.firstName',
-          lastName: '$user.lastName',
+  const [participants, club] = await Promise.all([
+    ConversationParticipant.aggregate<IConversationParticipantSummary>([
+      {
+        $match: {
+          conversationId: conversationObjectId,
         },
       },
-    },
-    {
-      $sort: {
-        'userId.firstName': 1,
-        'userId.lastName': 1,
+      {
+        $project: {
+          _id: 1,
+          userId: 1,
+          permission: 1,
+        },
       },
-    },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: '$user',
+      },
+      {
+        $project: {
+          _id: 0,
+          permission: 1,
+          userId: {
+            _id: '$user._id',
+            firstName: '$user.firstName',
+            lastName: '$user.lastName',
+          },
+        },
+      },
+      {
+        $sort: {
+          'userId.firstName': 1,
+          'userId.lastName': 1,
+        },
+      },
+    ]),
+    conversation.clubId
+      ? Club.findById(conversation.clubId).select('name').lean<{ name: string }>().exec()
+      : Promise.resolve(null),
   ]);
 
   let displayName = conversation.title ?? '';
@@ -786,6 +791,7 @@ export async function getConversationDetails(
     type: conversation.type,
     title: conversation.title,
     clubId: conversation.clubId,
+    ...(club?.name ? { clubName: club.name } : {}),
     displayName,
     participants,
   };
