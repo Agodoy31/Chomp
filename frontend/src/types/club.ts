@@ -16,3 +16,18 @@ export type Club = {
     role?: 'MEMBER' | 'OFFICER'
 
 }
+
+// Public club fields from GET and PATCH /api/clubs/:clubId. Review status and role are omitted.
+export type ClubDetails = Pick<Club, '_id' | 'name' | 'description' | 'category' | 'meeting'>
+
+export type ClubChannel = {
+    _id: string
+    title: string
+}
+
+export type ClubMember = {
+    userId: string
+    firstName: string
+    lastName: string
+    role: 'MEMBER' | 'OFFICER'
+}

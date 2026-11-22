@@ -26,6 +26,13 @@ export const evictUserFromRoom = (userId: string, room: string): void => {
   io.in(getUserRoom(userId)).socketsLeave(room);
 };
 
+export const evictRoom = (room: string): void => {
+  if (!io) {
+    return;
+  }
+  io.in(room).socketsLeave(room);
+};
+
 export const initSocketServer = (
   httpServer: http.Server,
   clientUrl: string,

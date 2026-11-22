@@ -56,7 +56,7 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
     if (isNew) {
       messagingPublisher.messageCreated(message);
 
-      const conversation = await Conversation.findById(id).select('type').lean();
+      const conversation = await Conversation.findOne({ _id: id, deleted: false }).select('type').lean();
       if (conversation && conversation.type === ConversationType.DIRECT) {
         const messageCount = await Message.countDocuments({
           conversationId: new Types.ObjectId(id),

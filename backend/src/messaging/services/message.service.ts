@@ -91,7 +91,10 @@ export async function sendMessage(
   }
 
   const [conversation, participant] = await Promise.all([
-    Conversation.findById(conversationId).select('type').lean().exec(),
+    Conversation.findOne({ _id: conversationId, deleted: false })
+      .select('type')
+      .lean()
+      .exec(),
     ConversationParticipant.findOne({
       userId: senderId,
       conversationId,
@@ -197,7 +200,16 @@ export async function getMessages(
     );
   }
 
-  const isParticipant = await isUserParticipant(conversationId, requestingUserId);
+  const [conversationExists, isParticipant] = await Promise.all([
+    Conversation.exists({ _id: conversationId, deleted: false }),
+    isUserParticipant(conversationId, requestingUserId),
+  ]);
+  if (!conversationExists) {
+    throw new MessagingError(
+      MessagingErrorCode.CONVERSATION_NOT_FOUND,
+      'Conversation not found'
+    );
+  }
   if (!isParticipant) {
     throw new MessagingError(
       MessagingErrorCode.NOT_PARTICIPANT,
@@ -258,6 +270,17 @@ export async function deleteMessage(
     throw new MessagingError(
       MessagingErrorCode.MESSAGE_NOT_FOUND,
       'Message not found'
+    );
+  }
+
+  const conversationExists = await Conversation.exists({
+    _id: conversationId,
+    deleted: false,
+  });
+  if (!conversationExists) {
+    throw new MessagingError(
+      MessagingErrorCode.CONVERSATION_NOT_FOUND,
+      'Conversation not found'
     );
   }
 
