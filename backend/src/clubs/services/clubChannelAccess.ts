@@ -231,17 +231,18 @@ export async function renameClubChannel(input: {
     _id: input.channelId,
     clubId: input.clubId,
     type: ConversationType.CHANNEL,
+    deleted: false,
   })
     .select('title')
     .lean();
   if (!channel) {
     return { error: channelNotFound() };
   }
-  if (channel.title === input.title) {
-    return { channel: { _id: input.channelId.toString(), title: input.title } };
-  }
   if (channel.title === GENERAL_CHANNEL_TITLE) {
     return { error: cannotRenameGeneral() };
+  }
+  if (channel.title === input.title) {
+    return { channel: { _id: input.channelId.toString(), title: input.title } };
   }
 
   try {

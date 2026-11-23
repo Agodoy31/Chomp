@@ -301,7 +301,7 @@ describe('club channel management', () => {
     it('rejects renaming General', async () => {
       const { club, general } = await insertRoster();
 
-      for (const title of ['Lobby', 'general']) {
+      for (const title of ['Lobby', 'general', 'General']) {
         const res = await officer.patch(channelUrl(club._id, general._id)).send({ title });
         expect(res.status).toBe(409);
         expect(res.body.code).toBe('ERR_GENERAL_CHANNEL');
@@ -310,13 +310,14 @@ describe('club channel management', () => {
     });
 
     it('does not publish when the title is unchanged', async () => {
-      const { club, general } = await insertRoster();
+      const { club } = await insertRoster();
+      const events = await insertChannel(club._id, 'Events');
       const renamed = jest.spyOn(messagingPublisher, 'conversationRenamed');
 
-      const res = await officer.patch(channelUrl(club._id, general._id)).send({ title: 'General' });
+      const res = await officer.patch(channelUrl(club._id, events._id)).send({ title: 'Events' });
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ channel: { _id: general._id.toString(), title: 'General' } });
+      expect(res.body).toEqual({ channel: { _id: events._id.toString(), title: 'Events' } });
       expect(renamed).not.toHaveBeenCalled();
     });
 
@@ -413,6 +414,21 @@ describe('club channel management', () => {
 
       const listed = await member.get(channelsUrl(club._id));
       expect(listed.body).toEqual({ channels: [{ _id: general._id.toString(), title: 'General' }] });
+    });
+
+    it('returns 404 when renaming or deleting a soft-deleted channel', async () => {
+      const { club } = await insertRoster();
+      const events = await insertChannel(club._id, 'Events');
+      expect((await officer.delete(channelUrl(club._id, events._id))).status).toBe(200);
+
+      const renamed = await officer.patch(channelUrl(club._id, events._id)).send({ title: 'Events' });
+      const again = await officer.delete(channelUrl(club._id, events._id));
+
+      expect(renamed.status).toBe(404);
+      expect(renamed.body.code).toBe('ERR_CHANNEL_NOT_FOUND');
+      expect(again.status).toBe(404);
+      expect(again.body.code).toBe('ERR_CHANNEL_NOT_FOUND');
+      expect((await Conversation.findById(events._id).lean())?.deleted).toBe(true);
     });
 
     it('rejects deleting General even when another channel exists', async () => {
