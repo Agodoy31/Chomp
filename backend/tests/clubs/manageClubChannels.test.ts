@@ -370,57 +370,60 @@ describe('club channel management', () => {
       expect(await Conversation.findById(group._id)).not.toBeNull();
     });
 
-    it('returns 409 and keeps the last channel, its seats, and its messages', async () => {
+    it('rejects deleting General and keeps its seats and messages', async () => {
       const { club, general } = await insertRoster();
       await Message.create({ conversationId: general._id, senderId: officerId, text: 'hello' });
-      const removed = jest.spyOn(messagingPublisher, 'participantRemoved');
+      const deleted = jest.spyOn(messagingPublisher, 'conversationDeleted');
 
       const res = await officer.delete(channelUrl(club._id, general._id));
 
       expect(res.status).toBe(409);
-      expect(res.body.code).toBe('ERR_LAST_CHANNEL');
-      expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
+      expect(res.body.code).toBe('ERR_GENERAL_CHANNEL');
+      expect((await Conversation.findById(general._id).lean())?.deleted).not.toBe(true);
       expect(await ConversationParticipant.countDocuments({ conversationId: general._id })).toBe(2);
       expect(await Message.countDocuments({ conversationId: general._id })).toBe(1);
-      expect(removed).not.toHaveBeenCalled();
+      expect(deleted).not.toHaveBeenCalled();
     });
 
-    it('removes one channel and leaves the club, the other channel, and its memberships', async () => {
+    it('soft-deletes one channel, keeps its messages, and leaves the club', async () => {
       const { club, general } = await insertRoster();
       const events = await insertChannel(club._id, 'Events');
       await Message.create([
         { conversationId: events._id, senderId: memberId, text: 'practice moved' },
         { conversationId: general._id, senderId: officerId, text: 'welcome' },
       ]);
-      const removed = jest.spyOn(messagingPublisher, 'participantRemoved');
+      const deleted = jest.spyOn(messagingPublisher, 'conversationDeleted');
+      const kicked = jest.spyOn(messagingPublisher, 'participantRemoved');
 
       const res = await officer.delete(channelUrl(club._id, events._id));
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ channel: { _id: events._id.toString(), title: 'Events' } });
-      expect(await Conversation.findById(events._id)).toBeNull();
-      expect(await Message.countDocuments({ conversationId: events._id })).toBe(0);
+      expect((await Conversation.findById(events._id).lean())?.deleted).toBe(true);
+      expect(await Message.countDocuments({ conversationId: events._id })).toBe(1);
       expect(await ConversationParticipant.countDocuments({ conversationId: events._id })).toBe(0);
-      expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
+      expect((await Conversation.findById(general._id).lean())?.deleted).not.toBe(true);
       expect(await Message.countDocuments({ conversationId: general._id })).toBe(1);
       expect(await ConversationParticipant.countDocuments({ conversationId: general._id })).toBe(2);
       expect(await Membership.countDocuments({ clubId: club._id, status: 'ACTIVE' })).toBe(2);
-      expect(removed.mock.calls.map((call) => call[1]).sort()).toEqual([memberId.toString(), officerId.toString()].sort());
-      expect(removed.mock.calls.every((call) => call[0] === events._id.toString())).toBe(true);
+      expect(deleted).toHaveBeenCalledTimes(1);
+      expect(deleted.mock.calls[0][0]).toBe(events._id.toString());
+      expect(deleted.mock.calls[0][1].slice().sort()).toEqual([memberId.toString(), officerId.toString()].sort());
+      expect(kicked).not.toHaveBeenCalled();
 
       const listed = await member.get(channelsUrl(club._id));
       expect(listed.body).toEqual({ channels: [{ _id: general._id.toString(), title: 'General' }] });
     });
 
-    it('lets an admin remove General once another channel exists', async () => {
+    it('rejects deleting General even when another channel exists', async () => {
       const { club, general } = await insertRoster();
       const events = await insertChannel(club._id, 'Events');
 
       const res = await admin.delete(channelUrl(club._id, general._id));
 
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual({ channel: { _id: general._id.toString(), title: 'General' } });
-      expect(await Conversation.findById(general._id)).toBeNull();
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('ERR_GENERAL_CHANNEL');
+      expect((await Conversation.findById(general._id).lean())?.deleted).not.toBe(true);
       expect((await Conversation.findById(events._id).lean())?.title).toBe('Events');
     });
   });

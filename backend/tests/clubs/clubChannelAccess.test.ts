@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jes
 import mongoose, { type ClientSession, type Types } from 'mongoose';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
-import { lastChannel } from '../../src/clubs/errors';
+import { cannotDeleteGeneral } from '../../src/clubs/errors';
 import {
   addMemberToClubChannels,
   commitMemberDeparture,
@@ -229,7 +229,7 @@ describe('createClubChannel', () => {
 });
 
 describe('removeClubChannel', () => {
-  it('deletes that channel after its seats are gone and leaves the other channel', async () => {
+  it('soft-deletes that channel, keeps its messages, and leaves the other channel', async () => {
     const { officer, club, channelIds } = await insertClubWithChannels();
     const removedId = channelIds[1];
     const keptId = channelIds[0];
@@ -237,48 +237,47 @@ describe('removeClubChannel', () => {
       { conversationId: removedId, senderId: officer._id, text: 'going away' },
       { conversationId: keptId, senderId: officer._id, text: 'staying' },
     ]);
-    const seatCounts: Array<Promise<number>> = [];
-    const removed = jest.spyOn(messagingPublisher, 'participantRemoved').mockImplementation((conversationId, userId) => {
-      seatCounts.push(ConversationParticipant.countDocuments({ conversationId, userId }));
-    });
+    const deleted = jest.spyOn(messagingPublisher, 'conversationDeleted');
+    const kicked = jest.spyOn(messagingPublisher, 'participantRemoved');
 
     try {
       await expect(
         removeClubChannel({ clubId: club._id, channelId: new mongoose.Types.ObjectId(removedId) })
       ).resolves.toEqual({ channel: { _id: removedId, title: 'Announcements' } });
 
-      expect(await Conversation.findById(removedId)).toBeNull();
+      expect((await Conversation.findById(removedId).lean())?.deleted).toBe(true);
       expect((await Conversation.findById(keptId).lean())?.title).toBe('General');
-      expect(await Message.countDocuments({ conversationId: removedId })).toBe(0);
+      expect(await Message.countDocuments({ conversationId: removedId })).toBe(1);
       expect(await Message.countDocuments({ conversationId: keptId })).toBe(1);
       expect(await ConversationParticipant.countDocuments({ conversationId: removedId })).toBe(0);
       expect(await seatPermissions(officer._id)).toEqual({ [keptId]: MODERATE });
-      expect(removed).toHaveBeenCalledWith(removedId, officer._id.toString());
-      expect(await Promise.all(seatCounts)).toEqual([0]);
+      expect(deleted).toHaveBeenCalledWith(removedId, [officer._id.toString()]);
+      expect(kicked).not.toHaveBeenCalled();
     } finally {
-      removed.mockRestore();
+      deleted.mockRestore();
+      kicked.mockRestore();
     }
   });
 
-  it('keeps the last channel, its messages, and the club timestamp', async () => {
+  it('refuses to delete General and leaves the club timestamp alone', async () => {
     const officer = await createTestUser();
     const club = await createTestClub(officer._id);
     const general = await inTransaction((session) => createGeneralChannel(club._id, officer._id, session));
     await Message.create({ conversationId: general._id, senderId: officer._id, text: 'hello' });
     const before = await Club.findById(club._id).lean();
-    const removed = jest.spyOn(messagingPublisher, 'participantRemoved');
+    const deleted = jest.spyOn(messagingPublisher, 'conversationDeleted');
 
     try {
       await expect(removeClubChannel({ clubId: club._id, channelId: general._id })).resolves.toEqual({
-        error: lastChannel(),
+        error: cannotDeleteGeneral(),
       });
-      expect((await Conversation.findById(general._id).lean())?.title).toBe('General');
+      expect((await Conversation.findById(general._id).lean())?.deleted).not.toBe(true);
       expect(await Message.countDocuments({ conversationId: general._id })).toBe(1);
       expect(await ConversationParticipant.countDocuments({ conversationId: general._id })).toBe(1);
       expect((await Club.findById(club._id).lean())?.updatedAt).toEqual(before?.updatedAt);
-      expect(removed).not.toHaveBeenCalled();
+      expect(deleted).not.toHaveBeenCalled();
     } finally {
-      removed.mockRestore();
+      deleted.mockRestore();
     }
   });
 });
