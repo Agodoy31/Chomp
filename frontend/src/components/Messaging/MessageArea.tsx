@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { v7 as uuidv7 } from 'uuid';
+import Alert from 'react-bootstrap/Alert';
+import Button from 'react-bootstrap/Button';
+import Form from 'react-bootstrap/Form';
+import InputGroup from 'react-bootstrap/InputGroup';
+import Spinner from 'react-bootstrap/Spinner';
 import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
@@ -7,7 +12,7 @@ import { fetchMessages, postMessage } from '../../api/messagingApi';
 import Message from './Message';
 import PostAnnouncementModal from '../modals/AnnouncementModal';
 
-// Combine message lists by ID so history and sends can overlap without duplicates
+// Combine message lists by ID so incoming server messages overwrite older local copies
 function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
   const byId = new Map([...current, ...incoming].map((m) => [m._id, m]));
   return [...byId.values()].sort(
@@ -21,6 +26,7 @@ interface MessageAreaProps {
   isLoadingDetails?: boolean;
   detailsError?: string | null;
   onRetryDetails?: () => void;
+  onBackToList?: () => void;
   onOpenDetails: () => void;
   onMessageSent: (conversation: ConversationDetails, message: IMessage) => void;
 }
@@ -31,6 +37,7 @@ export default function MessageArea({
   isLoadingDetails = false,
   detailsError = null,
   onRetryDetails,
+  onBackToList,
   onOpenDetails,
   onMessageSent,
 }: MessageAreaProps) {
@@ -62,7 +69,7 @@ export default function MessageArea({
       setLoadError(null);
       try {
         const data = await fetchMessages(currentId);
-        if (!ignore) setMessages((prev) => mergeMessages(data, prev));
+        if (!ignore) setMessages((prev) => mergeMessages(prev, data));
       } catch (err) {
         if (ignore) return;
         console.error('Error loading messages:', err);
@@ -97,24 +104,33 @@ export default function MessageArea({
         style={{ backgroundColor: '#F5F6FA', minWidth: 0 }}
       >
         {isLoadingDetails ? (
-          <div role="status" aria-live="polite" className="text-center px-4">
-            Loading conversation...
+          <div
+            role="status"
+            aria-live="polite"
+            className="d-flex align-items-center gap-2 px-4"
+          >
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>Loading conversation...</span>
           </div>
         ) : detailsError ? (
-          <div role="alert" className="text-center px-4">
+          <Alert variant="danger" className="text-center mx-4 mb-0">
             <div>{detailsError}</div>
             {onRetryDetails && (
-              <button
+              <Button
                 type="button"
-                className="btn btn-outline-primary btn-sm mt-2 rounded-pill px-3"
+                variant="outline-danger"
+                size="sm"
+                className="mt-2 rounded-pill px-3"
                 onClick={onRetryDetails}
               >
                 Retry
-              </button>
+              </Button>
             )}
-          </div>
+          </Alert>
         ) : (
-          <p className="mb-0 fs-5">Pick a conversation to start chatting</p>
+          <p role="status" className="mb-0 fs-5">
+            Pick a conversation to start chatting
+          </p>
         )}
       </section>
     );
@@ -122,26 +138,24 @@ export default function MessageArea({
 
   const participants = conversation.participants || [];
 
-  // Check client-side permissions: user must not have READ-only permission
+  // Check client-side permissions strictly from participant membership
   const currentUserParticipant = currentUserId
     ? participants.find((p) => p.userId._id === currentUserId)
     : undefined;
 
-  const isAdmin = Boolean(user?.isAdmin);
   const areDetailsLoaded = participants.length > 0;
   const canSend =
-    isAdmin ||
-    (areDetailsLoaded &&
-      currentUserParticipant !== undefined &&
-      currentUserParticipant.permission !== 'READ');
+    areDetailsLoaded &&
+    currentUserParticipant !== undefined &&
+    currentUserParticipant.permission !== 'READ';
   const hasNoSendPermission = areDetailsLoaded && !canSend;
   const canPostAnnouncement =
     conversation.type === 'CHANNEL' &&
-    (isAdmin || currentUserParticipant?.permission === 'MODERATE');
+    currentUserParticipant?.permission === 'MODERATE';
 
   const headerInitial = conversation.displayName.charAt(0).toUpperCase();
 
-  const handleSend = async (e: React.SubmitEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSend || isSending) return;
     if (!inputText.trim()) return;
@@ -188,6 +202,8 @@ export default function MessageArea({
     return `${msg.sender.firstName} ${msg.sender.lastName}`.trim();
   };
 
+  const isInputDisabled = !canSend || isSending;
+
   return (
     <section
       aria-label={conversation.displayName}
@@ -199,10 +215,42 @@ export default function MessageArea({
         className="d-flex align-items-center justify-content-between px-4 py-3 bg-white border-bottom flex-shrink-0"
         style={{ minHeight: '68px' }}
       >
-        <div className="d-flex align-items-center gap-3">
+        <div className="d-flex align-items-center gap-3 overflow-hidden">
+          {onBackToList && (
+            <Button
+              type="button"
+              variant="light"
+              onClick={onBackToList}
+              className="d-md-none rounded-circle d-flex align-items-center justify-content-center border-0 p-0 flex-shrink-0"
+              style={{
+                width: '36px',
+                height: '36px',
+                backgroundColor: '#EDF0F5',
+              }}
+              aria-label="Back to conversations"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  d="M16 10H4M10 4L4 10L10 16"
+                  stroke="#3046C3"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </Button>
+          )}
           <div
             aria-hidden="true"
-            className="rounded-circle d-flex align-items-center justify-content-center fw-bold"
+            className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
             style={{
               width: '42px',
               height: '42px',
@@ -213,23 +261,23 @@ export default function MessageArea({
           >
             {headerInitial}
           </div>
-          <div>
-            <h1 className="h5 fw-bold mb-0 text-dark">
+          <div className="overflow-hidden">
+            <h1 className="h5 fw-bold mb-0 text-dark text-truncate">
               {conversation.displayName}
             </h1>
           </div>
         </div>
 
         {/* Three dots vector icon */}
-        <button
+        <Button
           type="button"
+          variant="light"
           onClick={onOpenDetails}
-          className="btn rounded-circle d-flex align-items-center justify-content-center border-0 p-0"
+          className="rounded-circle d-flex align-items-center justify-content-center border-0 p-0 flex-shrink-0"
           style={{
             width: '36px',
             height: '36px',
             backgroundColor: '#EDF0F5',
-            cursor: 'pointer',
           }}
           aria-label="Conversation details"
         >
@@ -255,7 +303,7 @@ export default function MessageArea({
               fill="#3046C3"
             />
           </svg>
-        </button>
+        </Button>
       </header>
 
       {/* Message History Feed */}
@@ -270,23 +318,28 @@ export default function MessageArea({
           <div
             role="status"
             aria-live="polite"
-            className="text-muted text-center py-4"
+            className="d-flex align-items-center justify-content-center gap-2 text-muted py-4"
           >
-            Loading messages...
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>Loading messages...</span>
           </div>
         ) : loadError ? (
-          <div role="alert" className="text-muted text-center py-4">
+          <Alert variant="danger" className="text-center my-3">
             <div>{loadError}</div>
-            <button
+            <Button
               type="button"
-              className="btn btn-outline-primary btn-sm mt-2 rounded-pill px-3"
+              variant="outline-danger"
+              size="sm"
+              className="mt-2 rounded-pill px-3"
               onClick={() => setReloadKey((k) => k + 1)}
             >
               Retry
-            </button>
-          </div>
+            </Button>
+          </Alert>
         ) : messages.length === 0 ? (
-          <div className="text-muted text-center py-4">No messages yet</div>
+          <div role="status" className="text-muted text-center py-4">
+            No messages yet
+          </div>
         ) : (
           <div className="d-flex flex-column">
             {messages.map((msg) => (
@@ -294,7 +347,9 @@ export default function MessageArea({
                 key={msg._id}
                 message={msg}
                 senderName={getSenderName(msg)}
-                isCurrentUser={Boolean(currentUserId && msg.sender?._id === currentUserId)}
+                isCurrentUser={Boolean(
+                  currentUserId && msg.sender?._id === currentUserId
+                )}
               />
             ))}
           </div>
@@ -307,80 +362,85 @@ export default function MessageArea({
         style={{ backgroundColor: '#F5F6FA' }}
       >
         {sendError && (
-          <div className="text-danger small mb-2 text-center" role="alert">
+          <Alert variant="danger" className="py-2 px-3 small mb-2 text-center">
             {sendError}
+          </Alert>
+        )}
+        {hasNoSendPermission && (
+          <div role="status" className="text-muted small text-center mb-2">
+            You do not have permission to send messages in this conversation.
           </div>
         )}
-        <form
-          onSubmit={handleSend}
-          className="d-flex align-items-center rounded-pill px-3 py-1 shadow-sm"
-          style={{
-            backgroundColor: '#EDF0F5',
-            border: '1px solid #E2E8F0',
-          }}
-        >
-          <input
-            type="text"
-            className="form-control border-0 bg-transparent shadow-none"
-            placeholder={`Message ${conversation.displayName}...`}
-            aria-label={
-              hasNoSendPermission
-                ? 'You do not have permission to send messages in this conversation'
-                : `Message ${conversation.displayName}`
-            }
-            maxLength={2000}
-            value={
-              hasNoSendPermission
-                ? 'You do not have permission to send messages in this conversation'
-                : inputText
-            }
-            onChange={(e) => {
-              if (!canSend) return;
-              pendingClientIdRef.current = null;
-              setInputText(e.target.value);
-            }}
-            disabled={!canSend}
+        <Form onSubmit={handleSend}>
+          <InputGroup
+            className="align-items-center rounded-pill px-3 py-1 shadow-sm"
             style={{
-              fontSize: '14px',
-              color: canSend ? '#1F2937' : '#6B7280',
-              cursor: canSend ? 'text' : 'not-allowed',
-              userSelect: canSend ? 'auto' : 'none',
+              backgroundColor: '#EDF0F5',
+              border: '1px solid #E2E8F0',
             }}
-          />
-
-          {/* Send Arrow Vector Button */}
-          <button
-            type="submit"
-            disabled={!canSend || isSending}
-            className="btn rounded-circle d-flex align-items-center justify-content-center p-0 flex-shrink-0"
-            style={{
-              width: '36px',
-              height: '36px',
-              backgroundColor: canSend && !isSending ? '#3046C3' : '#9CA3AF',
-              border: 'none',
-              cursor: canSend && !isSending ? 'pointer' : 'not-allowed',
-            }}
-            aria-label="Send message"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-              focusable="false"
+            <Form.Control
+              type="text"
+              className="border-0 bg-transparent shadow-none"
+              placeholder={`Message ${conversation.displayName}...`}
+              aria-label={`Message ${conversation.displayName}`}
+              maxLength={2000}
+              value={inputText}
+              onChange={(e) => {
+                if (isInputDisabled) return;
+                pendingClientIdRef.current = null;
+                setInputText(e.target.value);
+              }}
+              disabled={isInputDisabled}
+              style={{
+                fontSize: '14px',
+                color: isInputDisabled ? '#6B7280' : '#1F2937',
+                cursor: isInputDisabled ? 'not-allowed' : 'text',
+              }}
+            />
+
+            {/* Send Arrow Vector Button */}
+            <Button
+              type="submit"
+              disabled={isInputDisabled}
+              className="rounded-circle d-flex align-items-center justify-content-center p-0 flex-shrink-0 border-0"
+              style={{
+                width: '36px',
+                height: '36px',
+                backgroundColor: !isInputDisabled ? '#3046C3' : '#9CA3AF',
+                cursor: !isInputDisabled ? 'pointer' : 'not-allowed',
+              }}
+              aria-label="Send message"
             >
-              <path
-                d="M4 10H16M10 16L16 10L10 4"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </form>
+              {isSending ? (
+                <Spinner
+                  animation="border"
+                  size="sm"
+                  variant="light"
+                  aria-hidden="true"
+                />
+              ) : (
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M4 10H16M10 16L16 10L10 4"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </Button>
+          </InputGroup>
+        </Form>
       </footer>
 
       {canPostAnnouncement && (

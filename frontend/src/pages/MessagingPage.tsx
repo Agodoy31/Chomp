@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Row from 'react-bootstrap/Row';
+import Col from 'react-bootstrap/Col';
 import Sidebar from '../components/Messaging/Sidebar';
 import MessageArea from '../components/Messaging/MessageArea';
 import ConversationDetailsModal from '../components/Messaging/ConversationDetailsModal';
@@ -43,12 +45,14 @@ export default function MessagingPage() {
   const [activeDetails, setActiveDetails] = useState<ConversationDetails | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsReloadKey, setDetailsReloadKey] = useState(0);
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState<boolean>(false);
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
 
   const handleSelectConversation = (conv: ConversationFeedItem) => {
     setDetailsError(null);
     setActiveConversationId(conv._id);
+    setIsMobileChatOpen(true);
   };
 
   // Load details and participants for whichever conversation is currently active
@@ -131,8 +135,10 @@ export default function MessagingPage() {
 
   const handleChatCreated = (newConv: ConversationDetails) => {
     setIsNewChatModalOpen(false);
+    setDetailsError(null);
     setActiveDetails(newConv);
     setActiveConversationId(newConv._id);
+    setIsMobileChatOpen(true);
     setConversations((prev) =>
       upsertConversation(prev, {
         _id: newConv._id,
@@ -204,37 +210,52 @@ export default function MessagingPage() {
 
   return (
     <div className="d-flex flex-column h-100 overflow-hidden">
-      <div className="d-flex flex-grow-1 overflow-hidden">
-        <Sidebar
-          conversations={conversations}
-          clubNamesById={clubNamesById}
-          isLoading={isLoadingConversations}
-          loadError={loadError}
-          onRetry={() => setReloadKey((key) => key + 1)}
-          onSelectConversation={handleSelectConversation}
-          onOpenNewChat={() => setIsNewChatModalOpen(true)}
-          activeConversationId={activeConversationId ?? undefined}
-        />
-        <MessageArea
-          key={activeConversationId ?? 'empty'}
-          conversation={displayedDetails}
-          clubName={
-            displayedDetails?.clubId
-              ? clubNamesById[displayedDetails.clubId]
-              : undefined
-          }
-          isLoadingDetails={Boolean(
-            activeConversationId && !displayedDetails && !detailsError
-          )}
-          detailsError={detailsError}
-          onRetryDetails={() => {
-            setDetailsError(null);
-            setDetailsReloadKey((key) => key + 1);
-          }}
-          onOpenDetails={() => setIsModalDisplayed(true)}
-          onMessageSent={handleMessageSent}
-        />
-      </div>
+      <Row className="g-0 flex-grow-1 h-100 overflow-hidden">
+        <Col
+          xs={12}
+          md={4}
+          lg={3}
+          className={`${isMobileChatOpen ? 'd-none d-md-flex' : 'd-flex'} h-100 overflow-hidden`}
+        >
+          <Sidebar
+            conversations={conversations}
+            clubNamesById={clubNamesById}
+            isLoading={isLoadingConversations}
+            loadError={loadError}
+            onRetry={() => setReloadKey((key) => key + 1)}
+            onSelectConversation={handleSelectConversation}
+            onOpenNewChat={() => setIsNewChatModalOpen(true)}
+            activeConversationId={activeConversationId ?? undefined}
+          />
+        </Col>
+        <Col
+          xs={12}
+          md={8}
+          lg={9}
+          className={`${isMobileChatOpen ? 'd-flex' : 'd-none d-md-flex'} h-100 overflow-hidden`}
+        >
+          <MessageArea
+            key={activeConversationId ?? 'empty'}
+            conversation={displayedDetails}
+            clubName={
+              displayedDetails?.clubId
+                ? clubNamesById[displayedDetails.clubId]
+                : undefined
+            }
+            isLoadingDetails={Boolean(
+              activeConversationId && !displayedDetails && !detailsError
+            )}
+            detailsError={detailsError}
+            onRetryDetails={() => {
+              setDetailsError(null);
+              setDetailsReloadKey((key) => key + 1);
+            }}
+            onBackToList={() => setIsMobileChatOpen(false)}
+            onOpenDetails={() => setIsModalDisplayed(true)}
+            onMessageSent={handleMessageSent}
+          />
+        </Col>
+      </Row>
       <ConversationDetailsModal
         show={isModalDisplayed}
         onHide={() => setIsModalDisplayed(false)}

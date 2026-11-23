@@ -1,5 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Modal from 'react-bootstrap/Modal';
+import Button from 'react-bootstrap/Button';
+import Form from 'react-bootstrap/Form';
+import Alert from 'react-bootstrap/Alert';
+import Spinner from 'react-bootstrap/Spinner';
 import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import { useAuth } from '../../hooks/useAuth';
 import { updateConversationTitle } from '../../api/messagingApi';
@@ -22,21 +26,30 @@ export default function ConversationDetailsModal({
   const [titleInput, setTitleInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
 
   if (!conversation) return null;
 
   const participants = conversation.participants || [];
-  const permission = participants.find((p) => p.userId._id === user?.id)?.permission;
+  const permission = participants.find(
+    (p) => p.userId._id === user?.id
+  )?.permission;
   const canEditTitle =
-    conversation.type !== 'DIRECT' &&
-    (Boolean(user?.isAdmin) ||
-      (conversation.type === 'GROUP' && permission !== undefined && permission !== 'READ') ||
-      (conversation.type === 'CHANNEL' && permission === 'MODERATE'));
+    conversation.type === 'GROUP' &&
+    permission !== undefined &&
+    permission !== 'READ';
 
   const closeModal = () => {
+    if (isSaving) return;
     setIsEditing(false);
     setError(null);
     onHide();
+  };
+
+  const exitEditMode = () => {
+    setIsEditing(false);
+    setError(null);
+    requestAnimationFrame(() => editButtonRef.current?.focus());
   };
 
   const handleSaveTitle = async (e: React.FormEvent) => {
@@ -52,7 +65,7 @@ export default function ConversationDetailsModal({
     try {
       await updateConversationTitle(conversation._id, trimmed);
       onTitleUpdated?.(conversation._id, trimmed);
-      setIsEditing(false);
+      exitEditMode();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update title.');
     } finally {
@@ -75,50 +88,35 @@ export default function ConversationDetailsModal({
     <Modal
       show={show}
       onHide={closeModal}
+      backdrop="static"
+      keyboard={!isSaving}
       centered
-      contentClassName="border-0 rounded-4 shadow p-3"
+      aria-labelledby="conversation-details-modal-title"
+      contentClassName="border-0 rounded-4 shadow"
     >
-      <Modal.Body className="p-2">
-        {/* Header row with title and close button */}
-        <div className="d-flex align-items-center justify-content-between mb-4">
-          <h2 className="h5 fw-bold mb-0 text-dark">Conversation details</h2>
-          <button
-            type="button"
-            onClick={closeModal}
-            className="btn rounded-circle d-flex align-items-center justify-content-center border-0 p-0"
-            style={{
-              width: '32px',
-              height: '32px',
-              backgroundColor: '#EDF0F5',
-              cursor: 'pointer',
-            }}
-            aria-label="Close"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 12 12"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M1 1L11 11M1 11L11 1"
-                stroke="#3046C3"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        </div>
+      <Modal.Header
+        closeButton={!isSaving}
+        className="border-0 pb-1 pt-4 px-4"
+        closeLabel="Close conversation details modal"
+      >
+        <Modal.Title
+          id="conversation-details-modal-title"
+          className="h5 fw-bold text-dark"
+        >
+          Conversation details
+        </Modal.Title>
+      </Modal.Header>
 
+      <Modal.Body className="px-4 pt-2 pb-4">
         {/* Conversation name and type */}
         <div className="mb-4">
           {isEditing ? (
-            <form onSubmit={handleSaveTitle} className="mb-1">
+            <Form onSubmit={handleSaveTitle} className="mb-1">
               <div className="d-flex align-items-center gap-2">
-                <input
+                <Form.Control
                   type="text"
-                  className="form-control form-control-sm border-0 shadow-none rounded-3 px-3"
+                  size="sm"
+                  className="border-0 shadow-none rounded-3 px-3"
                   style={{ backgroundColor: '#EDF0F5', color: '#1F2937' }}
                   value={titleInput}
                   onChange={(e) => setTitleInput(e.target.value)}
@@ -127,52 +125,58 @@ export default function ConversationDetailsModal({
                   disabled={isSaving}
                   autoFocus
                 />
-                <button
+                <Button
                   type="submit"
-                  className="btn btn-sm border-0 fw-semibold text-white rounded-3 px-3"
+                  size="sm"
+                  className="border-0 fw-semibold text-white rounded-3 px-3 d-inline-flex align-items-center gap-1"
                   style={{ backgroundColor: '#FF6C2F' }}
                   disabled={isSaving}
                 >
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-                <button
+                  {isSaving && (
+                    <Spinner animation="border" size="sm" aria-hidden="true" />
+                  )}
+                  <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                </Button>
+                <Button
                   type="button"
-                  className="btn btn-sm border-0 rounded-3"
+                  size="sm"
+                  variant="light"
+                  className="border-0 rounded-3"
                   style={{ backgroundColor: '#EDF0F5', color: '#374151' }}
-                  onClick={() => {
-                    setIsEditing(false);
-                    setError(null);
-                  }}
+                  onClick={exitEditMode}
                   disabled={isSaving}
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
               {error && (
-                <div className="text-danger small mt-1" role="alert">
+                <Alert variant="danger" className="py-1 px-2 small mt-2 mb-0">
                   {error}
-                </div>
+                </Alert>
               )}
-            </form>
+            </Form>
           ) : (
             <div className="d-flex align-items-center gap-2 mb-1">
               <h3 className="h5 fw-bold mb-0 text-dark">
                 {conversation.displayName}
               </h3>
               {canEditTitle && (
-                <button
+                <Button
+                  ref={editButtonRef}
                   type="button"
+                  size="sm"
+                  variant="light"
                   onClick={() => {
                     setTitleInput(conversation.title ?? conversation.displayName);
                     setError(null);
                     setIsEditing(true);
                   }}
-                  className="btn btn-sm border-0 py-0 px-2 rounded-3"
+                  className="border-0 py-0 px-2 rounded-3"
                   style={{ backgroundColor: '#EDF0F5', color: '#3046C3' }}
                   aria-label="Edit conversation title"
                 >
                   Edit
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -189,7 +193,9 @@ export default function ConversationDetailsModal({
         {/* Participants roster */}
         <div className="d-flex flex-column gap-3">
           {participants.length === 0 ? (
-            <div className="text-secondary small">No participants</div>
+            <div role="status" className="text-secondary small">
+              No participants
+            </div>
           ) : (
             participants.map((participant) => {
               const isCurrent = Boolean(

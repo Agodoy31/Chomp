@@ -90,7 +90,7 @@ export default function Message({
           {message.isAnnouncement && (
             <span
               className="fw-semibold"
-
+              style={{ color: '#3046C3', fontSize: '12px' }}
             >
               • Announcement
             </span>

@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
 import Modal from 'react-bootstrap/Modal';
+import Button from 'react-bootstrap/Button';
+import Form from 'react-bootstrap/Form';
+import InputGroup from 'react-bootstrap/InputGroup';
+import ListGroup from 'react-bootstrap/ListGroup';
+import Alert from 'react-bootstrap/Alert';
+import Spinner from 'react-bootstrap/Spinner';
 import type {
   ConversationDetails,
   UserSummary,
@@ -13,6 +19,31 @@ interface NewChatModalProps {
   show: boolean;
   onHide: () => void;
   onChatCreated: (conversation: ConversationDetails) => void;
+}
+
+const SEARCH_ERROR_MESSAGES: Record<string, string> = {
+  ERR_SEARCH_REQUIRED: 'Enter a name or email to search.',
+  ERR_SEARCH_TOO_LONG: 'Search query must be 100 characters or fewer.',
+  ERR_SEARCH_INVALID_CHARACTERS:
+    "Search can only include letters, numbers, spaces, and . _ - @ '",
+  ERR_SERVER_ERROR: 'Server error while searching users. Please try again.',
+};
+
+function formatSearchError(err: unknown): string {
+  if (err instanceof Error && err.message) {
+    return SEARCH_ERROR_MESSAGES[err.message] ?? err.message;
+  }
+  return 'Failed to search users. Please try again.';
+}
+
+function buildSafeGroupTitle(users: UserSummary[]): string {
+  const sanitized = users
+    .map((u) => u.firstName.replace(/[^a-zA-Z0-9 ._\-+&/'!?:,#]/g, '').trim())
+    .filter(Boolean)
+    .join(', ');
+
+  if (!sanitized) return 'Group Chat';
+  return sanitized.length > 100 ? `${sanitized.slice(0, 97)}...` : sanitized;
 }
 
 export default function NewChatModal({
@@ -45,11 +76,7 @@ export default function NewChatModal({
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error('Failed to search users:', err);
-        setSearchError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Failed to search users. Please try again.'
-        );
+        setSearchError(formatSearchError(err));
       } finally {
         if (!controller.signal.aborted) setIsLoadingUsers(false);
       }
@@ -69,11 +96,10 @@ export default function NewChatModal({
     setSearchQuery(nextQuery);
     setUsers([]);
     setSearchError(null);
-    setIsLoadingUsers(nextQuery.trim().length > 0);
+    setIsLoadingUsers(Boolean(nextQuery.trim()));
   };
 
   const handleToggleUser = (targetUser: UserSummary) => {
-    setCreateError(null);
     setSelectedUsers((prev) => {
       const exists = prev.some((u) => u._id === targetUser._id);
       if (exists) {
@@ -84,6 +110,7 @@ export default function NewChatModal({
   };
 
   const handleClose = () => {
+    if (isCreating) return;
     setSearchQuery('');
     setUsers([]);
     setSelectedUsers([]);
@@ -101,12 +128,6 @@ export default function NewChatModal({
 
     try {
       const isDirect = selectedUsers.length === 1;
-      const fullGroupTitle = selectedUsers.map((u) => u.firstName).join(', ');
-      const groupTitle =
-        fullGroupTitle.length > 100
-          ? `${fullGroupTitle.slice(0, 97)}...`
-          : fullGroupTitle;
-
       const newConversation = await createConversation(
         isDirect
           ? {
@@ -115,13 +136,19 @@ export default function NewChatModal({
             }
           : {
               type: 'GROUP',
-              title: groupTitle,
+              title: buildSafeGroupTitle(selectedUsers),
               participantIds: selectedUsers.map((u) => u._id),
             }
       );
 
       onChatCreated(newConversation);
-      handleClose();
+      setSearchQuery('');
+      setUsers([]);
+      setSelectedUsers([]);
+      setIsLoadingUsers(false);
+      setSearchError(null);
+      setCreateError(null);
+      onHide();
     } catch (err) {
       console.error('Error creating chat:', err);
       setCreateError(
@@ -134,186 +161,182 @@ export default function NewChatModal({
     }
   };
 
-  const selectedCountText = `${selectedUsers.length} people selected`;
+  const selectedCountText = `${selectedUsers.length} ${
+    selectedUsers.length === 1 ? 'person' : 'people'
+  } selected`;
 
   return (
     <Modal
       show={show}
       onHide={handleClose}
+      backdrop="static"
+      keyboard={!isCreating}
       centered
-      contentClassName="border-0 rounded-4 shadow p-3"
+      aria-labelledby="new-chat-modal-title"
+      contentClassName="border-0 rounded-4 shadow"
     >
-      <Modal.Body className="p-2">
-        {/* Header row */}
-        <div className="d-flex align-items-center justify-content-between mb-3">
-          <h2 className="h5 fw-bold mb-0 text-dark">New chat</h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="btn rounded-circle d-flex align-items-center justify-content-center border-0 p-0"
-            style={{
-              width: '32px',
-              height: '32px',
-              backgroundColor: '#EDF0F5',
-              cursor: 'pointer',
-            }}
-            aria-label="Close"
-          >
+      <Modal.Header
+        closeButton={!isCreating}
+        className="border-0 pb-1 pt-4 px-4"
+        closeLabel="Close new chat modal"
+      >
+        <Modal.Title id="new-chat-modal-title" className="h5 fw-bold text-dark">
+          New chat
+        </Modal.Title>
+      </Modal.Header>
+
+      <Modal.Body className="px-4 pt-2 pb-3">
+        {/* Search Input */}
+        <InputGroup
+          className="rounded-3 mb-3 overflow-hidden"
+          style={{ backgroundColor: '#EDF0F5' }}
+        >
+          <InputGroup.Text className="bg-transparent border-0 pe-1">
             <svg
-              width="12"
-              height="12"
-              viewBox="0 0 12 12"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+              focusable="false"
             >
               <path
-                d="M1 1L11 11M1 11L11 1"
-                stroke="#3046C3"
-                strokeWidth="2"
+                d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z"
+                stroke="#6B7280"
+                strokeWidth="1.5"
                 strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M14 14L11.1 11.1"
+                stroke="#6B7280"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
             </svg>
-          </button>
-        </div>
-
-        {/* Question Subheading */}
-        <div className="mb-3">
-          <span className="fw-semibold text-dark" style={{ fontSize: '15px' }}>
-            Who do you want to make a chat with?
-          </span>
-        </div>
-
-        {/* Search input with magnifying glass */}
-        <div
-          className="d-flex align-items-center px-3 py-2 rounded-3 mb-3"
-          style={{
-            border: '1px solid #E2E8F0',
-            backgroundColor: '#FFFFFF',
-          }}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#94A3B8"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="me-2 flex-shrink-0"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
+          </InputGroup.Text>
+          <Form.Control
             type="text"
-            className="form-control border-0 p-0 shadow-none bg-transparent"
+            className="border-0 bg-transparent shadow-none"
             placeholder="Search by name/email"
+            aria-label="Search by name or email"
             value={searchQuery}
             onChange={handleSearchChange}
-            style={{ fontSize: '14px', color: '#1E293B' }}
+            disabled={isCreating}
+            style={{ fontSize: '14px', color: '#1F2937' }}
           />
-        </div>
+        </InputGroup>
 
-        {/* Selected User Pills */}
+        {/* Selected User Tags */}
         {selectedUsers.length > 0 && (
           <div className="d-flex flex-wrap gap-2 mb-3">
-            {selectedUsers.map((u) => (
+            {selectedUsers.map((selected) => (
               <SelectedUserTag
-                key={u._id}
-                user={u}
-                onRemove={() => handleToggleUser(u)}
+                key={selected._id}
+                user={selected}
+                disabled={isCreating}
+                onRemove={() => handleToggleUser(selected)}
               />
             ))}
           </div>
         )}
 
-        {/* People Section */}
-        <div className="mb-2">
-          <span
-            className="fw-bold text-dark d-block mb-2"
-            style={{ fontSize: '14px' }}
-          >
+        {/* People List */}
+        <div>
+          <h3 className="fw-bold mb-2 text-dark" style={{ fontSize: '15px' }}>
             People
-          </span>
+          </h3>
 
           <div
-            className="d-flex flex-column gap-1 overflow-y-auto"
+            className="overflow-y-auto"
             style={{ maxHeight: '240px' }}
           >
             {isLoadingUsers ? (
-              <div className="text-secondary small py-2">Searching users...</div>
-            ) : searchQuery.trim() === '' ? (
-              <div className="text-secondary small py-2">
-                Type a name or email to search for people.
+              <div
+                role="status"
+                aria-live="polite"
+                className="d-flex align-items-center gap-2 text-secondary small py-2"
+              >
+                <Spinner animation="border" size="sm" aria-hidden="true" />
+                <span>Searching people...</span>
               </div>
             ) : searchError ? (
-              <div className="text-danger small py-2" role="alert">
+              <Alert variant="danger" className="py-2 px-3 small mb-0">
                 {searchError}
+              </Alert>
+            ) : !searchQuery.trim() ? (
+              <div role="status" className="text-secondary small py-2">
+                Type a name or email to search for people.
               </div>
             ) : availableUsers.length === 0 ? (
-              <div className="text-secondary small py-2">No people found</div>
+              <div role="status" className="text-secondary small py-2">
+                No people found
+              </div>
             ) : (
-              availableUsers.map((u) => {
-                const isSelected = selectedUsers.some(
-                  (sel) => sel._id === u._id
-                );
-                return (
-                  <PersonListItem
-                    key={u._id}
-                    user={u}
-                    isSelected={isSelected}
-                    onToggle={() => handleToggleUser(u)}
-                  />
-                );
-              })
+              <ListGroup variant="flush" className="gap-1">
+                {availableUsers.map((u) => {
+                  const isSelected = selectedUsers.some(
+                    (sel) => sel._id === u._id
+                  );
+                  return (
+                    <PersonListItem
+                      key={u._id}
+                      user={u}
+                      isSelected={isSelected}
+                      disabled={isCreating}
+                      onToggle={() => handleToggleUser(u)}
+                    />
+                  );
+                })}
+              </ListGroup>
             )}
           </div>
         </div>
 
         {createError && (
-          <div className="text-danger small mt-2" role="alert">
+          <Alert variant="danger" className="py-2 px-3 small mt-3 mb-0">
             {createError}
-          </div>
+          </Alert>
         )}
-
-        {/* Footer */}
-        <div className="d-flex align-items-center justify-content-between pt-3 mt-4 border-top">
-          <span className="text-secondary small">{selectedCountText}</span>
-          <div className="d-flex align-items-center gap-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="btn border-0 fw-medium px-3 py-2 rounded-3"
-              style={{
-                backgroundColor: '#F1F3F5',
-                color: '#374151',
-                fontSize: '14px',
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleCreateChat}
-              disabled={selectedUsers.length === 0 || isCreating}
-              className="btn border-0 fw-semibold px-3 py-2 rounded-3 text-white"
-              style={{
-                backgroundColor:
-                  selectedUsers.length === 0 ? '#FDA481' : '#FF6C2F',
-                fontSize: '14px',
-                cursor:
-                  selectedUsers.length === 0 || isCreating
-                    ? 'not-allowed'
-                    : 'pointer',
-                transition: 'background-color 0.15s ease',
-              }}
-            >
-              {isCreating ? 'Creating...' : 'Create chat'}
-            </button>
-          </div>
-        </div>
       </Modal.Body>
+
+      <Modal.Footer className="d-flex align-items-center justify-content-between border-top px-4 py-3">
+        <span className="text-secondary small">{selectedCountText}</span>
+        <div className="d-flex align-items-center gap-2">
+          <Button
+            type="button"
+            variant="light"
+            onClick={handleClose}
+            disabled={isCreating}
+            className="border-0 fw-medium px-3 py-2 rounded-3"
+            style={{
+              backgroundColor: '#F1F3F5',
+              color: '#374151',
+              fontSize: '14px',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={handleCreateChat}
+            disabled={selectedUsers.length === 0 || isCreating}
+            className="border-0 fw-semibold px-3 py-2 rounded-3 text-white d-inline-flex align-items-center gap-2"
+            style={{
+              backgroundColor:
+                selectedUsers.length === 0 || isCreating ? '#FDA481' : '#FF6C2F',
+              fontSize: '14px',
+            }}
+          >
+            {isCreating && (
+              <Spinner animation="border" size="sm" aria-hidden="true" />
+            )}
+            <span>{isCreating ? 'Creating...' : 'Create chat'}</span>
+          </Button>
+        </div>
+      </Modal.Footer>
     </Modal>
   );
 }

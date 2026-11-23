@@ -1,8 +1,6 @@
 import type {
   ConversationDetails,
   ConversationFeedItem,
-  ConversationParticipant,
-  ParticipantPermission,
   UserSummary,
 } from '../types/Messaging/Conversation';
 import type { IMessage } from '../types/Messaging/Message';
@@ -49,10 +47,11 @@ export async function fetchConversations(): Promise<ConversationFeedItem[]> {
   });
 
   if (!response.ok) {
-    throw createApiError(
-      `Failed to fetch conversations: ${response.status}`,
-      response.status
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch conversations: ${response.status}`
     );
+    throw createApiError(errMessage, response.status);
   }
 
   const data: ConversationFeedItem[] = await response.json();
@@ -96,10 +95,11 @@ export async function fetchMessages(
   );
 
   if (!response.ok) {
-    throw createApiError(
-      `Failed to fetch messages: ${response.status}`,
-      response.status
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch messages: ${response.status}`
     );
+    throw createApiError(errMessage, response.status);
   }
 
   const data: IMessage[] = await response.json();
@@ -200,34 +200,7 @@ export async function searchUsers(
 }
 
 /**
- * Adds participants to an existing conversation.
- * Endpoint: POST /api/conversations/:id/participants
- */
-export async function addParticipantsToConversation(
-  conversationId: string,
-  userIds: string[]
-): Promise<ConversationParticipant[]> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/participants`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ userIds }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to add participants: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Updates the title of a group or channel conversation.
+ * Updates the title of a group conversation.
  * Endpoint: PATCH /api/conversations/:id
  */
 export async function updateConversationTitle(
@@ -253,78 +226,6 @@ export async function updateConversationTitle(
 }
 
 /**
- * Updates a participant's permission in a conversation.
- * Endpoint: PATCH /api/conversations/:id/participants/:userId
- */
-export async function updateParticipantPermission(
-  conversationId: string,
-  userId: string,
-  permission: ParticipantPermission
-): Promise<ConversationParticipant> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/participants/${userId}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ permission }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to update permission: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Removes a participant from a conversation.
- * Endpoint: DELETE /api/conversations/:id/participants/:userId
- */
-export async function removeParticipantFromConversation(
-  conversationId: string,
-  userId: string
-): Promise<void> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/participants/${userId}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to remove participant: ${response.status}`);
-  }
-}
-
-/**
- * Soft deletes a message in a conversation.
- * Endpoint: DELETE /api/conversations/:id/messages/:messageId
- */
-export async function deleteMessage(
-  conversationId: string,
-  messageId: string
-): Promise<IMessage> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/messages/${messageId}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to delete message: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
  * Fetches the signed-in user's approved clubs so channel rows can display club names.
  * Endpoint: GET /api/clubs/me
  */
@@ -334,10 +235,11 @@ export async function fetchMyClubNames(): Promise<Record<string, string>> {
   });
 
   if (!response.ok) {
-    throw createApiError(
-      `Failed to fetch clubs: ${response.status}`,
-      response.status
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch clubs: ${response.status}`
     );
+    throw createApiError(errMessage, response.status);
   }
 
   const data: { clubs?: Array<{ _id: string; name: string }> } =

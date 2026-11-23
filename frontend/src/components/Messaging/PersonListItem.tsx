@@ -1,31 +1,38 @@
+import ListGroup from 'react-bootstrap/ListGroup';
+import Form from 'react-bootstrap/Form';
 import type { UserSummary } from '../../types/Messaging/Conversation';
 
 interface PersonListItemProps {
   user: UserSummary;
   isSelected: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }
 
 export default function PersonListItem({
   user,
   isSelected,
   onToggle,
+  disabled = false,
 }: PersonListItemProps) {
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
-  const initial = (fullName.charAt(0) || 'U').toUpperCase();
+  const initial = fullName.charAt(0).toUpperCase();
 
   return (
-    <div
+    <ListGroup.Item
+      action
+      type="button"
+      active={isSelected}
+      disabled={disabled}
       onClick={onToggle}
-      className="d-flex align-items-center justify-content-between p-2"
+      aria-pressed={isSelected}
+      className="d-flex align-items-center justify-content-between border-0 rounded-2 px-2 py-2"
       style={{
         backgroundColor: isSelected ? '#EFF5FF' : 'transparent',
-        cursor: 'pointer',
-        transition: 'background-color 0.15s ease',
-        borderRadius: '0px',
+        color: '#1F2937',
       }}
     >
-      <div className="d-flex align-items-center gap-3">
+      <div className="d-flex align-items-center gap-3 overflow-hidden">
         <div
           aria-hidden="true"
           className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
@@ -39,48 +46,27 @@ export default function PersonListItem({
         >
           {initial}
         </div>
-        <div className="d-flex flex-column">
-          <span className="text-dark fw-medium" style={{ fontSize: '15px' }}>
+        <div className="d-flex flex-column text-truncate">
+          <span className="text-dark fw-medium text-truncate" style={{ fontSize: '15px' }}>
             {fullName}
           </span>
           {user.email && (
-            <span className="text-muted" style={{ fontSize: '12px' }}>
+            <span className="text-muted text-truncate" style={{ fontSize: '12px' }}>
               {user.email}
             </span>
           )}
         </div>
       </div>
 
-      {/* Checkbox with square corners */}
-      <div
-        className="d-flex align-items-center justify-content-center"
-        style={{
-          width: '20px',
-          height: '20px',
-          borderRadius: '0px',
-          backgroundColor: isSelected ? '#3046C3' : '#FFFFFF',
-          border: isSelected ? '1px solid #3046C3' : '1.5px solid #CBD5E1',
-          transition: 'all 0.15s ease',
-        }}
-      >
-        {isSelected && (
-          <svg
-            width="12"
-            height="10"
-            viewBox="0 0 12 10"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M1.5 5L4.5 8L10.5 2"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </div>
-    </div>
+      <Form.Check
+        type="checkbox"
+        checked={isSelected}
+        readOnly
+        tabIndex={-1}
+        aria-hidden="true"
+        className="mb-0 pe-1"
+        style={{ pointerEvents: 'none' }}
+      />
+    </ListGroup.Item>
   );
 }
