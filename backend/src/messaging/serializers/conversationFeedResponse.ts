@@ -17,6 +17,10 @@ export function toConversationFeedResponse(
     response.clubId = item.clubId.toString();
   }
 
+  if (item.clubName) {
+    response.clubName = item.clubName;
+  }
+
   if (item.lastMessage) {
     const lastMessage: { text: string; senderName: string; createdAt?: string } = {
       text: item.lastMessage.text,

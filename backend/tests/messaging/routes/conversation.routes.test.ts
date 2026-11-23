@@ -316,8 +316,41 @@ describe('POST /api/conversations', () => {
   });
 });
 
+describe('channel helper setup', () => {
+  it('provisions club and channel with studentA as moderator and studentB as member', async () => {
+    const club = await Club.create({
+      name: 'Chomp Streetwear Collective',
+      description: 'Campus fashion and thrifting club',
+      proposerId: studentA.user._id,
+    });
+    clubId = club._id.toString();
+
+    const channel = await Conversation.create({
+      type: ConversationType.CHANNEL,
+      clubId: club._id,
+      title: 'announcements',
+    });
+    channelConversationId = channel._id.toString();
+
+    await ConversationParticipant.create([
+      {
+        conversationId: channel._id,
+        userId: studentA.user._id,
+        permission: ParticipantPermission.MODERATE,
+      },
+      {
+        conversationId: channel._id,
+        userId: studentB.user._id,
+        permission: ParticipantPermission.WRITE,
+      },
+    ]);
+
+    expect(channelConversationId).toBeDefined();
+  });
+});
+
 describe('GET /api/conversations/:id', () => {
-  it('returns direct and group conversation details with participants and permissions', async () => {
+  it('returns direct, group, and channel conversation details with participants, permissions, and clubName on channels only', async () => {
     const directRes = await studentA.agent
       .get(`/api/conversations/${directConversationId}`)
       .expect(200);
@@ -325,6 +358,8 @@ describe('GET /api/conversations/:id', () => {
     expect(directRes.body._id).toBe(directConversationId);
     expect(directRes.body.type).toBe('DIRECT');
     expect(directRes.body.displayName).toBe('Dennis Heckler');
+    expect(directRes.body.clubName).toBeUndefined();
+    expect('clubName' in directRes.body).toBe(false);
     expect(directRes.body.participants).toHaveLength(2);
 
     const groupRes = await studentA.agent
@@ -334,7 +369,20 @@ describe('GET /api/conversations/:id', () => {
     expect(groupRes.body._id).toBe(groupConversationId);
     expect(groupRes.body.type).toBe('GROUP');
     expect(groupRes.body.displayName).toBe('French Fries Monument Preservation Society');
+    expect(groupRes.body.clubName).toBeUndefined();
+    expect('clubName' in groupRes.body).toBe(false);
     expect(groupRes.body.participants).toHaveLength(3);
+
+    const channelRes = await studentA.agent
+      .get(`/api/conversations/${channelConversationId}`)
+      .expect(200);
+
+    expect(channelRes.body._id).toBe(channelConversationId);
+    expect(channelRes.body.type).toBe('CHANNEL');
+    expect(channelRes.body.displayName).toBe('announcements');
+    expect(channelRes.body.clubId).toBe(clubId);
+    expect(channelRes.body.clubName).toBe('Chomp Streetwear Collective');
+    expect(channelRes.body.participants).toHaveLength(2);
   });
 
   it('rejects non-participant with 404 and ERR_CONVERSATION_NOT_FOUND', async () => {
@@ -370,39 +418,6 @@ describe('GET /api/conversations/:id', () => {
 
     expect(res.body.code).toBe('ERR_SERVER_ERROR');
     jest.restoreAllMocks();
-  });
-});
-
-describe('channel helper setup', () => {
-  it('provisions club and channel with studentA as moderator and studentB as member', async () => {
-    const club = await Club.create({
-      name: 'Chomp Streetwear Collective',
-      description: 'Campus fashion and thrifting club',
-      proposerId: studentA.user._id,
-    });
-    clubId = club._id.toString();
-
-    const channel = await Conversation.create({
-      type: ConversationType.CHANNEL,
-      clubId: club._id,
-      title: 'announcements',
-    });
-    channelConversationId = channel._id.toString();
-
-    await ConversationParticipant.create([
-      {
-        conversationId: channel._id,
-        userId: studentA.user._id,
-        permission: ParticipantPermission.MODERATE,
-      },
-      {
-        conversationId: channel._id,
-        userId: studentB.user._id,
-        permission: ParticipantPermission.WRITE,
-      },
-    ]);
-
-    expect(channelConversationId).toBeDefined();
   });
 });
 
@@ -733,6 +748,8 @@ describe('GET /api/conversations', () => {
     expect(groupItem.type).toBe('GROUP');
     expect(groupItem.displayName).toBe('French Fries Monument Preservation Society');
     expect(groupItem.clubId).toBeUndefined();
+    expect(groupItem.clubName).toBeUndefined();
+    expect('clubName' in groupItem).toBe(false);
     expect(groupItem.lastMessage).toBeDefined();
 
     const channelItem = res.body.find((c: { _id: string }) => c._id === channelConversationId);
@@ -740,6 +757,7 @@ describe('GET /api/conversations', () => {
     expect(channelItem.type).toBe('CHANNEL');
     expect(channelItem.displayName).toBe('announcements');
     expect(channelItem.clubId).toBe(clubId);
+    expect(channelItem.clubName).toBe('Chomp Streetwear Collective');
     expect(channelItem.lastMessage).toBeDefined();
 
     const emptyDirectItem = res.body.find((c: { _id: string }) => c._id === directConversationId);
