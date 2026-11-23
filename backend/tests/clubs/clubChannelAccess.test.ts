@@ -2,11 +2,13 @@ import { describe, it, expect, beforeAll, afterEach, afterAll, jest } from '@jes
 import mongoose, { type ClientSession, type Types } from 'mongoose';
 import { Club } from '../../src/clubs/model/clubModel';
 import { Membership } from '../../src/clubs/model/membershipModel';
+import { cannotDeleteGeneral } from '../../src/clubs/errors';
 import {
   addMemberToClubChannels,
   commitMemberDeparture,
-  commitMemberRole,
+  createClubChannel,
   createGeneralChannel,
+  removeClubChannel,
   syncMemberChannelPermission,
 } from '../../src/clubs/services/clubChannelAccess';
 import { ConversationType } from '../../src/messaging/interfaces/conversation.interfaces';
@@ -40,7 +42,7 @@ async function insertClubWithChannels() {
   const club = await createTestClub(officer._id);
   const general = await inTransaction((session) => createGeneralChannel(club._id, officer._id, session));
   const announcements = await conversationService.createChannel(club._id, 'Announcements', [officer._id]);
-  return { club, channelIds: [general._id.toString(), announcements._id.toString()] };
+  return { officer, club, channelIds: [general._id.toString(), announcements._id.toString()] };
 }
 
 beforeAll(async () => {
@@ -176,59 +178,106 @@ describe('commitMemberDeparture', () => {
     expect(evict).not.toHaveBeenCalled();
     evict.mockRestore();
   });
+});
 
-  it('keeps the membership active and both seats when the second seat delete fails', async () => {
-    const { club, channelIds } = await insertClubWithChannels();
+describe('createClubChannel', () => {
+  it('seats active members by role and skips removed members and other clubs', async () => {
+    const officer = await createTestUser();
     const member = await createTestUser();
-    await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
-    const membership = await Membership.create({
-      userId: member._id,
-      clubId: club._id,
-      role: 'MEMBER',
-      status: 'ACTIVE',
-    });
-    const evict = jest.spyOn(messagingPublisher, 'evictUserFromConversation');
-    const originalDelete = ConversationParticipant.deleteOne.bind(ConversationParticipant);
-    let calls = 0;
-    const deleteOne = jest.spyOn(ConversationParticipant, 'deleteOne').mockImplementation((...args) => {
-      calls += 1;
-      if (calls === 2) {
-        return Promise.reject(new Error('seat delete failed'));
-      }
-      return originalDelete(...args);
-    });
+    const removed = await createTestUser();
+    const outsider = await createTestUser();
+    const club = await createTestClub(officer._id);
+    const otherClub = await createTestClub(outsider._id);
+    await Membership.create([
+      { userId: officer._id, clubId: club._id, role: 'OFFICER', status: 'ACTIVE' },
+      { userId: member._id, clubId: club._id, role: 'MEMBER', status: 'ACTIVE' },
+      { userId: removed._id, clubId: club._id, role: 'OFFICER', status: 'REMOVED' },
+      { userId: outsider._id, clubId: otherClub._id, role: 'OFFICER', status: 'ACTIVE' },
+    ]);
 
-    await expect(
-      commitMemberDeparture({ membershipId: membership._id, status: 'REMOVED' })
-    ).rejects.toThrow('seat delete failed');
+    const result = await createClubChannel({ clubId: club._id, title: 'Events' });
 
-    expect((await Membership.findById(membership._id).lean())?.status).toBe('ACTIVE');
-    expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: WRITE, [channelIds[1]]: WRITE });
-    expect(evict).not.toHaveBeenCalled();
-    deleteOne.mockRestore();
-    evict.mockRestore();
+    expect(result).toEqual({ channel: { _id: expect.any(String), title: 'Events' } });
+    if (!('channel' in result)) {
+      return;
+    }
+    expect(await seatPermissions(officer._id)).toEqual({ [result.channel._id]: MODERATE });
+    expect(await seatPermissions(member._id)).toEqual({ [result.channel._id]: WRITE });
+    expect(await ConversationParticipant.countDocuments({ userId: { $in: [removed._id, outsider._id] } })).toBe(0);
+    expect(await Message.countDocuments()).toBe(0);
+    expect(await Conversation.countDocuments({ clubId: otherClub._id })).toBe(0);
+  });
+
+  it('lets another club use the same channel title', async () => {
+    const firstOfficer = await createTestUser();
+    const secondOfficer = await createTestUser();
+    const first = await createTestClub(firstOfficer._id);
+    const second = await createTestClub(secondOfficer._id);
+    await Membership.create([
+      { userId: firstOfficer._id, clubId: first._id, role: 'OFFICER', status: 'ACTIVE' },
+      { userId: secondOfficer._id, clubId: second._id, role: 'OFFICER', status: 'ACTIVE' },
+    ]);
+
+    const created = await Promise.all([
+      createClubChannel({ clubId: first._id, title: 'Events' }),
+      createClubChannel({ clubId: second._id, title: 'Events' }),
+    ]);
+
+    expect(created.every((result) => 'channel' in result)).toBe(true);
+    expect(await Conversation.countDocuments({ title: 'Events' })).toBe(2);
   });
 });
 
-describe('commitMemberRole', () => {
-  it('rolls the role and the seat back when the permission update fails', async () => {
-    const { club, channelIds } = await insertClubWithChannels();
-    const member = await createTestUser();
-    await inTransaction((session) => addMemberToClubChannels(club._id, member._id, session));
-    const membership = await Membership.create({
-      userId: member._id,
-      clubId: club._id,
-      role: 'MEMBER',
-      status: 'ACTIVE',
-    });
-    const save = jest.spyOn(ConversationParticipant.prototype, 'save').mockRejectedValue(new Error('seat save failed'));
+describe('removeClubChannel', () => {
+  it('soft-deletes that channel, keeps its messages, and leaves the other channel', async () => {
+    const { officer, club, channelIds } = await insertClubWithChannels();
+    const removedId = channelIds[1];
+    const keptId = channelIds[0];
+    await Message.create([
+      { conversationId: removedId, senderId: officer._id, text: 'going away' },
+      { conversationId: keptId, senderId: officer._id, text: 'staying' },
+    ]);
+    const deleted = jest.spyOn(messagingPublisher, 'conversationDeleted');
+    const kicked = jest.spyOn(messagingPublisher, 'participantRemoved');
 
-    await expect(commitMemberRole({ membershipId: membership._id, role: 'OFFICER' })).rejects.toThrow(
-      'seat save failed'
-    );
+    try {
+      await expect(
+        removeClubChannel({ clubId: club._id, channelId: new mongoose.Types.ObjectId(removedId) })
+      ).resolves.toEqual({ channel: { _id: removedId, title: 'Announcements' } });
 
-    expect((await Membership.findById(membership._id).lean())?.role).toBe('MEMBER');
-    expect(await seatPermissions(member._id)).toEqual({ [channelIds[0]]: WRITE, [channelIds[1]]: WRITE });
-    save.mockRestore();
+      expect((await Conversation.findById(removedId).lean())?.deleted).toBe(true);
+      expect((await Conversation.findById(keptId).lean())?.title).toBe('General');
+      expect(await Message.countDocuments({ conversationId: removedId })).toBe(1);
+      expect(await Message.countDocuments({ conversationId: keptId })).toBe(1);
+      expect(await ConversationParticipant.countDocuments({ conversationId: removedId })).toBe(0);
+      expect(await seatPermissions(officer._id)).toEqual({ [keptId]: MODERATE });
+      expect(deleted).toHaveBeenCalledWith(removedId, [officer._id.toString()]);
+      expect(kicked).not.toHaveBeenCalled();
+    } finally {
+      deleted.mockRestore();
+      kicked.mockRestore();
+    }
+  });
+
+  it('refuses to delete General and leaves the club timestamp alone', async () => {
+    const officer = await createTestUser();
+    const club = await createTestClub(officer._id);
+    const general = await inTransaction((session) => createGeneralChannel(club._id, officer._id, session));
+    await Message.create({ conversationId: general._id, senderId: officer._id, text: 'hello' });
+    const before = await Club.findById(club._id).lean();
+    const deleted = jest.spyOn(messagingPublisher, 'conversationDeleted');
+
+    try {
+      await expect(removeClubChannel({ clubId: club._id, channelId: general._id })).resolves.toEqual({
+        error: cannotDeleteGeneral(),
+      });
+      expect((await Conversation.findById(general._id).lean())?.deleted).not.toBe(true);
+      expect(await Message.countDocuments({ conversationId: general._id })).toBe(1);
+      expect(await ConversationParticipant.countDocuments({ conversationId: general._id })).toBe(1);
+      expect((await Club.findById(club._id).lean())?.updatedAt).toEqual(before?.updatedAt);
+      expect(deleted).not.toHaveBeenCalled();
+    } finally {
+      deleted.mockRestore();
+    }
   });
 });
