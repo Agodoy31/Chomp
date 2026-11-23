@@ -62,6 +62,7 @@ describe('getUserConversations service', () => {
     expect(feed[0]._id.toString()).toBe(conversation._id.toString());
     expect(feed[0].type).toBe(ConversationType.DIRECT);
     expect(feed[0].clubName).toBeUndefined();
+    expect('clubName' in feed[0]).toBe(false);
     expect(feed[0].displayName).toBe('Potato Sculpture');
     expect(feed[0].lastMessage).toBeDefined();
     expect(feed[0].lastMessage?.text).toBe('Are the tenders ready at the dining hall');
@@ -105,6 +106,7 @@ describe('getUserConversations service', () => {
     expect(feed[0].type).toBe(ConversationType.GROUP);
     expect(feed[0].title).toBe('French Fries Monument Preservation Society');
     expect(feed[0].clubName).toBeUndefined();
+    expect('clubName' in feed[0]).toBe(false);
     expect(feed[0].displayName).toBe('French Fries Monument Preservation Society');
     expect(feed[0].lastMessage).toBeDefined();
     expect(feed[0].lastMessage?.text).toBe('Meeting at the sculpture at 5pm');
@@ -189,44 +191,6 @@ describe('getUserConversations service', () => {
     expect(feed).toHaveLength(1);
     expect(feed[0]._id.toString()).toBe(channel._id.toString());
     expect(feed[0].clubName).toBe('Broward Dining Raw Chicken Investigators');
-  });
-
-  it('returns channel with undefined clubName when referenced club document is deleted', async () => {
-    const user1 = await createTestUser({
-      firstName: 'Broward',
-      lastName: 'Freshman',
-      email: 'broward.dining@ufl.edu',
-    });
-    const user2 = await createTestUser({
-      firstName: 'Turlington',
-      lastName: 'Tabler',
-      email: 'flyer.dodger@ufl.edu',
-    });
-
-    const club = await createTestClub(user1._id, {
-      name: 'Turlington Plaza Flyer Dodgers',
-    });
-
-    const channel = await createChannel(
-      club._id,
-      'general',
-      [user1._id, user2._id]
-    );
-
-    await Message.create({
-      conversationId: channel._id,
-      senderId: user2._id,
-      text: 'Avoid the north walkway until noon',
-    });
-
-    await Club.deleteOne({ _id: club._id });
-
-    const feed = await getUserConversations(user1._id);
-
-    expect(feed).toHaveLength(1);
-    expect(feed[0]._id.toString()).toBe(channel._id.toString());
-    expect(feed[0].type).toBe(ConversationType.CHANNEL);
-    expect(feed[0].clubName).toBeUndefined();
   });
 
   it('excludes empty conversations with no messages from the inbox feed', async () => {

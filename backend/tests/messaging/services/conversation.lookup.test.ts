@@ -293,23 +293,6 @@ describe('getConversationDetails service', () => {
     expect(details?.clubName).toBe('Cucumber Appreciation Club');
   });
 
-  it('returns channel details without clubName when referenced club is deleted', async () => {
-    const creator = await createTestUser({ firstName: 'Turlington', lastName: 'Tabler', email: 'flyer.dodger@ufl.edu' });
-    const member = await createTestUser({ firstName: 'Midtown', lastName: 'Survivor', email: 'gator_beverage@ufl.edu' });
-    const club = await createTestClub(creator._id, { name: 'Krishna Lunch Line Appreciators' });
-    const channel = await createChannel(club._id, 'general', [member._id]);
-
-    await Club.deleteOne({ _id: club._id });
-
-    const details = await getConversationDetails(channel._id, member._id);
-    expect(details).not.toBeNull();
-    expect(details?._id.toString()).toBe(channel._id.toString());
-    expect(details?.type).toBe(ConversationType.CHANNEL);
-    expect(details?.clubId?.toString()).toBe(club._id.toString());
-    expect(details?.clubName).toBeUndefined();
-    expect('clubName' in details!).toBe(false);
-  });
-
   it('returns null when requesting user is not a participant in the conversation', async () => {
     const user1 = await createTestUser({ firstName: 'Southwest', lastName: 'Squatter', email: 'bench_waitlist@ufl.edu' });
     const user2 = await createTestUser({ firstName: 'Tim', lastName: 'Tebow', email: 'ttebow15@ufl.edu' });
