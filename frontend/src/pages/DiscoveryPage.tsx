@@ -42,7 +42,22 @@ export default function ClubDiscovery() {
   const [categories, setCategories] = useState<ClubCategory[]>([]);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (clubId !== undefined || !restoreFocusRef.current) return;
+    restoreFocusRef.current = false;
+    const opener = openerRef.current;
+    openerRef.current = null;
+    if (opener && document.contains(opener)) {
+      opener.focus();
+      return;
+    }
+    headingRef.current?.focus();
+  }, [clubId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -105,6 +120,7 @@ export default function ClubDiscovery() {
 
   async function handleJoin(clubId: string) {
     if (user?.isAdmin) {
+      openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       navigate(`/clubs/${clubId}`);
       return;
     }
@@ -190,7 +206,12 @@ export default function ClubDiscovery() {
   return (
     <div className="bg-light p-4">
       <div className="container py-5">
-        <h1 className="fw-bold mb-4" style={{ color: '#3046C3', fontFamily: 'Inter' }}>
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="fw-bold mb-4"
+          style={{ color: '#3046C3', fontFamily: 'Inter' }}
+        >
           Discover Clubs
         </h1>
 
@@ -308,13 +329,24 @@ export default function ClubDiscovery() {
           <div className="row g-4">
             {visibleClubs.map((club) => (
               <div key={club._id} className="col-12 col-md-6 col-lg-4">
-                <ClubCard club={club} onJoin={handleJoin} />
+                <ClubCard
+                  club={club}
+                  onJoin={handleJoin}
+                  joinName={user?.isAdmin ? `Open ${club.name}` : undefined}
+                />
               </div>
             ))}
           </div>
         )}
       </div>
-      <ClubInfoModal show={clubId !== undefined} clubId={clubId ?? null} onHide={() => navigate('/clubs')} />
+      <ClubInfoModal
+        show={clubId !== undefined}
+        clubId={clubId ?? null}
+        onHide={() => {
+          restoreFocusRef.current = true;
+          navigate('/clubs');
+        }}
+      />
     </div>
   );
 }

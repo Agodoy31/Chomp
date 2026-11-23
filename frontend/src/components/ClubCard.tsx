@@ -5,6 +5,8 @@ import { ThreeDotsVertical } from 'react-bootstrap-icons';
 type ClubCardProps = {
   club: Club;
   onJoin?: (clubId: string) => void;
+  // Screen reader name only. The visible label stays "Join".
+  joinName?: string;
   onLeave?: (club: Club) => void;
   onOpen?: (clubId: string) => void;
   
@@ -16,7 +18,7 @@ function formatMeetingTime(meeting: Club['meeting']): string {
   return meetingTime.length > 0 ? meetingTime.join(' ') : '';
 }
 
-export default function ClubCard({ club, onJoin, onLeave, onOpen }: ClubCardProps) {
+export default function ClubCard({ club, onJoin, joinName, onLeave, onOpen }: ClubCardProps) {
   const meetingTime = formatMeetingTime(club.meeting);
   const location = club.meeting?.location;
   const isOfficer = club.role === 'OFFICER';
@@ -96,7 +98,7 @@ export default function ClubCard({ club, onJoin, onLeave, onOpen }: ClubCardProp
                 borderColor: '#14246D',
                 color: '#14246D',
               }}
-              aria-label={`Join ${club.name}`}
+              aria-label={joinName ?? `Join ${club.name}`}
               onClick={() => onJoin(club._id)}
             >
               Join

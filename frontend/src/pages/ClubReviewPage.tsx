@@ -60,9 +60,11 @@ function PendingClubCard({
         <div className="d-flex gap-2 ms-auto">
           <Button
             type="button"
+            id={`reject-${club._id}`}
             variant="danger"
             size="sm"
             disabled={disabled}
+            aria-busy={disabled}
             aria-label={`Reject ${club.name}`}
             onClick={() => onDecide(club, 'reject')}
           >
@@ -74,6 +76,7 @@ function PendingClubCard({
             className="text-white border-0"
             style={{ backgroundColor: '#3046C3' }}
             disabled={disabled}
+            aria-busy={disabled}
             aria-label={`Approve ${club.name}`}
             onClick={() => onDecide(club, 'approve')}
           >
@@ -96,6 +99,19 @@ export default function ClubReview() {
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusNextRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (focusNextRef.current === null) return;
+    const nextId = focusNextRef.current;
+    focusNextRef.current = null;
+    if (nextId) {
+      document.getElementById(`reject-${nextId}`)?.focus();
+      return;
+    }
+    headingRef.current?.focus();
+  }, [clubs]);
 
   useEffect(() => {
     if (loading) return;
@@ -142,6 +158,15 @@ export default function ClubReview() {
     };
   }, [loading, user, navigate, setUser]);
 
+  function dropClub(removedId: string) {
+    setClubs((current) => {
+      const index = current.findIndex((item) => item._id === removedId);
+      const next = current[index + 1] ?? current[index - 1];
+      focusNextRef.current = next?._id ?? '';
+      return current.filter((item) => item._id !== removedId);
+    });
+  }
+
   async function decide(club: Club, action: 'approve' | 'reject') {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -163,12 +188,12 @@ export default function ClubReview() {
       if (!response.ok) {
         // A name clash leaves the request pending. Any other miss means another admin already decided it.
         if (response.status === 404 || data?.code === 'ERR_CLUB_NOT_PENDING') {
-          setClubs((current) => current.filter((item) => item._id !== club._id));
+          dropClub(club._id);
         }
         throw new Error(data?.message || `Could not ${action} this club.`);
       }
 
-      setClubs((current) => current.filter((item) => item._id !== club._id));
+      dropClub(club._id);
       setStatus(`${action === 'approve' ? 'Approved' : 'Rejected'} ${club.name}.`);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : `Could not ${action} this club.`);
@@ -181,15 +206,24 @@ export default function ClubReview() {
   if (loading || !user?.isAdmin) return null;
 
   const showEmpty = !clubsLoading && !loadError && clubs.length === 0;
+  const announcement = clubsLoading
+    ? 'Loading club requests...'
+    : [status, showEmpty ? 'No clubs are waiting for review.' : ''].filter(Boolean).join(' ');
 
   return (
-    <div className="px-3 px-lg-5 py-4">
-      <h1 className="fw-bold mb-4" style={{ color: '#3046C3', fontFamily: 'Inter' }}>
+    <section aria-labelledby="club-approvals-heading" className="px-3 px-lg-5 py-4">
+      <h1
+        id="club-approvals-heading"
+        ref={headingRef}
+        tabIndex={-1}
+        className="fw-bold mb-4"
+        style={{ color: '#3046C3', fontFamily: 'Inter' }}
+      >
         Club Approvals
       </h1>
-      <div className="visually-hidden" role="status" aria-live="polite">
-        {status}
-      </div>
+      <p className="visually-hidden" role="status" aria-live="polite">
+        {announcement}
+      </p>
 
       {loadError && (
         <Alert variant="danger" className="mb-4">
@@ -204,12 +238,16 @@ export default function ClubReview() {
       )}
 
       {clubsLoading && (
-        <p role="status" className="h5" style={{ color: '#3046C3' }}>
+        <p aria-hidden="true" className="h5" style={{ color: '#3046C3' }}>
           Loading club requests...
         </p>
       )}
 
-      {showEmpty && <p className="text-muted mb-0">No clubs are waiting for review.</p>}
+      {showEmpty && (
+        <p aria-hidden="true" className="text-muted mb-0">
+          No clubs are waiting for review.
+        </p>
+      )}
 
       {clubs.length > 0 && (
         <ul className="list-unstyled d-flex flex-column gap-4 mb-0">
@@ -220,6 +258,6 @@ export default function ClubReview() {
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
