@@ -51,6 +51,9 @@ export default function MessagingPage() {
 
   const handleSelectConversation = (conv: ConversationFeedItem) => {
     setDetailsError(null);
+    if (conv._id === activeConversationId && activeDetails?._id !== conv._id) {
+      setDetailsReloadKey((key) => key + 1);
+    }
     setActiveConversationId(conv._id);
     setIsMobileChatOpen(true);
   };
@@ -103,13 +106,22 @@ export default function MessagingPage() {
         ]);
         if (ignore) return;
         setClubNamesById(clubNames);
-        // Rows created or updated locally while loading keep their newer previews
+        // Server metadata always wins; only keep strictly newer local previews or unsent local DMs
         setConversations((local) => {
           const merged = feed.map((item) => {
             const row = local.find((c) => c._id === item._id);
-            return row && activity(row) >= activity(item) ? { ...item, ...row } : { ...row, ...item };
+            if (row && activity(row) > activity(item)) {
+              return {
+                ...item,
+                lastActivityAt: row.lastActivityAt,
+                lastMessage: row.lastMessage,
+              };
+            }
+            return item;
           });
-          const localOnly = local.filter((row) => !feed.some((item) => item._id === row._id));
+          const localOnly = local.filter(
+            (row) => !row.lastMessage && !feed.some((item) => item._id === row._id)
+          );
           return [...localOnly, ...merged.sort((a, b) => activity(b) - activity(a))];
         });
         // Only auto-select when the user hasn't already opened a chat
@@ -164,11 +176,12 @@ export default function MessagingPage() {
     const senderName = msg.sender
       ? `${msg.sender.firstName} ${msg.sender.lastName}`.trim()
       : '';
-    setConversations((prev) =>
-      upsertConversation(prev, {
+    setConversations((prev) => {
+      const existing = prev.find((c) => c._id === conv._id);
+      return upsertConversation(prev, {
         _id: conv._id,
         type: conv.type,
-        displayName: conv.displayName,
+        displayName: existing?.displayName ?? conv.displayName,
         lastActivityAt: msg.createdAt,
         ...(conv.clubId ? { clubId: conv.clubId } : {}),
         lastMessage: {
@@ -176,8 +189,8 @@ export default function MessagingPage() {
           senderName: senderName || 'You',
           createdAt: msg.createdAt,
         },
-      })
-    );
+      });
+    });
   };
 
   const handleTitleUpdated = (conversationId: string, newTitle: string) => {

@@ -100,38 +100,71 @@ export default function MessageArea({
     return (
       <section
         aria-label="Message thread"
-        className="d-flex flex-column flex-grow-1 h-100 align-items-center justify-content-center text-muted"
+        className="d-flex flex-column flex-grow-1 h-100 text-muted"
         style={{ backgroundColor: '#F5F6FA', minWidth: 0 }}
       >
-        {isLoadingDetails ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="d-flex align-items-center gap-2 px-4"
-          >
-            <Spinner animation="border" size="sm" aria-hidden="true" />
-            <span>Loading conversation...</span>
-          </div>
-        ) : detailsError ? (
-          <Alert variant="danger" className="text-center mx-4 mb-0">
-            <div>{detailsError}</div>
-            {onRetryDetails && (
-              <Button
-                type="button"
-                variant="outline-danger"
-                size="sm"
-                className="mt-2 rounded-pill px-3"
-                onClick={onRetryDetails}
+        {onBackToList && (isLoadingDetails || detailsError) && (
+          <div className="d-md-none d-flex align-items-center px-3 py-2 bg-white border-bottom">
+            <Button
+              type="button"
+              variant="light"
+              onClick={onBackToList}
+              className="border-0 d-inline-flex align-items-center gap-2 rounded-pill px-3"
+              style={{ backgroundColor: '#EDF0F5', color: '#3046C3' }}
+              aria-label="Back to conversations"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+                focusable="false"
               >
-                Retry
-              </Button>
-            )}
-          </Alert>
-        ) : (
-          <p role="status" className="mb-0 fs-5">
-            Pick a conversation to start chatting
-          </p>
+                <path
+                  d="M16 10H4M10 4L4 10L10 16"
+                  stroke="#3046C3"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span>Back</span>
+            </Button>
+          </div>
         )}
+        <div className="d-flex flex-grow-1 align-items-center justify-content-center">
+          {isLoadingDetails ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="d-flex align-items-center gap-2 px-4"
+            >
+              <Spinner animation="border" size="sm" aria-hidden="true" />
+              <span>Loading conversation...</span>
+            </div>
+          ) : detailsError ? (
+            <Alert variant="danger" className="text-center mx-4 mb-0">
+              <div>{detailsError}</div>
+              {onRetryDetails && (
+                <Button
+                  type="button"
+                  variant="outline-danger"
+                  size="sm"
+                  className="mt-2 rounded-pill px-3"
+                  onClick={onRetryDetails}
+                >
+                  Retry
+                </Button>
+              )}
+            </Alert>
+          ) : (
+            <p role="status" className="mb-0 fs-5">
+              Pick a conversation to start chatting
+            </p>
+          )}
+        </div>
       </section>
     );
   }
