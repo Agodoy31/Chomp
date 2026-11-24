@@ -16,7 +16,7 @@ export default function App() {
   <Route path="/signup" element={<Signup />} />
 
   <Route element={<AppLayout />}>
-    <Route path="/clubs/:clubId?" element={<ClubDiscovery />} />
+    <Route path="/clubs" element={<ClubDiscovery />} />
     <Route path="/myClubs" element={<MyClubs />} />
     <Route path="/club-review" element={<ClubReview />} />
     <Route path="/messaging" element={<MessagingPage />} />
