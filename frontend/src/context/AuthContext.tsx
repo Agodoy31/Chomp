@@ -38,6 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         checkSession()
     }, [])
 
+    useEffect(() => {
+        const handleUnauthorized = () => setUser(null)
+        window.addEventListener('auth:unauthorized', handleUnauthorized)
+        return () => window.removeEventListener('auth:unauthorized', handleUnauthorized)
+    }, [])
+
     async function logout() {
         try {
             await fetch('/api/auth/logout',{

@@ -1,11 +1,30 @@
 import type {
-  Conversation,
-  ParticipantPermission,
-  RawConversationResponse,
-  ChatUser,
+  ConversationDetails,
+  ConversationFeedItem,
+  UserSummary,
 } from '../types/Messaging/Conversation';
-import { flattenConversation } from '../types/Messaging/Conversation';
 import type { IMessage } from '../types/Messaging/Message';
+
+type ApiError = Error & { status?: number };
+
+function createApiError(message: string, status: number): ApiError {
+  if (status === 401) {
+    window.dispatchEvent(new Event('auth:unauthorized'));
+  }
+  return Object.assign(new Error(message), { status });
+}
+
+async function parseApiErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  const errBody = await response.json().catch(() => null);
+  return (
+    (typeof errBody?.message === 'string' && errBody.message) ||
+    (typeof errBody?.error === 'string' && errBody.error) ||
+    fallback
+  );
+}
 
 export type CreateConversationPayload =
   | {
@@ -22,17 +41,21 @@ export type CreateConversationPayload =
  * Fetches the user's active conversations feed.
  * Endpoint: GET /api/conversations
  */
-export async function fetchConversations(): Promise<Conversation[]> {
+export async function fetchConversations(): Promise<ConversationFeedItem[]> {
   const response = await fetch('/api/conversations', {
     credentials: 'include',
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch conversations: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch conversations: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
-  const data: RawConversationResponse[] = await response.json();
-  return Array.isArray(data) ? data.map(flattenConversation) : [];
+  const data: ConversationFeedItem[] = await response.json();
+  return Array.isArray(data) ? data : [];
 }
 
 /**
@@ -41,17 +64,20 @@ export async function fetchConversations(): Promise<Conversation[]> {
  */
 export async function fetchConversationDetails(
   conversationId: string
-): Promise<Conversation> {
+): Promise<ConversationDetails> {
   const response = await fetch(`/api/conversations/${conversationId}`, {
     credentials: 'include',
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch conversation details: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch conversation details: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
-  const data: RawConversationResponse = await response.json();
-  return flattenConversation(data);
+  return response.json();
 }
 
 /**
@@ -69,7 +95,11 @@ export async function fetchMessages(
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch messages: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to fetch messages: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
   const data: IMessage[] = await response.json();
@@ -84,8 +114,8 @@ export async function fetchMessages(
 export async function postMessage(
   conversationId: string,
   text: string,
-  isAnnouncement = false
-  
+  isAnnouncement = false,
+  clientId?: string
 ): Promise<IMessage> {
   const response = await fetch(
     `/api/conversations/${conversationId}/messages`,
@@ -95,24 +125,18 @@ export async function postMessage(
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ text, isAnnouncement }),
+      body: JSON.stringify(
+        clientId ? { text, isAnnouncement, clientId } : { text, isAnnouncement }
+      ),
     }
   );
 
   if (!response.ok) {
-    let errorMessage = `Failed to send message: ${response.status}`;
-    try {
-      const errorData = await response.json();
-      if (errorData?.message || errorData?.error) {
-        errorMessage = errorData.message || errorData.error;
-      }
-    } catch {
-      // Fall back to default status message if response is not JSON
-    }
-
-    const error = new Error(errorMessage) as Error & { status?: number };
-    error.status = response.status;
-    throw error;
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to send message: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
   return response.json();
@@ -124,7 +148,7 @@ export async function postMessage(
  */
 export async function createConversation(
   payload: CreateConversationPayload
-): Promise<Conversation> {
+): Promise<ConversationDetails> {
   const response = await fetch('/api/conversations', {
     method: 'POST',
     headers: {
@@ -135,58 +159,48 @@ export async function createConversation(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create conversation: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to create conversation: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
-  const data: RawConversationResponse = await response.json();
-  return flattenConversation(data);
+  return response.json();
 }
 
 /**
- * Fetches available users from the server.
- * Endpoint: GET /api/users
+ * Searches users from the server.
+ * Endpoint: GET /api/users/search?search=...
  */
-export async function fetchUsers(): Promise<ChatUser[]> {
-  const response = await fetch('/api/users', {
+export async function searchUsers(
+  search: string,
+  signal?: AbortSignal
+): Promise<UserSummary[]> {
+  const trimmed = search.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const params = new URLSearchParams({ search: trimmed });
+  const response = await fetch(`/api/users/search?${params.toString()}`, {
     credentials: 'include',
+    signal,
   });
 
   if (!response.ok) {
-    throw new Error(`The server did not respond with users: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `The server did not respond with users: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
 
   return response.json();
 }
 
 /**
- * Adds participants to an existing conversation.
- * Endpoint: POST /api/conversations/:id/participants
- */
-export async function addParticipantsToConversation(
-  conversationId: string,
-  userIds: string[]
-): Promise<unknown> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/participants`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ userIds }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to add participants: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Updates the title of a group or channel conversation.
+ * Updates the title of a group conversation.
  * Endpoint: PATCH /api/conversations/:id
  */
 export async function updateConversationTitle(
@@ -203,78 +217,10 @@ export async function updateConversationTitle(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to update conversation title: ${response.status}`);
+    const errMessage = await parseApiErrorMessage(
+      response,
+      `Failed to update conversation title: ${response.status}`
+    );
+    throw createApiError(errMessage, response.status);
   }
-}
-
-/**
- * Updates a participant's permission in a conversation.
- * Endpoint: PATCH /api/conversations/:id/participants/:userId
- */
-export async function updateParticipantPermission(
-  conversationId: string,
-  userId: string,
-  permission: ParticipantPermission
-): Promise<unknown> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/participants/${userId}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ permission }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to update permission: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Removes a participant from a conversation.
- * Endpoint: DELETE /api/conversations/:id/participants/:userId
- */
-export async function removeParticipantFromConversation(
-  conversationId: string,
-  userId: string
-): Promise<void> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/participants/${userId}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to remove participant: ${response.status}`);
-  }
-}
-
-/**
- * Soft deletes a message in a conversation.
- * Endpoint: DELETE /api/conversations/:id/messages/:messageId
- */
-export async function deleteMessage(
-  conversationId: string,
-  messageId: string
-): Promise<IMessage> {
-  const response = await fetch(
-    `/api/conversations/${conversationId}/messages/${messageId}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to delete message: ${response.status}`);
-  }
-
-  return response.json();
 }
