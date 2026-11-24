@@ -330,7 +330,10 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
   const viewerMembership = members.find((member) => String(member.userId) === user?.id);
   const viewerIsMember = viewerMembership !== undefined;
   const viewerIsOfficer = user?.isAdmin === true || viewerMembership?.role === 'OFFICER';
-  const generalChannel = channels.find((channel) => channel.title.trim() === GENERAL_CHANNEL_TITLE);
+  const generalChannel = channels.find(
+    (channel) => channel.title.trim().toLowerCase() === GENERAL_CHANNEL_TITLE.toLowerCase(),
+  );
+  const channelToDelete = channels.find((channel) => channel._id === confirmingDeleteId);
   const actionLocked = leaving || deletingChannelId !== null || updatingMemberId !== null;
 
   function openChannel(channelId: string) {
@@ -559,11 +562,6 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
               <p className="visually-hidden" aria-live="polite">
                 {channelsError ? '' : matchCount(filteredChannels.length, 'channel', 'channels', channelQuery)}
               </p>
-              {channelActionError && (
-                <Alert variant="danger" className="py-2 px-3 mb-3">
-                  {channelActionError}
-                </Alert>
-              )}
               {channelsError ? (
                 <LoadError message={channelsError} onRetry={retry} />
               ) : channels.length === 0 ? (
@@ -578,7 +576,8 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                   >
                     {visibleChannels.map((channel) => {
                       const label = channelLabel(channel.title);
-                      const canDelete = viewerIsOfficer && channel.title.trim() !== GENERAL_CHANNEL_TITLE;
+                      const canDelete =
+                        viewerIsOfficer && channel.title.trim().toLowerCase() !== GENERAL_CHANNEL_TITLE.toLowerCase();
                       return (
                         <li key={channel._id} className="d-flex align-items-stretch gap-2">
                           <Button
@@ -592,43 +591,21 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                             <span className="text-truncate min-w-0">{label}</span>
                             <span className="flex-shrink-0">Open in Messages →</span>
                           </Button>
-                          {canDelete &&
-                            (confirmingDeleteId === channel._id ? (
-                              <div className="d-flex flex-shrink-0 align-items-center gap-1">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline-secondary"
-                                  disabled={actionLocked}
-                                  onClick={() => setConfirmingDeleteId(null)}
-                                >
-                                  Cancel
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="danger"
-                                  disabled={actionLocked}
-                                  onClick={() => removeChannel(channel._id)}
-                                >
-                                  {deletingChannelId === channel._id ? 'Deleting...' : 'Delete'}
-                                </Button>
-                              </div>
-                            ) : (
-                              <Button
-                                type="button"
-                                variant="link"
-                                className="text-danger p-2 flex-shrink-0"
-                                aria-label={`Delete ${label}`}
-                                disabled={actionLocked}
-                                onClick={() => {
-                                  setChannelActionError('');
-                                  setConfirmingDeleteId(channel._id);
-                                }}
-                              >
-                                <Trash size={18} aria-hidden="true" focusable="false" />
-                              </Button>
-                            ))}
+                          {canDelete && (
+                            <Button
+                              type="button"
+                              variant="link"
+                              className="text-danger p-2 flex-shrink-0"
+                              aria-label={`Delete ${label}`}
+                              disabled={actionLocked}
+                              onClick={() => {
+                                setChannelActionError('');
+                                setConfirmingDeleteId(channel._id);
+                              }}
+                            >
+                              <Trash size={18} aria-hidden="true" focusable="false" />
+                            </Button>
+                          )}
                         </li>
                       );
                     })}
@@ -750,6 +727,58 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
         clubName={club.name}
       />
     )}
+    <Modal
+      show={channelToDelete !== undefined}
+      onHide={() => {
+        if (deletingChannelId) return;
+        setConfirmingDeleteId(null);
+        setChannelActionError('');
+      }}
+      centered
+      backdrop={deletingChannelId ? 'static' : true}
+      keyboard={!deletingChannelId}
+      aria-labelledby="delete-channel-title"
+    >
+      <Modal.Header className="px-4 pt-4">
+        <Modal.Title id="delete-channel-title" className="h5 fw-bold mb-0">
+          Delete {channelToDelete?.title.trim() || 'channel'}?
+        </Modal.Title>
+      </Modal.Header>
+      <Modal.Body className="px-4">
+        {channelActionError && (
+          <Alert variant="danger" className="py-2 px-3">
+            {channelActionError}
+          </Alert>
+        )}
+        <p className="mb-0">
+          Are you sure you want to delete {channelToDelete ? channelLabel(channelToDelete.title) : 'this channel'}? All
+          messages in this channel will be permanently removed
+        </p>
+      </Modal.Body>
+      <Modal.Footer className="px-4 pb-4">
+        <Button
+          type="button"
+          variant="outline-secondary"
+          disabled={deletingChannelId !== null}
+          onClick={() => {
+            setConfirmingDeleteId(null);
+            setChannelActionError('');
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="danger"
+          disabled={deletingChannelId !== null || !channelToDelete}
+          onClick={() => {
+            if (channelToDelete) removeChannel(channelToDelete._id);
+          }}
+        >
+          {deletingChannelId ? 'Deleting...' : 'Delete Channel'}
+        </Button>
+      </Modal.Footer>
+    </Modal>
     </>
   );
 }
