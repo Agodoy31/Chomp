@@ -5,19 +5,25 @@ import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import Modal from 'react-bootstrap/Modal';
-import { Search } from 'react-bootstrap-icons';
+import { PencilSquare, PlusLg, Search, Trash } from 'react-bootstrap-icons';
 import { useAuth } from '../../hooks/useAuth';
 import {
+  deleteChannel,
   getClub,
   getClubChannels,
   getClubMembers,
   isUnauthorizedError,
   leaveClub,
+  updateMemberRole,
 } from '../../api/clubApi';
 import type { ClubCategory, ClubChannel, ClubDetails, ClubMember } from '../../types/club';
+import PostAnnouncementModal from './AnnouncementModal';
+import { CreateChannelModal } from './CreateChannelModal';
+import { EditClubModal } from './EditClubModal';
 
 const PREVIEW_COUNT = 3;
 const EXPANDED_LIST_MAX_HEIGHT = '10.5rem';
+const GENERAL_CHANNEL_TITLE = 'General';
 
 const CATEGORY_LABEL: Record<ClubCategory, string> = {
   ACADEMIC: 'Academic',
@@ -70,6 +76,15 @@ function memberName(member: ClubMember): string {
   return name || 'Unknown member';
 }
 
+function sortMembers(list: ClubMember[]): ClubMember[] {
+  return [...list].sort(
+    (a, b) =>
+      Number(b.role === 'OFFICER') - Number(a.role === 'OFFICER') ||
+      a.lastName.localeCompare(b.lastName) ||
+      a.firstName.localeCompare(b.firstName),
+  );
+}
+
 function matchesQuery(query: string, ...values: Array<string | undefined>): boolean {
   const search = query.trim().toLowerCase();
   if (search === '') return true;
@@ -108,12 +123,27 @@ function ListSearch({
   );
 }
 
-function Section({ title, search, children }: { title: string; search?: ReactNode; children: ReactNode }) {
+function Section({
+  title,
+  search,
+  headingAction,
+  children,
+}: {
+  title: string;
+  search?: ReactNode;
+  headingAction?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <section className="border rounded overflow-hidden">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 bg-light border-bottom">
         <h3 className="h5 mb-0">{title}</h3>
-        {search}
+        {(search || headingAction) && (
+          <div className="d-flex align-items-center gap-2 ms-auto">
+            {search}
+            {headingAction}
+          </div>
+        )}
       </div>
       <div className="p-3">{children}</div>
     </section>
@@ -184,6 +214,15 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
   const [channelQuery, setChannelQuery] = useState('');
   const [memberQuery, setMemberQuery] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [showAnnouncement, setShowAnnouncement] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deletingChannelId, setDeletingChannelId] = useState<string | null>(null);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [channelActionError, setChannelActionError] = useState('');
+  const [roleError, setRoleError] = useState('');
+  const [announcementError, setAnnouncementError] = useState('');
 
   const reset = useCallback(() => {
     setClub(null);
@@ -199,6 +238,15 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
     setShowAllMembers(false);
     setChannelQuery('');
     setMemberQuery('');
+    setShowEdit(false);
+    setShowCreateChannel(false);
+    setShowAnnouncement(false);
+    setConfirmingDeleteId(null);
+    setDeletingChannelId(null);
+    setUpdatingMemberId(null);
+    setChannelActionError('');
+    setRoleError('');
+    setAnnouncementError('');
   }, []);
 
   useEffect(() => {
@@ -279,32 +327,93 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
     }
   }
 
+  const viewerMembership = members.find((member) => String(member.userId) === user?.id);
+  const viewerIsMember = viewerMembership !== undefined;
+  const viewerIsOfficer = user?.isAdmin === true || viewerMembership?.role === 'OFFICER';
+  const generalChannel = channels.find((channel) => channel.title.trim() === GENERAL_CHANNEL_TITLE);
+  const actionLocked = leaving || deletingChannelId !== null || updatingMemberId !== null;
+
   function openChannel(channelId: string) {
-    if (leaving) return;
+    if (actionLocked) return;
     onHide();
     navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
+  }
+
+  function openAnnouncement() {
+    if (!generalChannel) {
+      setAnnouncementError('This club has no General channel to post in.');
+      return;
+    }
+    setAnnouncementError('');
+    setShowAnnouncement(true);
+  }
+
+  async function removeChannel(channelId: string) {
+    if (deletingChannelId) return;
+    setDeletingChannelId(channelId);
+    setChannelActionError('');
+
+    try {
+      await deleteChannel(clubId, channelId);
+      setChannels((current) => current.filter((channel) => channel._id !== channelId));
+      setConfirmingDeleteId(null);
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        setUser(null);
+        onHide();
+        navigate('/login');
+        return;
+      }
+      setChannelActionError(errorMessage(err));
+    } finally {
+      setDeletingChannelId(null);
+    }
+  }
+
+  async function changeRole(member: ClubMember, role: ClubMember['role']) {
+    if (updatingMemberId) return;
+    setUpdatingMemberId(member.userId);
+    setRoleError('');
+
+    try {
+      await updateMemberRole(clubId, member.userId, role);
+      setMembers((current) =>
+        sortMembers(current.map((item) => (item.userId === member.userId ? { ...item, role } : item))),
+      );
+      setShowAllMembers(true);
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        setUser(null);
+        onHide();
+        navigate('/login');
+        return;
+      }
+      setRoleError(errorMessage(err));
+    } finally {
+      setUpdatingMemberId(null);
+    }
   }
 
   const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);
   const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, PREVIEW_COUNT);
   const hiddenChannelCount = Math.max(filteredChannels.length - PREVIEW_COUNT, 0);
   const hiddenMemberCount = Math.max(filteredMembers.length - PREVIEW_COUNT, 0);
-  const viewerIsMember = members.some((member) => String(member.userId) === user?.id);
 
   return (
+    <>
     <Modal
       show
       onHide={() => {
-        if (!leaving) onHide();
+        if (!actionLocked) onHide();
       }}
       centered
       scrollable
       size="lg"
-      backdrop={leaving ? 'static' : true}
-      keyboard={!leaving}
+      backdrop={actionLocked ? 'static' : true}
+      keyboard={!actionLocked}
       aria-labelledby="club-info-title"
     >
-      <Modal.Header closeButton={!leaving} closeLabel="Close club information">
+      <Modal.Header closeButton={!actionLocked} closeLabel="Close club information">
         <Modal.Title ref={titleRef} id="club-info-title" as="h2" tabIndex={-1} className="h4 mb-0">
           {club ? club.name : 'Club information'}
         </Modal.Title>
@@ -321,7 +430,23 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
 
         {club && (
           <>
-            <Section title="Club Overview">
+            <Section
+              title="Club Overview"
+              headingAction={
+                viewerIsOfficer ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="text-dark p-1 d-flex"
+                    aria-label="Edit club"
+                    disabled={actionLocked}
+                    onClick={() => setShowEdit(true)}
+                  >
+                    <PencilSquare size={18} aria-hidden="true" focusable="false" />
+                  </Button>
+                ) : undefined
+              }
+            >
               {club.category && (
                 <Badge bg="primary-subtle" text="primary-emphasis" pill className="fw-semibold mb-3">
                   {CATEGORY_LABEL[club.category] ?? club.category}
@@ -348,7 +473,7 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                             type="button"
                             variant="outline-secondary"
                             className="fw-semibold"
-                            disabled={leaving}
+                            disabled={actionLocked}
                             onClick={() => {
                               leaveFocusTarget.current = 'leave';
                               setConfirmingLeave(false);
@@ -361,7 +486,7 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                             type="button"
                             variant="danger"
                             className="fw-semibold"
-                            disabled={leaving}
+                            disabled={actionLocked}
                             onClick={confirmLeave}
                           >
                             {leaving ? 'Leaving...' : 'Leave Club'}
@@ -374,6 +499,7 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                         type="button"
                         variant="danger"
                         className="fw-semibold"
+                        disabled={actionLocked}
                         onClick={() => {
                           setLeaveError('');
                           leaveFocusTarget.current = 'cancel';
@@ -393,13 +519,51 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
               )}
             </Section>
 
+            {viewerIsOfficer && (
+              <Section title="Officer Tools">
+                <Button
+                  type="button"
+                  className="fw-semibold text-white"
+                  style={{ backgroundColor: '#3046C3', borderColor: '#3046C3' }}
+                  disabled={actionLocked}
+                  onClick={openAnnouncement}
+                >
+                  Post Announcement
+                </Button>
+                {announcementError && (
+                  <Alert variant="danger" className="py-2 px-3 mt-3 mb-0">
+                    {announcementError}
+                  </Alert>
+                )}
+              </Section>
+            )}
+
             <Section
               title="Channels"
               search={<ListSearch value={channelQuery} onChange={setChannelQuery} label="Search channels" />}
+              headingAction={
+                viewerIsOfficer ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="text-dark p-1 d-flex"
+                    aria-label="Add channel"
+                    disabled={actionLocked}
+                    onClick={() => setShowCreateChannel(true)}
+                  >
+                    <PlusLg size={20} aria-hidden="true" focusable="false" />
+                  </Button>
+                ) : undefined
+              }
             >
               <p className="visually-hidden" aria-live="polite">
                 {channelsError ? '' : matchCount(filteredChannels.length, 'channel', 'channels', channelQuery)}
               </p>
+              {channelActionError && (
+                <Alert variant="danger" className="py-2 px-3 mb-3">
+                  {channelActionError}
+                </Alert>
+              )}
               {channelsError ? (
                 <LoadError message={channelsError} onRetry={retry} />
               ) : channels.length === 0 ? (
@@ -414,19 +578,57 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                   >
                     {visibleChannels.map((channel) => {
                       const label = channelLabel(channel.title);
+                      const canDelete = viewerIsOfficer && channel.title.trim() !== GENERAL_CHANNEL_TITLE;
                       return (
-                        <li key={channel._id}>
+                        <li key={channel._id} className="d-flex align-items-stretch gap-2">
                           <Button
                             type="button"
                             variant="outline-secondary"
-                            className="w-100 d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-1 gap-sm-3 text-start"
-                            disabled={leaving}
+                            className="flex-grow-1 min-w-0 d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-1 gap-sm-3 text-start"
+                            disabled={actionLocked}
                             aria-label={`Open ${label} in Messages`}
                             onClick={() => openChannel(channel._id)}
                           >
                             <span className="text-truncate min-w-0">{label}</span>
                             <span className="flex-shrink-0">Open in Messages →</span>
                           </Button>
+                          {canDelete &&
+                            (confirmingDeleteId === channel._id ? (
+                              <div className="d-flex flex-shrink-0 align-items-center gap-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline-secondary"
+                                  disabled={actionLocked}
+                                  onClick={() => setConfirmingDeleteId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={actionLocked}
+                                  onClick={() => removeChannel(channel._id)}
+                                >
+                                  {deletingChannelId === channel._id ? 'Deleting...' : 'Delete'}
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="link"
+                                className="text-danger p-2 flex-shrink-0"
+                                aria-label={`Delete ${label}`}
+                                disabled={actionLocked}
+                                onClick={() => {
+                                  setChannelActionError('');
+                                  setConfirmingDeleteId(channel._id);
+                                }}
+                              >
+                                <Trash size={18} aria-hidden="true" focusable="false" />
+                              </Button>
+                            ))}
                         </li>
                       );
                     })}
@@ -452,6 +654,11 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
               <p className="visually-hidden" aria-live="polite">
                 {membersError ? '' : matchCount(filteredMembers.length, 'member', 'members', memberQuery)}
               </p>
+              {roleError && (
+                <Alert variant="danger" className="py-2 px-3 mb-3">
+                  {roleError}
+                </Alert>
+              )}
               {membersError ? (
                 <LoadError message={membersError} onRetry={retry} />
               ) : members.length === 0 ? (
@@ -465,12 +672,30 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                     style={expandedListStyle(showAllMembers && hiddenMemberCount > 0)}
                   >
                     {visibleMembers.map((member) => (
-                      <li key={member.userId} className="list-group-item d-flex align-items-center gap-2 px-0">
-                        <span>{memberName(member)}</span>
+                      <li key={member.userId} className="list-group-item d-flex flex-wrap align-items-center gap-2 px-0">
+                        <span className="text-truncate">{memberName(member)}</span>
                         {member.role === 'OFFICER' && (
                           <Badge bg="warning-subtle" text="warning-emphasis" pill className="fw-semibold">
                             OFFICER
                           </Badge>
+                        )}
+                        {viewerIsOfficer && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={member.role === 'OFFICER' ? 'outline-danger' : 'outline-primary'}
+                            className="ms-auto flex-shrink-0 rounded-pill"
+                            disabled={actionLocked}
+                            onClick={() =>
+                              changeRole(member, member.role === 'OFFICER' ? 'MEMBER' : 'OFFICER')
+                            }
+                          >
+                            {updatingMemberId === member.userId
+                              ? 'Saving...'
+                              : member.role === 'OFFICER'
+                                ? 'Remove Officer'
+                                : 'Make Officer'}
+                          </Button>
                         )}
                       </li>
                     ))}
@@ -488,6 +713,44 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
         )}
       </Modal.Body>
     </Modal>
+    {club && (
+      <EditClubModal
+        show={showEdit}
+        club={{ ...club, status: 'APPROVED' }}
+        onHide={() => setShowEdit(false)}
+        onSuccess={(updated) => {
+          setClub({
+            _id: updated._id,
+            name: updated.name,
+            description: updated.description,
+            category: updated.category,
+            meeting: updated.meeting,
+          });
+        }}
+      />
+    )}
+    <CreateChannelModal
+      show={showCreateChannel}
+      clubId={clubId}
+      onHide={() => setShowCreateChannel(false)}
+      onSuccess={(created) => {
+        setChannels((current) =>
+          current.some((channel) => channel._id === created._id)
+            ? current
+            : [...current, { _id: created._id, title: created.title }],
+        );
+        setShowAllChannels(true);
+      }}
+    />
+    {club && generalChannel && (
+      <PostAnnouncementModal
+        show={showAnnouncement}
+        onHide={() => setShowAnnouncement(false)}
+        conversationId={generalChannel._id}
+        clubName={club.name}
+      />
+    )}
+    </>
   );
 }
 
