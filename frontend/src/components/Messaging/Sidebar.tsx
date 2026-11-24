@@ -6,7 +6,6 @@ import SidebarElement from './SidebarElement';
 
 interface SidebarProps {
   conversations: ConversationFeedItem[];
-  clubNamesById?: Record<string, string>;
   isLoading: boolean;
   loadError: string | null;
   onRetry: () => void;
@@ -17,7 +16,6 @@ interface SidebarProps {
 
 export default function Sidebar({
   conversations,
-  clubNamesById,
   isLoading,
   loadError,
   onRetry,
@@ -107,7 +105,6 @@ export default function Sidebar({
             <SidebarElement
               key={conv._id}
               conversation={conv}
-              clubName={conv.clubId ? clubNamesById?.[conv.clubId] : undefined}
               isActive={conv._id === activeConversationId}
               onSelect={onSelectConversation}
             />

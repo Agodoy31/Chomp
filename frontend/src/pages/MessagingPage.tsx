@@ -14,7 +14,6 @@ import type { IMessage } from '../types/Messaging/Message';
 import {
   fetchConversations,
   fetchConversationDetails,
-  fetchMyClubNames,
 } from '../api/messagingApi';
 import { useAuth } from '../hooks/useAuth';
 
@@ -37,7 +36,6 @@ export default function MessagingPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<ConversationFeedItem[]>([]);
-  const [clubNamesById, setClubNamesById] = useState<Record<string, string>>({});
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -100,12 +98,8 @@ export default function MessagingPage() {
       setIsLoadingConversations(true);
       setLoadError(null);
       try {
-        const [feed, clubNames] = await Promise.all([
-          fetchConversations(),
-          fetchMyClubNames().catch(() => ({})),
-        ]);
+        const feed = await fetchConversations();
         if (ignore) return;
-        setClubNamesById(clubNames);
         // Server metadata always wins; only keep strictly newer local previews or unsent local DMs
         setConversations((local) => {
           const merged = feed.map((item) => {
@@ -158,6 +152,7 @@ export default function MessagingPage() {
         displayName: newConv.displayName,
         lastActivityAt: new Date().toISOString(),
         ...(newConv.clubId ? { clubId: newConv.clubId } : {}),
+        ...(newConv.clubName ? { clubName: newConv.clubName } : {}),
       })
     );
 
@@ -184,6 +179,7 @@ export default function MessagingPage() {
         displayName: existing?.displayName ?? conv.displayName,
         lastActivityAt: msg.createdAt,
         ...(conv.clubId ? { clubId: conv.clubId } : {}),
+        ...(conv.clubName ? { clubName: conv.clubName } : {}),
         lastMessage: {
           text: msg.text,
           senderName: senderName || 'You',
@@ -232,7 +228,6 @@ export default function MessagingPage() {
         >
           <Sidebar
             conversations={conversations}
-            clubNamesById={clubNamesById}
             isLoading={isLoadingConversations}
             loadError={loadError}
             onRetry={() => setReloadKey((key) => key + 1)}
@@ -250,11 +245,6 @@ export default function MessagingPage() {
           <MessageArea
             key={activeConversationId ?? 'empty'}
             conversation={displayedDetails}
-            clubName={
-              displayedDetails?.clubId
-                ? clubNamesById[displayedDetails.clubId]
-                : undefined
-            }
             isLoadingDetails={Boolean(
               activeConversationId && !displayedDetails && !detailsError
             )}

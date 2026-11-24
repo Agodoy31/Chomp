@@ -28,6 +28,7 @@ export interface ConversationFeedItem {
   displayName: string;
   lastActivityAt: string;
   clubId?: string;
+  clubName?: string;
   lastMessage?: ConversationLastMessage;
 }
 
@@ -38,5 +39,6 @@ export interface ConversationDetails {
   displayName: string;
   title?: string;
   clubId?: string;
+  clubName?: string;
   participants: ConversationParticipant[];
 }

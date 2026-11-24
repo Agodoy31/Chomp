@@ -224,26 +224,3 @@ export async function updateConversationTitle(
     throw createApiError(errMessage, response.status);
   }
 }
-
-/**
- * Fetches the signed-in user's approved clubs so channel rows can display club names.
- * Endpoint: GET /api/clubs/me
- */
-export async function fetchMyClubNames(): Promise<Record<string, string>> {
-  const response = await fetch('/api/clubs/me', {
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const errMessage = await parseApiErrorMessage(
-      response,
-      `Failed to fetch clubs: ${response.status}`
-    );
-    throw createApiError(errMessage, response.status);
-  }
-
-  const data: { clubs?: Array<{ _id: string; name: string }> } =
-    await response.json();
-  if (!Array.isArray(data?.clubs)) return {};
-  return Object.fromEntries(data.clubs.map((club) => [club._id, club.name]));
-}

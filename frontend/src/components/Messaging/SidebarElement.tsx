@@ -2,18 +2,17 @@ import type { ConversationFeedItem } from '../../types/Messaging/Conversation';
 
 interface SidebarElementProps {
   conversation: ConversationFeedItem;
-  clubName?: string;
   isActive: boolean;
   onSelect: (conversation: ConversationFeedItem) => void;
 }
 
 export default function SidebarElement({
   conversation,
-  clubName,
   isActive,
   onSelect,
 }: SidebarElementProps) {
   const isChannel = conversation.type === 'CHANNEL';
+  const clubName = conversation.clubName;
   const primaryTitle = isChannel
     ? clubName || `# ${conversation.displayName}`
     : conversation.displayName;

@@ -22,7 +22,6 @@ function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
 
 interface MessageAreaProps {
   conversation: ConversationDetails | null;
-  clubName?: string;
   isLoadingDetails?: boolean;
   detailsError?: string | null;
   onRetryDetails?: () => void;
@@ -33,7 +32,6 @@ interface MessageAreaProps {
 
 export default function MessageArea({
   conversation,
-  clubName,
   isLoadingDetails = false,
   detailsError = null,
   onRetryDetails,
@@ -481,7 +479,7 @@ export default function MessageArea({
           show={isAnnouncementModalOpen}
           onHide={() => setIsAnnouncementModalOpen(false)}
           conversationId={conversation._id}
-          clubName={clubName || conversation.displayName}
+          clubName={conversation.clubName || conversation.displayName}
           onSuccess={(newMsg) => {
             setMessages((prev) => mergeMessages(prev, [newMsg]));
             onMessageSent(conversation, newMsg);
