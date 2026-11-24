@@ -1,72 +1,33 @@
-import { useState, useEffect } from 'react';
-import type { Conversation } from '../../types/Messaging/Conversation';
-import { fetchConversations } from '../../api/messagingApi';
+import Alert from 'react-bootstrap/Alert';
+import Button from 'react-bootstrap/Button';
+import Spinner from 'react-bootstrap/Spinner';
+import type { ConversationFeedItem } from '../../types/Messaging/Conversation';
 import SidebarElement from './SidebarElement';
 
 interface SidebarProps {
-  onSelectConversation?: (conversation: Conversation) => void;
-  onOpenNewChat?: () => void;
-  activeConversationId?: string;
+  conversations: ConversationFeedItem[];
+  isLoading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
+  onSelectConversation: (conversation: ConversationFeedItem) => void;
+  onOpenNewChat: () => void;
+  activeConversationId: string | undefined;
 }
 
 export default function Sidebar({
+  conversations,
+  isLoading,
+  loadError,
+  onRetry,
   onSelectConversation,
   onOpenNewChat,
   activeConversationId,
 }: SidebarProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadConversations() {
-      setIsLoading(true);
-      setLoadError(null);
-      try {
-        const flattenedData = await fetchConversations();
-        if (cancelled) return;
-        setConversations(flattenedData);
-        if (flattenedData.length > 0 && activeConversationId === undefined) {
-          onSelectConversation?.(flattenedData[0]);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Error loading conversations:', err);
-        setLoadError(
-          err instanceof Error ? err.message : 'Failed to load conversations'
-        );
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadConversations();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadKey]);
-
-  const handleSelect = (conv: Conversation) => {
-    onSelectConversation?.(conv);
-  };
-
   return (
     <aside
-      className="d-flex flex-column flex-shrink-0 p-3"
-      style={{
-        backgroundColor: '#FF6C2F',
-        width: '320px',
-        minWidth: '280px',
-        maxWidth: '360px',
-        height: '100%',
-        overflowY: 'auto',
-      }}
+      aria-label="Conversations"
+      className="d-flex flex-column w-100 h-100 p-3 overflow-y-auto"
+      style={{ backgroundColor: '#FF6C2F' }}
     >
       <div className="d-flex align-items-center justify-content-between mb-3 px-1">
         <h2
@@ -75,16 +36,14 @@ export default function Sidebar({
         >
           Messages
         </h2>
-        <button
+        <Button
           type="button"
           onClick={onOpenNewChat}
-          className="btn rounded-circle d-flex align-items-center justify-content-center p-0"
+          className="rounded-circle d-flex align-items-center justify-content-center p-0 border-0"
           style={{
             width: '32px',
             height: '32px',
             backgroundColor: 'rgba(255, 255, 255, 0.25)',
-            border: 'none',
-            cursor: 'pointer',
             transition: 'background-color 0.15s ease',
           }}
           aria-label="New chat"
@@ -96,6 +55,8 @@ export default function Sidebar({
             viewBox="0 0 18 18"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+            focusable="false"
           >
             <path
               d="M9 3.75V14.25M3.75 9H14.25"
@@ -104,7 +65,7 @@ export default function Sidebar({
               strokeLinecap="round"
             />
           </svg>
-        </button>
+        </Button>
       </div>
 
       <div className="d-flex flex-column gap-3">
@@ -112,21 +73,29 @@ export default function Sidebar({
           <div
             role="status"
             aria-live="polite"
-            className="text-white text-center py-3"
+            className="d-flex align-items-center justify-content-center gap-2 text-white py-3"
           >
-            Loading...
+            <Spinner
+              animation="border"
+              size="sm"
+              variant="light"
+              aria-hidden="true"
+            />
+            <span>Loading...</span>
           </div>
         ) : loadError ? (
-          <div role="alert" className="text-white text-center py-3">
+          <Alert variant="danger" className="text-center mb-0">
             <div>{loadError}</div>
-            <button
+            <Button
               type="button"
-              className="btn btn-light btn-sm mt-2"
-              onClick={() => setReloadKey((key) => key + 1)}
+              variant="light"
+              size="sm"
+              className="mt-2"
+              onClick={onRetry}
             >
               Retry
-            </button>
-          </div>
+            </Button>
+          </Alert>
         ) : conversations.length === 0 ? (
           <div role="status" className="text-white text-center py-3">
             No conversations yet
@@ -137,7 +106,7 @@ export default function Sidebar({
               key={conv._id}
               conversation={conv}
               isActive={conv._id === activeConversationId}
-              onSelect={handleSelect}
+              onSelect={onSelectConversation}
             />
           ))
         )}
