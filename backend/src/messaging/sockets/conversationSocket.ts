@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import type { Socket } from 'socket.io';
+import { Conversation } from '../models/Conversation';
 import { ConversationParticipant } from '../models/ConversationParticipant';
 import { getConversationRoom } from '../../socket/rooms';
 
@@ -39,12 +40,19 @@ export function registerConversationSocketHandlers(socket: Socket): void {
       return;
     }
 
+    let conversationExists: unknown;
     let participantExists: unknown;
     try {
-      participantExists = await ConversationParticipant.exists({
-        conversationId: payload.conversationId,
-        userId,
-      });
+      [conversationExists, participantExists] = await Promise.all([
+        Conversation.exists({
+          _id: payload.conversationId,
+          deleted: false,
+        }),
+        ConversationParticipant.exists({
+          conversationId: payload.conversationId,
+          userId,
+        }),
+      ]);
     } catch {
       ack({
         ok: false,
@@ -54,7 +62,7 @@ export function registerConversationSocketHandlers(socket: Socket): void {
       return;
     }
 
-    if (!participantExists) {
+    if (!conversationExists || !participantExists) {
       ack({
         ok: false,
         code: 'ERR_CONVERSATION_NOT_FOUND',

@@ -9,7 +9,12 @@ import {
   requestClub,
   updateClub,
 } from './controllers/clubController';
-import { listClubChannels } from './controllers/channelController';
+import {
+  createClubChannel,
+  listClubChannels,
+  removeClubChannel,
+  renameClubChannel,
+} from './controllers/channelController';
 import {
   getClubMembers,
   getMyClubs,
@@ -33,6 +38,9 @@ clubRoutes.post('/:clubId/join', requireAuth, joinClub);
 clubRoutes.post('/:clubId/leave', requireAuth, leaveClub);
 clubRoutes.get('/:clubId/members', requireAuth, getClubMembers);
 clubRoutes.get('/:clubId/channels', requireAuth, listClubChannels);
+clubRoutes.post('/:clubId/channels', requireAuth, createClubChannel);
+clubRoutes.patch('/:clubId/channels/:channelId', requireAuth, renameClubChannel);
+clubRoutes.delete('/:clubId/channels/:channelId', requireAuth, removeClubChannel);
 clubRoutes.patch('/:clubId/members/:userId', requireAuth, updateMemberRole);
 clubRoutes.delete('/:clubId/members/:userId', requireAuth, removeMember);
 

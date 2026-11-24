@@ -14,8 +14,14 @@ export interface IConversation {
   dmPairKey?: string;
   title?: string;
   clubId?: Types.ObjectId;
+  deleted: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ISoftDeleteConversationResult {
+  conversation: IConversation;
+  participantUserIds: string[];
 }
 
 export interface IUserSummary {
@@ -34,6 +40,7 @@ export interface IConversationDetails {
   type: ConversationType;
   title?: string;
   clubId?: Types.ObjectId;
+  clubName?: string;
   displayName: string;
   participants: IConversationParticipantSummary[];
 }
@@ -43,6 +50,7 @@ export interface IConversationFeedItem {
   type: ConversationType;
   title?: string;
   clubId?: Types.ObjectId;
+  clubName?: string;
   displayName: string;
   lastActivityAt: Date;
   lastMessage?: {
@@ -57,6 +65,7 @@ export interface IConversationFeedResponse {
   type: string;
   displayName: string;
   clubId?: string;
+  clubName?: string;
   lastActivityAt: string;
   lastMessage?: {
     text: string;

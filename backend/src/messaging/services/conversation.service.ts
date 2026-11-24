@@ -11,6 +11,7 @@ import {
   IConversationDetails,
   IConversationFeedItem,
   IConversationParticipantSummary,
+  ISoftDeleteConversationResult,
   IUserSummary,
 } from '../interfaces/conversation.interfaces';
 import {
@@ -79,7 +80,7 @@ export async function createDirectConversation(
   const dmPairKey = [creatorId.toString(), recipientId.toString()].sort().join(':');
 
   // Return existing conversation if already created
-  const existing = await Conversation.findOne({ dmPairKey }).lean<IConversation>().exec();
+  const existing = await Conversation.findOne({ dmPairKey, deleted: false }).lean<IConversation>().exec();
   if (existing) {
     return { conversation: existing, isNew: false };
   }
@@ -123,7 +124,7 @@ export async function createDirectConversation(
 
     // If another request created the chat first during a race, fetch and return the winner
     if (error && error.code === 11000) {
-      const winner = await Conversation.findOne({ dmPairKey }).lean<IConversation>().exec();
+      const winner = await Conversation.findOne({ dmPairKey, deleted: false }).lean<IConversation>().exec();
       if (winner) {
         return { conversation: winner, isNew: false };
       }
@@ -322,7 +323,7 @@ export async function addParticipantsToConversation(
     }
   }
 
-  const conversationQuery = Conversation.findById(conversationId)
+  const conversationQuery = Conversation.findOne({ _id: conversationId, deleted: false })
     .select('type')
     .lean();
   if (activeSession) {
@@ -718,7 +719,7 @@ export async function getConversationDetails(
     return null;
   }
 
-  const conversation = await Conversation.findById(conversationId)
+  const conversation = await Conversation.findOne({ _id: conversationId, deleted: false })
     .select('type title clubId')
     .lean<IConversation>()
     .exec();
@@ -729,47 +730,52 @@ export async function getConversationDetails(
 
   const conversationObjectId = new Types.ObjectId(conversationId);
 
-  const participants = await ConversationParticipant.aggregate<IConversationParticipantSummary>([
-    {
-      $match: {
-        conversationId: conversationObjectId,
-      },
-    },
-    {
-      $project: {
-        _id: 1,
-        userId: 1,
-        permission: 1,
-      },
-    },
-    {
-      $lookup: {
-        from: 'users',
-        localField: 'userId',
-        foreignField: '_id',
-        as: 'user',
-      },
-    },
-    {
-      $unwind: '$user',
-    },
-    {
-      $project: {
-        _id: 0,
-        permission: 1,
-        userId: {
-          _id: '$user._id',
-          firstName: '$user.firstName',
-          lastName: '$user.lastName',
+  const [participants, club] = await Promise.all([
+    ConversationParticipant.aggregate<IConversationParticipantSummary>([
+      {
+        $match: {
+          conversationId: conversationObjectId,
         },
       },
-    },
-    {
-      $sort: {
-        'userId.firstName': 1,
-        'userId.lastName': 1,
+      {
+        $project: {
+          _id: 1,
+          userId: 1,
+          permission: 1,
+        },
       },
-    },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: '$user',
+      },
+      {
+        $project: {
+          _id: 0,
+          permission: 1,
+          userId: {
+            _id: '$user._id',
+            firstName: '$user.firstName',
+            lastName: '$user.lastName',
+          },
+        },
+      },
+      {
+        $sort: {
+          'userId.firstName': 1,
+          'userId.lastName': 1,
+        },
+      },
+    ]),
+    conversation.clubId
+      ? Club.findById(conversation.clubId).select('name').lean<{ name: string }>().exec()
+      : Promise.resolve(null),
   ]);
 
   let displayName = conversation.title ?? '';
@@ -785,6 +791,7 @@ export async function getConversationDetails(
     type: conversation.type,
     title: conversation.title,
     clubId: conversation.clubId,
+    ...(club?.name ? { clubName: club.name } : {}),
     displayName,
     participants,
   };
@@ -820,7 +827,7 @@ export async function updateConversationTitle(
   session.startTransaction();
 
   try {
-    const conversation = await Conversation.findById(conversationId).session(session);
+    const conversation = await Conversation.findOne({ _id: conversationId, deleted: false }).session(session);
     if (!conversation) {
       throw new MessagingError(
         MessagingErrorCode.CONVERSATION_NOT_FOUND,
@@ -995,7 +1002,7 @@ async function executeRemoveParticipantFromConversation(
   targetUserId: Types.ObjectId,
   session: ClientSession
 ): Promise<{ success: boolean; systemMessage?: IHydratedMessage }> {
-  const conversation = await Conversation.findById(conversationId)
+  const conversation = await Conversation.findOne({ _id: conversationId, deleted: false })
     .select('type')
     .session(session)
     .lean()
@@ -1191,7 +1198,7 @@ export async function updateParticipantPermissions(
   }
 
   try {
-    const conversation = await Conversation.findById(conversationId)
+    const conversation = await Conversation.findOne({ _id: conversationId, deleted: false })
       .select('type')
       .session(activeSession)
       .lean()
@@ -1404,6 +1411,11 @@ function getConversationFeedAggregationStages(
       $unwind: '$conversation',
     },
     {
+      $match: {
+        'conversation.deleted': false,
+      },
+    },
+    {
       $lookup: {
         from: 'messages',
         let: { convId: '$conversationId' },
@@ -1546,11 +1558,22 @@ function getConversationFeedAggregationStages(
       },
     },
     {
+      $lookup: {
+        from: Club.collection.name,
+        localField: 'conversation.clubId',
+        foreignField: '_id',
+        as: 'clubArray',
+      },
+    },
+    {
       $project: {
         _id: '$conversation._id',
         type: '$conversation.type',
         title: '$conversation.title',
         clubId: '$conversation.clubId',
+        clubName: {
+          $arrayElemAt: ['$clubArray.name', 0],
+        },
         displayName: {
           $cond: [
             {
@@ -1653,11 +1676,86 @@ export async function getClubChannels(
   return Conversation.find({
     clubId: clubObjectId,
     type: ConversationType.CHANNEL,
+    deleted: false,
   })
     .collation({ locale: 'en', strength: 2 })
     .sort({ title: 1 })
     .lean<IConversation[]>()
     .exec();
 }
+
+export async function softDeleteConversation(
+  conversationId: Types.ObjectId,
+  session?: ClientSession
+): Promise<ISoftDeleteConversationResult> {
+  if (!conversationId || !mongoose.isObjectIdOrHexString(conversationId)) {
+    throw new MessagingError(
+      MessagingErrorCode.INVALID_INPUT,
+      'Valid conversationId is required'
+    );
+  }
+
+  const runSoftDelete = async (
+    activeSession: ClientSession
+  ): Promise<ISoftDeleteConversationResult> => {
+    const conversation = await Conversation.findOneAndUpdate(
+      { _id: conversationId, deleted: false },
+      { $set: { deleted: true } },
+      { new: true, session: activeSession }
+    )
+      .lean<IConversation>()
+      .exec();
+
+    if (!conversation) {
+      throw new MessagingError(
+        MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        'Conversation not found'
+      );
+    }
+
+    const participants = await ConversationParticipant.find({ conversationId })
+      .select('userId')
+      .session(activeSession)
+      .lean()
+      .exec();
+
+    const participantUserIds = participants.map((participant) =>
+      participant.userId.toString()
+    );
+
+    if (participantUserIds.length > 0) {
+      await ConversationParticipant.deleteMany({ conversationId }).session(
+        activeSession
+      );
+    }
+
+    return {
+      conversation,
+      participantUserIds,
+    };
+  };
+
+  if (session) {
+    return runSoftDelete(session);
+  }
+
+  const ownSession = await mongoose.startSession();
+  try {
+    let result: ISoftDeleteConversationResult | undefined;
+    await ownSession.withTransaction(async () => {
+      result = await runSoftDelete(ownSession);
+    });
+    if (!result) {
+      throw new MessagingError(
+        MessagingErrorCode.CONVERSATION_NOT_FOUND,
+        'Conversation not found'
+      );
+    }
+    return result;
+  } finally {
+    await ownSession.endSession();
+  }
+}
+
 
 
