@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { clubChannelPath } from '../../clubChannelPath';
 import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
@@ -282,7 +283,7 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
   function openChannel(channelId: string) {
     if (leaving) return;
     onHide();
-    navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
+    navigate(clubChannelPath(clubId, channelId));
   }
 
   const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);

@@ -15,6 +15,7 @@ import {
   fetchConversations,
   fetchConversationDetails,
 } from '../api/messagingApi';
+import { clubChannelPath } from '../clubChannelPath';
 import { useAuth } from '../hooks/useAuth';
 
 const activity = (c: ConversationFeedItem) =>
@@ -50,7 +51,7 @@ export default function MessagingPage() {
   const handleSelectConversation = (conv: ConversationFeedItem) => {
     if (conv.type === 'CHANNEL') {
       if (conv.clubId) {
-        navigate(`/clubs/${conv.clubId}?channel=${encodeURIComponent(conv._id)}`);
+        navigate(clubChannelPath(conv.clubId, conv._id));
       }
       return;
     }

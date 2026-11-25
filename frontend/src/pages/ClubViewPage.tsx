@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import { InfoCircle } from 'react-bootstrap-icons';
@@ -7,6 +7,7 @@ import { getClub, getClubChannels, getClubMembers, isUnauthorizedError } from '.
 import { fetchConversationDetails } from '../api/messagingApi';
 import ConversationDetailsModal from '../components/Messaging/ConversationDetailsModal';
 import MessageArea from '../components/Messaging/MessageArea';
+import { clubChannelPath } from '../clubChannelPath';
 import ClubInfoModal from '../components/modals/ClubInfoModal';
 import { useAuth } from '../hooks/useAuth';
 import type { ClubChannel, ClubDetails, ClubMember } from '../types/club';
@@ -51,10 +52,8 @@ function activeChannel(channels: ClubChannel[], selectedId: string | null): Club
   );
 }
 
-function ClubView({ clubId }: { clubId: string }) {
+function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedChannelId: string }) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const requestedChannelId = searchParams.get('channel');
   const { user, loading: authLoading, setUser } = useAuth();
   const [clubLoad, setClubLoad] = useState<ClubLoad | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -218,11 +217,7 @@ function ClubView({ clubId }: { clubId: string }) {
                   type="button"
                   className={`club-view__channel${isActive ? ' is-active' : ''}`}
                   aria-current={isActive ? 'true' : undefined}
-                  onClick={() =>
-                    navigate(`/clubs/${clubId}?channel=${encodeURIComponent(item._id)}`, {
-                      replace: true,
-                    })
-                  }
+                  onClick={() => navigate(clubChannelPath(clubId, item._id))}
                 >
                   {channelLabel(item.title)}
                 </button>
@@ -274,6 +269,6 @@ function ClubView({ clubId }: { clubId: string }) {
 }
 
 export default function ClubViewPage() {
-  const { clubId = '' } = useParams();
-  return <ClubView key={clubId} clubId={clubId} />;
+  const { clubId = '', channelId = '' } = useParams();
+  return <ClubView key={clubId} clubId={clubId} requestedChannelId={channelId} />;
 }
