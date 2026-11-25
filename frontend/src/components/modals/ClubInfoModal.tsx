@@ -4,8 +4,8 @@ import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
+import InputGroup from 'react-bootstrap/InputGroup';
 import Modal from 'react-bootstrap/Modal';
-import { Search } from 'react-bootstrap-icons';
 import { useAuth } from '../../hooks/useAuth';
 import {
   getClub,
@@ -91,31 +91,56 @@ function ListSearch({
   label: string;
 }) {
   return (
-    <div className="position-relative" style={{ width: 'min(11.25rem, 100%)' }}>
-      <span className="position-absolute top-50 start-0 translate-middle-y ms-2 d-flex text-secondary pe-none">
-        <Search size={16} aria-hidden="true" focusable="false" />
-      </span>
+    <InputGroup className="rounded-3 mb-3 overflow-hidden" style={{ backgroundColor: '#EDF0F5' }}>
+      <InputGroup.Text className="bg-transparent border-0 pe-1">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z"
+            stroke="#6B7280"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M14 14L11.1 11.1"
+            stroke="#6B7280"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </InputGroup.Text>
       <Form.Control
-        type="search"
-        size="sm"
-        value={value}
-        aria-label={label}
+        type="text"
+        className="border-0 bg-transparent shadow-none"
         placeholder="Search"
-        className="ps-4"
+        aria-label={label}
+        value={value}
         onChange={(event) => onChange(event.target.value)}
+        style={{ fontSize: '14px', color: '#1F2937' }}
       />
-    </div>
+    </InputGroup>
   );
 }
 
 function Section({ title, search, children }: { title: string; search?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border rounded overflow-hidden">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 bg-light border-bottom">
-        <h3 className="h5 mb-0">{title}</h3>
-        {search}
+    <section>
+      <div className="mb-3">
+        <h3 className="fw-bold mb-0 text-dark" style={{ fontSize: '15px' }}>
+          {title}
+        </h3>
       </div>
-      <div className="p-3">{children}</div>
+      {search}
+      {children}
     </section>
   );
 }
@@ -299,18 +324,22 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
       }}
       centered
       scrollable
-      size="lg"
       backdrop={leaving ? 'static' : true}
       keyboard={!leaving}
       aria-labelledby="club-info-title"
+      contentClassName="border-0 rounded-4 shadow"
     >
-      <Modal.Header closeButton={!leaving} closeLabel="Close club information">
-        <Modal.Title ref={titleRef} id="club-info-title" as="h2" tabIndex={-1} className="h4 mb-0">
-          {club ? club.name : 'Club information'}
+      <Modal.Header
+        closeButton={!leaving}
+        className="border-0 pb-1 pt-4 px-4"
+        closeLabel="Close club information"
+      >
+        <Modal.Title ref={titleRef} id="club-info-title" as="h2" tabIndex={-1} className="h5 fw-bold text-dark">
+          Club information
         </Modal.Title>
       </Modal.Header>
 
-      <Modal.Body className="d-flex flex-column gap-4">
+      <Modal.Body className="px-4 pt-2 pb-4">
         {!club && !loadError && (
           <p className="text-center text-secondary my-4" role="status">
             Loading club...
@@ -321,125 +350,129 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
 
         {club && (
           <>
-            <Section title="Club Overview">
-              {club.category && (
-                <Badge bg="primary-subtle" text="primary-emphasis" pill className="fw-semibold mb-3">
-                  {CATEGORY_LABEL[club.category] ?? club.category}
-                </Badge>
-              )}
-              <p className="mb-3" style={{ whiteSpace: 'pre-wrap' }}>
-                {club.description || 'No description yet.'}
-              </p>
-              <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-end justify-content-between gap-3">
-                <div>
-                  <p className="mb-2">Meeting time: {formatMeetingTime(club.meeting)}</p>
-                  <p className="mb-0">Meeting Location: {formatMeetingLocation(club.meeting)}</p>
-                </div>
-                {viewerIsMember && (
-                  <div>
-                    {confirmingLeave ? (
-                      <>
-                        <p className="text-secondary small mb-2 text-start text-sm-end" role="status">
-                          You&apos;ll lose access to this club&apos;s channels.
-                        </p>
-                        <div className="d-flex justify-content-start justify-content-sm-end gap-2">
-                          <Button
-                            ref={cancelLeaveRef}
-                            type="button"
-                            variant="outline-secondary"
-                            className="fw-semibold"
-                            disabled={leaving}
-                            onClick={() => {
-                              leaveFocusTarget.current = 'leave';
-                              setConfirmingLeave(false);
-                              setLeaveError('');
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="danger"
-                            className="fw-semibold"
-                            disabled={leaving}
-                            onClick={confirmLeave}
-                          >
-                            {leaving ? 'Leaving...' : 'Leave Club'}
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <Button
-                        ref={leaveClubRef}
-                        type="button"
-                        variant="danger"
-                        className="fw-semibold"
-                        onClick={() => {
-                          setLeaveError('');
-                          leaveFocusTarget.current = 'cancel';
-                          setConfirmingLeave(true);
-                        }}
-                      >
-                        Leave Club
-                      </Button>
-                    )}
-                  </div>
+            <div className="mb-4">
+              <div className="d-flex align-items-center gap-2 mb-1">
+                <h3 className="h5 fw-bold mb-0 text-dark">{club.name}</h3>
+                {viewerIsMember && !confirmingLeave && (
+                  <Button
+                    ref={leaveClubRef}
+                    type="button"
+                    size="sm"
+                    variant="light"
+                    onClick={() => {
+                      setLeaveError('');
+                      leaveFocusTarget.current = 'cancel';
+                      setConfirmingLeave(true);
+                    }}
+                    className="border-0 py-0 px-2 rounded-3"
+                    style={{ backgroundColor: '#EDF0F5', color: '#3046C3' }}
+                  >
+                    Leave
+                  </Button>
                 )}
               </div>
+              <p className="text-secondary small mb-0">
+                {club.category ? (CATEGORY_LABEL[club.category] ?? club.category) : 'Club'}
+              </p>
+              <p className="text-secondary small mb-0">Meeting time: {formatMeetingTime(club.meeting)}</p>
+              <p className="text-secondary small mb-0">Meeting Location: {formatMeetingLocation(club.meeting)}</p>
+              <p className="mb-0 mt-3" style={{ whiteSpace: 'pre-wrap' }}>
+                {club.description || 'No description yet.'}
+              </p>
+              {viewerIsMember && confirmingLeave && (
+                <div className="mt-3">
+                  <p className="text-secondary small mb-2" role="status">
+                    You&apos;ll lose access to this club&apos;s channels.
+                  </p>
+                  <div className="d-flex align-items-center gap-2">
+                    <Button
+                      ref={cancelLeaveRef}
+                      type="button"
+                      size="sm"
+                      variant="light"
+                      className="border-0 rounded-3"
+                      style={{ backgroundColor: '#EDF0F5', color: '#374151' }}
+                      disabled={leaving}
+                      onClick={() => {
+                        leaveFocusTarget.current = 'leave';
+                        setConfirmingLeave(false);
+                        setLeaveError('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="border-0 fw-semibold text-white rounded-3 px-3"
+                      style={{ backgroundColor: '#FF6C2F' }}
+                      disabled={leaving}
+                      onClick={confirmLeave}
+                    >
+                      {leaving ? 'Leaving...' : 'Leave club'}
+                    </Button>
+                  </div>
+                </div>
+              )}
               {leaveError && (
-                <Alert variant="danger" className="py-2 px-3 mt-3 mb-0">
+                <Alert variant="danger" className="py-1 px-2 small mt-2 mb-0">
                   {leaveError}
                 </Alert>
               )}
-            </Section>
+            </div>
 
-            <Section
-              title="Channels"
-              search={<ListSearch value={channelQuery} onChange={setChannelQuery} label="Search channels" />}
-            >
-              <p className="visually-hidden" aria-live="polite">
-                {channelsError ? '' : matchCount(filteredChannels.length, 'channel', 'channels', channelQuery)}
-              </p>
-              {channelsError ? (
-                <LoadError message={channelsError} onRetry={retry} />
-              ) : channels.length === 0 ? (
-                <p className="text-secondary mb-0">No channels yet.</p>
-              ) : filteredChannels.length === 0 ? (
-                <p className="text-secondary mb-0">No channels match your search.</p>
-              ) : (
-                <>
-                  <ul
-                    className="list-unstyled d-flex flex-column gap-2 mb-0"
-                    style={expandedListStyle(showAllChannels && hiddenChannelCount > 0)}
-                  >
-                    {visibleChannels.map((channel) => {
-                      const label = channelLabel(channel.title);
-                      return (
-                        <li key={channel._id}>
-                          <Button
-                            type="button"
-                            variant="outline-secondary"
-                            className="w-100 d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-1 gap-sm-3 text-start"
-                            disabled={leaving}
-                            aria-label={`Open ${label} in Messages`}
-                            onClick={() => openChannel(channel._id)}
-                          >
-                            <span className="text-truncate min-w-0">{label}</span>
-                            <span className="flex-shrink-0">Open in Messages →</span>
-                          </Button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <ListToggle
-                    expanded={showAllChannels}
-                    hiddenCount={hiddenChannelCount}
-                    itemLabel="channels"
-                    onToggle={() => setShowAllChannels((current) => !current)}
-                  />
-                </>
-              )}
-            </Section>
+            <div className="mb-4">
+              <Section
+                title="Channels"
+                search={<ListSearch value={channelQuery} onChange={setChannelQuery} label="Search channels" />}
+              >
+                <p className="visually-hidden" aria-live="polite">
+                  {channelsError ? '' : matchCount(filteredChannels.length, 'channel', 'channels', channelQuery)}
+                </p>
+                {channelsError ? (
+                  <LoadError message={channelsError} onRetry={retry} />
+                ) : channels.length === 0 ? (
+                  <p className="text-secondary mb-0">No channels yet.</p>
+                ) : filteredChannels.length === 0 ? (
+                  <p className="text-secondary mb-0">No channels match your search.</p>
+                ) : (
+                  <>
+                    <ul
+                      className="list-unstyled d-flex flex-column gap-3 mb-0"
+                      style={expandedListStyle(showAllChannels && hiddenChannelCount > 0)}
+                    >
+                      {visibleChannels.map((channel) => {
+                        const label = channelLabel(channel.title);
+                        return (
+                          <li key={channel._id}>
+                            <button
+                              type="button"
+                              className="d-flex align-items-center justify-content-between gap-3 w-100 border-0 bg-transparent p-0 text-start"
+                              disabled={leaving}
+                              aria-label={`Open ${label} in Messages`}
+                              onClick={() => openChannel(channel._id)}
+                            >
+                              <span className="text-dark fw-medium text-truncate" style={{ fontSize: '15px' }}>
+                                {label}
+                              </span>
+                              <span className="text-secondary flex-shrink-0" style={{ fontSize: '13px' }}>
+                                Open
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <ListToggle
+                      expanded={showAllChannels}
+                      hiddenCount={hiddenChannelCount}
+                      itemLabel="channels"
+                      onToggle={() => setShowAllChannels((current) => !current)}
+                    />
+                  </>
+                )}
+              </Section>
+            </div>
 
             <Section
               title={
@@ -461,19 +494,37 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
               ) : (
                 <>
                   <ul
-                    className="list-group list-group-flush mb-0"
+                    className="list-unstyled d-flex flex-column gap-3 mb-0"
                     style={expandedListStyle(showAllMembers && hiddenMemberCount > 0)}
                   >
-                    {visibleMembers.map((member) => (
-                      <li key={member.userId} className="list-group-item d-flex align-items-center gap-2 px-0">
-                        <span>{memberName(member)}</span>
-                        {member.role === 'OFFICER' && (
-                          <Badge bg="warning-subtle" text="warning-emphasis" pill className="fw-semibold">
-                            OFFICER
-                          </Badge>
-                        )}
-                      </li>
-                    ))}
+                    {visibleMembers.map((member) => {
+                      const name = memberName(member);
+                      return (
+                        <li key={member.userId} className="d-flex align-items-center gap-3">
+                          <div
+                            aria-hidden="true"
+                            className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              backgroundColor: '#D4E4FC',
+                              color: '#3046C3',
+                              fontSize: '15px',
+                            }}
+                          >
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-dark fw-medium" style={{ fontSize: '15px' }}>
+                            {name}
+                          </span>
+                          {member.role === 'OFFICER' && (
+                            <Badge bg="warning-subtle" text="warning-emphasis" pill className="fw-semibold">
+                              OFFICER
+                            </Badge>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                   <ListToggle
                     expanded={showAllMembers}
