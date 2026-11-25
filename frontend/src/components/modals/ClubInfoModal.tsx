@@ -282,7 +282,7 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
   function openChannel(channelId: string) {
     if (leaving) return;
     onHide();
-    navigate(`/clubs/${clubId}?channel=${encodeURIComponent(channelId)}`);
+    navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
   }
 
   const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);
