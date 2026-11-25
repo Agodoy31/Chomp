@@ -58,14 +58,13 @@ function ClubView({ clubId }: { clubId: string }) {
   const { user, loading: authLoading, setUser } = useAuth();
   const [clubLoad, setClubLoad] = useState<ClubLoad | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [detailLoad, setDetailLoad] = useState<DetailLoad | null>(null);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
 
   const loadedClub = clubLoad?.clubId === clubId && clubLoad.requestKey === reloadKey ? clubLoad : null;
-  const channel = activeChannel(loadedClub?.channels ?? [], selectedId ?? requestedChannelId);
+  const channel = activeChannel(loadedClub?.channels ?? [], requestedChannelId);
   const channelId = channel?._id ?? null;
   const loadedDetails =
     detailLoad?.channelId === channelId && detailLoad.requestKey === detailReloadKey ? detailLoad : null;
@@ -219,7 +218,11 @@ function ClubView({ clubId }: { clubId: string }) {
                   type="button"
                   className={`club-view__channel${isActive ? ' is-active' : ''}`}
                   aria-current={isActive ? 'true' : undefined}
-                  onClick={() => setSelectedId(item._id)}
+                  onClick={() =>
+                    navigate(`/clubs/${clubId}?channel=${encodeURIComponent(item._id)}`, {
+                      replace: true,
+                    })
+                  }
                 >
                   {channelLabel(item.title)}
                 </button>
