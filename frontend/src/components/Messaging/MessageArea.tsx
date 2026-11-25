@@ -28,6 +28,7 @@ interface MessageAreaProps {
   onBackToList?: () => void;
   onOpenDetails: () => void;
   onMessageSent: (conversation: ConversationDetails, message: IMessage) => void;
+  isOfficer?: (userId: string) => boolean;
 }
 
 export default function MessageArea({
@@ -38,6 +39,7 @@ export default function MessageArea({
   onBackToList,
   onOpenDetails,
   onMessageSent,
+  isOfficer,
 }: MessageAreaProps) {
   const { user } = useAuth();
   const currentUserId = user?.id || '';
@@ -381,6 +383,7 @@ export default function MessageArea({
                 isCurrentUser={Boolean(
                   currentUserId && msg.sender?._id === currentUserId
                 )}
+                officer={Boolean(msg.sender?._id && isOfficer?.(msg.sender._id))}
               />
             ))}
           </div>
