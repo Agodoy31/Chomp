@@ -282,7 +282,7 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
   function openChannel(channelId: string) {
     if (leaving) return;
     onHide();
-    navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
+    navigate(`/clubs/${clubId}?channel=${encodeURIComponent(channelId)}`);
   }
 
   const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);
@@ -421,11 +421,11 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
                             variant="outline-secondary"
                             className="w-100 d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-1 gap-sm-3 text-start"
                             disabled={leaving}
-                            aria-label={`Open ${label} in Messages`}
+                            aria-label={`Open ${label}`}
                             onClick={() => openChannel(channel._id)}
                           >
                             <span className="text-truncate min-w-0">{label}</span>
-                            <span className="flex-shrink-0">Open in Messages →</span>
+                            <span className="flex-shrink-0">Open</span>
                           </Button>
                         </li>
                       );

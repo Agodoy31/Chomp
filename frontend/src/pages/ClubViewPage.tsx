@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import { InfoCircle } from 'react-bootstrap-icons';
@@ -53,6 +53,8 @@ function activeChannel(channels: ClubChannel[], selectedId: string | null): Club
 
 function ClubView({ clubId }: { clubId: string }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedChannelId = searchParams.get('channel');
   const { user, loading: authLoading, setUser } = useAuth();
   const [clubLoad, setClubLoad] = useState<ClubLoad | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -63,7 +65,7 @@ function ClubView({ clubId }: { clubId: string }) {
   const [detailReloadKey, setDetailReloadKey] = useState(0);
 
   const loadedClub = clubLoad?.clubId === clubId && clubLoad.requestKey === reloadKey ? clubLoad : null;
-  const channel = activeChannel(loadedClub?.channels ?? [], selectedId);
+  const channel = activeChannel(loadedClub?.channels ?? [], selectedId ?? requestedChannelId);
   const channelId = channel?._id ?? null;
   const loadedDetails =
     detailLoad?.channelId === channelId && detailLoad.requestKey === detailReloadKey ? detailLoad : null;

@@ -48,6 +48,12 @@ export default function MessagingPage() {
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
 
   const handleSelectConversation = (conv: ConversationFeedItem) => {
+    if (conv.type === 'CHANNEL') {
+      if (conv.clubId) {
+        navigate(`/clubs/${conv.clubId}?channel=${encodeURIComponent(conv._id)}`);
+      }
+      return;
+    }
     setDetailsError(null);
     if (conv._id === activeConversationId && activeDetails?._id !== conv._id) {
       setDetailsReloadKey((key) => key + 1);

@@ -55,7 +55,9 @@ export async function fetchConversations(): Promise<ConversationFeedItem[]> {
   }
 
   const data: ConversationFeedItem[] = await response.json();
-  return Array.isArray(data) ? data : [];
+  const items = Array.isArray(data) ? data : [];
+  // Club channels open on /clubs/:clubId, not in the inbox.
+  return items.filter((item) => item.type !== 'CHANNEL');
 }
 
 /**
