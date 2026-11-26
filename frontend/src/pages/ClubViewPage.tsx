@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
@@ -41,6 +41,29 @@ function errorText(err: unknown, fallback: string): string {
 function channelLabel(title: string): string {
   const trimmed = title.trim();
   return trimmed.startsWith('#') ? trimmed : `# ${trimmed}`;
+}
+
+function FocusOnMount({ children }: { children: ReactNode }) {
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    node?.focus();
+  }, [node]);
+  return (
+    <div ref={setNode} tabIndex={-1}>
+      {children}
+    </div>
+  );
+}
+
+function moveChannelFocus(event: KeyboardEvent<HTMLButtonElement>, index: number, count: number) {
+  const key = event.key;
+  if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Home' && key !== 'End') return;
+  event.preventDefault();
+  const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button');
+  if (!buttons?.length) return;
+  const next =
+    key === 'Home' ? 0 : key === 'End' ? count - 1 : key === 'ArrowDown' ? (index + 1) % count : (index - 1 + count) % count;
+  buttons[next]?.focus();
 }
 
 function activeChannel(channels: ClubChannel[], selectedId: string | null): ClubChannel | null {
@@ -170,17 +193,19 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
 
   if (!loadedClub.club) {
     return (
-      <div className="p-4">
-        <Alert variant="danger">{loadedClub.error || 'Could not load this club.'}</Alert>
-        <div className="d-flex gap-2">
-          <Button type="button" onClick={() => setReloadKey((key) => key + 1)}>
-            Retry
-          </Button>
-          <Link to="/myClubs" className="btn btn-outline-primary">
-            My Clubs
-          </Link>
+      <FocusOnMount>
+        <div className="p-4">
+          <Alert variant="danger">{loadedClub.error || 'Could not load this club.'}</Alert>
+          <div className="d-flex gap-2">
+            <Button type="button" onClick={() => setReloadKey((key) => key + 1)}>
+              Retry
+            </Button>
+            <Link to="/myClubs" className="btn btn-outline-primary">
+              My Clubs
+            </Link>
+          </div>
         </div>
-      </div>
+      </FocusOnMount>
     );
   }
 
@@ -189,6 +214,12 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
 
   return (
     <div className="club-view">
+      <a href="#club-messages" className="visually-hidden-focusable">
+        Skip to messages
+      </a>
+      <div className="visually-hidden" aria-live="polite">
+        {channel ? `Viewing ${channelLabel(channel.title)}` : 'This club has no channels yet.'}
+      </div>
       <aside className="club-view__sidebar" aria-label={club.name}>
         <div className="club-view__identity">
           <h1 className="club-view__name text-truncate" title={club.name}>
@@ -198,6 +229,8 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
             type="button"
             className="club-view__info"
             aria-label={`About ${club.name}`}
+            aria-haspopup="dialog"
+            aria-expanded={showInfo}
             onClick={() => setShowInfo(true)}
           >
             <InfoCircle size={18} aria-hidden="true" />
@@ -209,14 +242,15 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
           {loadedClub.channels.length === 0 ? (
             <p className="px-2 small mb-0">No channels yet</p>
           ) : (
-            loadedClub.channels.map((item) => {
+            loadedClub.channels.map((item, index) => {
               const isActive = item._id === channel?._id;
               return (
                 <button
                   key={item._id}
                   type="button"
                   className={`club-view__channel${isActive ? ' is-active' : ''}`}
-                  aria-current={isActive ? 'true' : undefined}
+                  aria-current={isActive ? 'page' : undefined}
+                  onKeyDown={(event) => moveChannelFocus(event, index, loadedClub.channels.length)}
                   onClick={() => navigate(clubChannelPath(clubId, item._id))}
                 >
                   {channelLabel(item.title)}
@@ -227,10 +261,18 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
         </nav>
       </aside>
 
-      <section className="club-view__main" aria-label={channel ? channelLabel(channel.title) : club.name}>
+      <section
+        id="club-messages"
+        tabIndex={-1}
+        className="club-view__main"
+        aria-label={channel ? channelLabel(channel.title) : club.name}
+      >
         {channel ? (
           <MessageArea
             key={channel._id}
+            headingLevel="h2"
+            historyFocusable
+            detailsExpanded={showDetails}
             conversation={conversation}
             isLoadingDetails={!loadedDetails}
             detailsError={loadedDetails?.error || null}
