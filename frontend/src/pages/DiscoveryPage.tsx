@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import ClubCard from '../components/ClubCard';
-import { useAuth } from '../hooks/useAuth';
 import type { Club, ClubCategory } from '../types/club';
 import Alert from 'react-bootstrap/Alert';
 import Form from 'react-bootstrap/Form';
@@ -28,7 +27,6 @@ async function readJson(response: Response) {
 
 export default function ClubDiscovery() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasAnyClubs, setHasAnyClubs] = useState(false);
@@ -102,11 +100,6 @@ export default function ClubDiscovery() {
   }
 
   async function handleJoin(clubId: string) {
-    if (user?.isAdmin) {
-      navigate(`/clubs/${clubId}`);
-      return;
-    }
-
     setJoinError('');
     setSuccessMsg('');
     clearTimeout(successTimer.current);
@@ -306,11 +299,7 @@ export default function ClubDiscovery() {
           <div className="row g-4">
             {visibleClubs.map((club) => (
               <div key={club._id} className="col-12 col-md-6 col-lg-4">
-                <ClubCard
-                  club={club}
-                  onJoin={handleJoin}
-                  joinName={user?.isAdmin ? `Open ${club.name}` : undefined}
-                />
+                <ClubCard club={club} onJoin={handleJoin} />
               </div>
             ))}
           </div>

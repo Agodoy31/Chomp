@@ -13,7 +13,7 @@ const STUDENT_NAV = [
 
 const ADMIN_NAV = [
   { to: '/club-review', label: 'Club Review' },
-  { to: '/clubs', label: 'All Clubs' },
+  { to: '/all-clubs', label: 'All Clubs' },
   { to: '/messaging', label: 'Messages' },
 ];
 

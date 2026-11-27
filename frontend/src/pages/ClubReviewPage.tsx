@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
+import { approveClub, getPendingClubs, isUnauthorizedError, rejectClub } from '../api/clubApi';
 import { useAuth } from '../hooks/useAuth';
 import type { Club, ClubCategory } from '../types/club';
 
@@ -12,16 +13,15 @@ const CATEGORY_LABEL: Record<ClubCategory, string> = {
   OTHER: 'Other',
 };
 
-async function readJson(response: Response) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
 function meetingTime(club: Club) {
   return [club.meeting?.day, club.meeting?.time].filter(Boolean).join(' ');
+}
+
+function nextClubId(clubs: Club[], removedId: string): string {
+  const index = clubs.findIndex((item) => item._id === removedId);
+  if (index < 0) return '';
+  const next = clubs[index + 1] ?? clubs[index - 1];
+  return next?._id ?? '';
 }
 
 function PendingClubCard({
@@ -39,7 +39,12 @@ function PendingClubCard({
   return (
     <article className="bg-white rounded-3 p-3 p-md-4" style={{ border: '1px solid #c8c8c8' }}>
       <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-        <h2 className="h5 mb-0" style={{ color: '#3046C3', fontStyle: 'italic', fontWeight: 700 }}>
+        <h2
+          id={`club-heading-${club._id}`}
+          tabIndex={-1}
+          className="h5 mb-0"
+          style={{ color: '#3046C3', fontStyle: 'italic', fontWeight: 700 }}
+        >
           {club.name}
         </h2>
         <span
@@ -54,13 +59,12 @@ function PendingClubCard({
 
       <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
         <div>
-          <p className="mb-1">Meeting time:{time ? ` ${time}` : ''}</p>
-          <p className="mb-0">Meeting Location:{location ? ` ${location}` : ''}</p>
+          <p className="mb-1">Meeting time: {time || 'Not set'}</p>
+          <p className="mb-0">Meeting Location: {location || 'Not set'}</p>
         </div>
         <div className="d-flex gap-2 ms-auto">
           <Button
             type="button"
-            id={`reject-${club._id}`}
             variant="danger"
             size="sm"
             disabled={disabled}
@@ -98,30 +102,28 @@ export default function ClubReview() {
   const [actionError, setActionError] = useState('');
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [focusNonce, setFocusNonce] = useState(0);
   const busyRef = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusNextRef = useRef<string | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (focusNextRef.current === null) return;
     const nextId = focusNextRef.current;
     focusNextRef.current = null;
-    if (nextId) {
-      document.getElementById(`reject-${nextId}`)?.focus();
-      return;
-    }
-    headingRef.current?.focus();
-  }, [clubs]);
+    const target = nextId ? document.getElementById(`club-heading-${nextId}`) : headingRef.current;
+    target?.focus();
+  }, [focusNonce]);
 
   useEffect(() => {
     if (loading) return;
 
     if (!user) {
-      navigate('/login');
+      navigate('/login', { replace: true });
       return;
     }
     if (!user.isAdmin) {
-      navigate('/myClubs');
+      navigate('/myClubs', { replace: true });
       return;
     }
 
@@ -129,24 +131,16 @@ export default function ClubReview() {
 
     async function loadPending() {
       try {
-        const response = await fetch('/api/clubs/pending', { credentials: 'include' });
-        const data = await readJson(response);
+        const pending = await getPendingClubs();
+        if (!cancelled) setClubs(pending);
+      } catch (err) {
         if (cancelled) return;
-
-        if (response.status === 401) {
+        if (isUnauthorizedError(err)) {
           setUser(null);
-          navigate('/login');
+          navigate('/login', { replace: true });
           return;
         }
-        if (!response.ok) {
-          throw new Error(data?.message || 'Could not load club requests.');
-        }
-
-        setClubs(data?.clubs ?? []);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : 'Could not load club requests.');
-        }
+        setLoadError(err instanceof Error ? err.message : 'Could not load club requests.');
       } finally {
         if (!cancelled) setClubsLoading(false);
       }
@@ -158,44 +152,45 @@ export default function ClubReview() {
     };
   }, [loading, user, navigate, setUser]);
 
+  function moveFocus(id: string) {
+    focusNextRef.current = id;
+    setFocusNonce((nonce) => nonce + 1);
+  }
+
   function dropClub(removedId: string) {
-    setClubs((current) => {
-      const index = current.findIndex((item) => item._id === removedId);
-      const next = current[index + 1] ?? current[index - 1];
-      focusNextRef.current = next?._id ?? '';
-      return current.filter((item) => item._id !== removedId);
-    });
+    moveFocus(nextClubId(clubs, removedId));
+    setClubs((current) => current.filter((item) => item._id !== removedId));
   }
 
   async function decide(club: Club, action: 'approve' | 'reject') {
     if (busyRef.current) return;
+    document.getElementById(`club-heading-${club._id}`)?.focus();
     busyRef.current = true;
     setBusy(true);
     setActionError('');
+    setStatus('');
 
     try {
-      const response = await fetch(`/api/clubs/${encodeURIComponent(club._id)}/${action}`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await readJson(response);
-
-      if (response.status === 401) {
-        setUser(null);
-        navigate('/login');
-        return;
-      }
-      if (!response.ok) {
-        // A name clash leaves the request pending. Any other miss means another admin already decided it.
-        if (response.status === 404 || data?.code === 'ERR_CLUB_NOT_PENDING') {
-          dropClub(club._id);
-        }
-        throw new Error(data?.message || `Could not ${action} this club.`);
-      }
+      if (action === 'approve') await approveClub(club._id);
+      else await rejectClub(club._id);
 
       dropClub(club._id);
       setStatus(`${action === 'approve' ? 'Approved' : 'Rejected'} ${club.name}.`);
     } catch (err) {
+      if (isUnauthorizedError(err)) {
+        setUser(null);
+        navigate('/login', { replace: true });
+        return;
+      }
+
+      const statusCode = err instanceof Error ? (err as { status?: number }).status : undefined;
+      const code = err instanceof Error ? (err as { code?: string }).code : undefined;
+      // A name clash leaves the request pending. A missing or already decided club comes off the queue.
+      if (statusCode === 404 || code === 'ERR_CLUB_NOT_PENDING') {
+        dropClub(club._id);
+      } else {
+        moveFocus(club._id);
+      }
       setActionError(err instanceof Error ? err.message : `Could not ${action} this club.`);
     } finally {
       busyRef.current = false;
@@ -206,9 +201,6 @@ export default function ClubReview() {
   if (loading || !user?.isAdmin) return null;
 
   const showEmpty = !clubsLoading && !loadError && clubs.length === 0;
-  const announcement = clubsLoading
-    ? 'Loading club requests...'
-    : [status, showEmpty ? 'No clubs are waiting for review.' : ''].filter(Boolean).join(' ');
 
   return (
     <section aria-labelledby="club-approvals-heading" className="px-3 px-lg-5 py-4">
@@ -222,7 +214,7 @@ export default function ClubReview() {
         Club Approvals
       </h1>
       <p className="visually-hidden" role="status" aria-live="polite">
-        {announcement}
+        {status}
       </p>
 
       {loadError && (
@@ -238,16 +230,12 @@ export default function ClubReview() {
       )}
 
       {clubsLoading && (
-        <p aria-hidden="true" className="h5" style={{ color: '#3046C3' }}>
+        <p role="status" aria-live="polite" className="h5" style={{ color: '#3046C3' }}>
           Loading club requests...
         </p>
       )}
 
-      {showEmpty && (
-        <p aria-hidden="true" className="text-muted mb-0">
-          No clubs are waiting for review.
-        </p>
-      )}
+      {showEmpty && <p className="text-muted mb-0">No clubs are waiting for review.</p>}
 
       {clubs.length > 0 && (
         <ul className="list-unstyled d-flex flex-column gap-4 mb-0">
