@@ -9,6 +9,7 @@ import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchMessages, postMessage } from '../../api/messagingApi';
+import { subscribeConversationMessages } from '../../api/messagingSocket';
 import Message from './Message';
 import PostAnnouncementModal from '../modals/AnnouncementModal';
 
@@ -86,6 +87,32 @@ export default function MessageArea({
       ignore = true;
     };
   }, [conversationId, reloadKey]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const currentId = conversationId;
+    let ignore = false;
+
+    const unsubscribe = subscribeConversationMessages(currentId, {
+      onMessage: (msg) => setMessages((prev) => mergeMessages(prev, [msg])),
+      onReconnect: () => {
+        fetchMessages(currentId)
+          .then((data) => {
+            if (!ignore) {
+              setMessages((prev) => mergeMessages(prev, data));
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to resync messages after reconnect:', err);
+          });
+      },
+    });
+
+    return () => {
+      ignore = true;
+      unsubscribe();
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;

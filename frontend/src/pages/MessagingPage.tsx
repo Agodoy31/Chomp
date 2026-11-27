@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
@@ -15,22 +15,23 @@ import {
   fetchConversations,
   fetchConversationDetails,
 } from '../api/messagingApi';
+import {
+  applyConversationRenamedToDetails,
+  applyConversationRenamedToFeed,
+  applyCreatedMessageToFeed,
+  applyDeletedMessageToFeed,
+  applyParticipantAddedToDetails,
+  applyParticipantRemovedToDetails,
+  connectMessagingSocket,
+  disconnectMessagingSocket,
+  subscribeMessagingEvents,
+  syncConversationRooms,
+  upsertConversationFeed,
+} from '../api/messagingSocket';
 import { useAuth } from '../hooks/useAuth';
 
 const activity = (c: ConversationFeedItem) =>
   c.lastActivityAt ? Date.parse(c.lastActivityAt) : 0;
-
-// Insert or update a feed row, keeping whichever preview is newer; newer rows move to the top
-function upsertConversation(
-  list: ConversationFeedItem[],
-  incoming: ConversationFeedItem
-): ConversationFeedItem[] {
-  const existing = list.find((c) => c._id === incoming._id);
-  if (existing && activity(existing) > activity(incoming)) {
-    return list.map((c) => (c._id === incoming._id ? { ...incoming, ...existing } : c));
-  }
-  return [{ ...existing, ...incoming }, ...list.filter((c) => c._id !== incoming._id)];
-}
 
 export default function MessagingPage() {
   const { user, loading } = useAuth();
@@ -46,6 +47,81 @@ export default function MessagingPage() {
   const [isMobileChatOpen, setIsMobileChatOpen] = useState<boolean>(false);
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  const userId = user?.id;
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+
+    connectMessagingSocket();
+    const unsubscribe = subscribeMessagingEvents({
+      onMessageCreated: (msg) =>
+        setConversations((prev) => applyCreatedMessageToFeed(prev, msg)),
+      onMessageDeleted: (msg) =>
+        setConversations((prev) => applyDeletedMessageToFeed(prev, msg)),
+      onConversationRenamed: ({ conversationId, title }) => {
+        setActiveDetails((prev) =>
+          applyConversationRenamedToDetails(prev, conversationId, title)
+        );
+        setConversations((prev) =>
+          applyConversationRenamedToFeed(prev, conversationId, title)
+        );
+      },
+      onParticipantAdded: (payload) =>
+        setActiveDetails((prev) =>
+          applyParticipantAddedToDetails(prev, payload)
+        ),
+      onParticipantRemoved: (payload) =>
+        setActiveDetails((prev) =>
+          applyParticipantRemovedToDetails(prev, payload)
+        ),
+      onConversationAdded: ({ conversation }) =>
+        setConversations((prev) => upsertConversationFeed(prev, conversation)),
+      onConversationRemoved: ({ conversationId }) => {
+        setConversations((prev) => prev.filter((c) => c._id !== conversationId));
+        if (activeConversationIdRef.current === conversationId) {
+          setActiveConversationId(null);
+          setActiveDetails(null);
+          setDetailsError(null);
+          setIsModalDisplayed(false);
+          setIsMobileChatOpen(false);
+        }
+      },
+      onReconnect: () => {
+        setReloadKey((key) => key + 1);
+        const currentActiveId = activeConversationIdRef.current;
+        if (currentActiveId) {
+          fetchConversationDetails(currentActiveId)
+            .then((details) => {
+              if (activeConversationIdRef.current === currentActiveId) {
+                setActiveDetails(details);
+                setDetailsError(null);
+              }
+            })
+            .catch((err) => {
+              console.error('Failed to resync conversation details:', err);
+            });
+        }
+      },
+    });
+
+    return () => {
+      unsubscribe();
+      disconnectMessagingSocket();
+    };
+  }, [loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    syncConversationRooms(
+      conversations.map((c) => c._id),
+      activeConversationId
+    );
+  }, [loading, userId, conversations, activeConversationId]);
 
   const handleSelectConversation = (conv: ConversationFeedItem) => {
     setDetailsError(null);
@@ -146,7 +222,7 @@ export default function MessagingPage() {
     setActiveConversationId(newConv._id);
     setIsMobileChatOpen(true);
     setConversations((prev) =>
-      upsertConversation(prev, {
+      upsertConversationFeed(prev, {
         _id: newConv._id,
         type: newConv.type,
         displayName: newConv.displayName,
@@ -161,7 +237,7 @@ export default function MessagingPage() {
       fetchConversations()
         .then((feed) => {
           const item = feed.find((c) => c._id === newConv._id);
-          if (item) setConversations((prev) => upsertConversation(prev, item));
+          if (item) setConversations((prev) => upsertConversationFeed(prev, item));
         })
         .catch((err) => console.error('Failed to refresh conversations:', err));
     }
@@ -173,7 +249,7 @@ export default function MessagingPage() {
       : '';
     setConversations((prev) => {
       const existing = prev.find((c) => c._id === conv._id);
-      return upsertConversation(prev, {
+      return upsertConversationFeed(prev, {
         _id: conv._id,
         type: conv.type,
         displayName: existing?.displayName ?? conv.displayName,

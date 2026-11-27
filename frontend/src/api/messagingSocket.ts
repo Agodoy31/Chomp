@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type {
+  ConversationDetails,
   ConversationFeedItem,
   ConversationParticipant,
 } from '../types/Messaging/Conversation';
@@ -74,7 +75,10 @@ export type MessagingSocket = Socket<
 // Max simultaneous chat:join_room requests so large conversation lists don't flood the server
 const JOIN_CONCURRENCY = 10;
 
-let socket: MessagingSocket | null = null;
+const socket: MessagingSocket = io({
+  withCredentials: true,
+  autoConnect: false,
+});
 const desiredRooms = new Set<string>();
 const joinedRooms = new Set<string>();
 const inFlightJoins = new Set<string>();
@@ -114,7 +118,7 @@ function nextRoomToJoin(): string | null {
 }
 
 function pumpJoinQueue() {
-  if (!socket?.connected) {
+  if (!socket.connected) {
     return;
   }
 
@@ -135,13 +139,13 @@ function pumpJoinQueue() {
         return;
       }
 
-      if (ack?.ok) {
+      if (ack.ok) {
         if (desiredRooms.has(conversationId)) {
           joinedRooms.add(conversationId);
-        } else if (socket?.connected) {
+        } else if (socket.connected) {
           socket.emit('chat:leave_room', { conversationId });
         }
-      } else if (ack?.code === 'ERR_AUTHENTICATION_REQUIRED') {
+      } else if (ack.code === 'ERR_AUTHENTICATION_REQUIRED') {
         disconnectMessagingSocket();
         window.dispatchEvent(new Event('auth:unauthorized'));
         return;
@@ -154,48 +158,40 @@ function pumpJoinQueue() {
   }
 }
 
-export function getMessagingSocket(): MessagingSocket {
-  if (!socket) {
-    socket = io({
-      withCredentials: true,
-      autoConnect: false,
-    });
+socket.on('connect', () => {
+  resetConnectionRoomState();
+  pumpJoinQueue();
+});
 
-    socket.on('connect', () => {
-      resetConnectionRoomState();
-      pumpJoinQueue();
-    });
+socket.on('disconnect', () => {
+  resetConnectionRoomState();
+});
 
-    socket.on('disconnect', () => {
-      resetConnectionRoomState();
-    });
-
-    socket.on('connect_error', (err) => {
-      if (err.message === 'ERR_AUTHENTICATION_REQUIRED') {
-        disconnectMessagingSocket();
-        window.dispatchEvent(new Event('auth:unauthorized'));
-      }
-    });
+socket.on('connect_error', (err) => {
+  if (err.message === 'ERR_AUTHENTICATION_REQUIRED') {
+    disconnectMessagingSocket();
+    window.dispatchEvent(new Event('auth:unauthorized'));
   }
+});
 
+export function getMessagingSocket(): MessagingSocket {
   return socket;
 }
 
 export function connectMessagingSocket(): MessagingSocket {
-  const client = getMessagingSocket();
-  if (!client.connected) {
-    client.connect();
+  if (!socket.connected) {
+    socket.connect();
   } else {
     pumpJoinQueue();
   }
-  return client;
+  return socket;
 }
 
 export function disconnectMessagingSocket(): void {
   desiredRooms.clear();
   priorityRoom = null;
   resetConnectionRoomState();
-  socket?.disconnect();
+  socket.disconnect();
 }
 
 /**
@@ -216,7 +212,7 @@ export function syncConversationRooms(
     if (!nextDesired.has(id)) {
       desiredRooms.delete(id);
       failedRooms.delete(id);
-      if (joinedRooms.delete(id) && socket?.connected) {
+      if (joinedRooms.delete(id) && socket.connected) {
         socket.emit('chat:leave_room', { conversationId: id });
       }
     }
@@ -227,4 +223,198 @@ export function syncConversationRooms(
   }
 
   pumpJoinQueue();
+}
+
+export interface MessagingEventHandlers {
+  onMessageCreated?: (payload: IMessage) => void;
+  onMessageDeleted?: (payload: IMessage) => void;
+  onConversationRenamed?: (payload: ConversationRenamedPayload) => void;
+  onParticipantAdded?: (payload: ParticipantAddedPayload) => void;
+  onParticipantRemoved?: (payload: ParticipantRemovedPayload) => void;
+  onConversationAdded?: (payload: InboxConversationAddedPayload) => void;
+  onConversationRemoved?: (payload: InboxConversationRemovedPayload) => void;
+  onReconnect?: () => void;
+}
+
+export function subscribeMessagingEvents(
+  handlers: MessagingEventHandlers
+): () => void {
+  if (handlers.onMessageCreated) {
+    socket.on('message:created', handlers.onMessageCreated);
+  }
+  if (handlers.onMessageDeleted) {
+    socket.on('message:deleted', handlers.onMessageDeleted);
+  }
+  if (handlers.onConversationRenamed) {
+    socket.on('conversation:renamed', handlers.onConversationRenamed);
+  }
+  if (handlers.onParticipantAdded) {
+    socket.on('participant:added', handlers.onParticipantAdded);
+  }
+  if (handlers.onParticipantRemoved) {
+    socket.on('participant:removed', handlers.onParticipantRemoved);
+  }
+  if (handlers.onConversationAdded) {
+    socket.on('inbox:conversation_added', handlers.onConversationAdded);
+  }
+  if (handlers.onConversationRemoved) {
+    socket.on('inbox:conversation_removed', handlers.onConversationRemoved);
+  }
+  if (handlers.onReconnect) {
+    socket.io.on('reconnect', handlers.onReconnect);
+  }
+
+  return () => {
+    if (handlers.onMessageCreated) {
+      socket.off('message:created', handlers.onMessageCreated);
+    }
+    if (handlers.onMessageDeleted) {
+      socket.off('message:deleted', handlers.onMessageDeleted);
+    }
+    if (handlers.onConversationRenamed) {
+      socket.off('conversation:renamed', handlers.onConversationRenamed);
+    }
+    if (handlers.onParticipantAdded) {
+      socket.off('participant:added', handlers.onParticipantAdded);
+    }
+    if (handlers.onParticipantRemoved) {
+      socket.off('participant:removed', handlers.onParticipantRemoved);
+    }
+    if (handlers.onConversationAdded) {
+      socket.off('inbox:conversation_added', handlers.onConversationAdded);
+    }
+    if (handlers.onConversationRemoved) {
+      socket.off('inbox:conversation_removed', handlers.onConversationRemoved);
+    }
+    if (handlers.onReconnect) {
+      socket.io.off('reconnect', handlers.onReconnect);
+    }
+  };
+}
+
+export function subscribeConversationMessages(
+  conversationId: string,
+  handlers: {
+    onMessage: (message: IMessage) => void;
+    onReconnect?: () => void;
+  }
+): () => void {
+  const handleMessage = (msg: IMessage) => {
+    if (msg.conversationId === conversationId) {
+      handlers.onMessage(msg);
+    }
+  };
+
+  return subscribeMessagingEvents({
+    onMessageCreated: handleMessage,
+    onMessageDeleted: handleMessage,
+    onReconnect: handlers.onReconnect,
+  });
+}
+
+const getActivityTimestamp = (c: ConversationFeedItem) =>
+  c.lastActivityAt ? Date.parse(c.lastActivityAt) : 0;
+
+// Insert or update a feed row, keeping whichever preview is newer; newer rows move to the top
+export function upsertConversationFeed(
+  list: ConversationFeedItem[],
+  incoming: ConversationFeedItem
+): ConversationFeedItem[] {
+  const existing = list.find((c) => c._id === incoming._id);
+  if (
+    existing &&
+    getActivityTimestamp(existing) > getActivityTimestamp(incoming)
+  ) {
+    return list.map((c) =>
+      c._id === incoming._id ? { ...incoming, ...existing } : c
+    );
+  }
+  return [
+    { ...existing, ...incoming },
+    ...list.filter((c) => c._id !== incoming._id),
+  ];
+}
+
+export function applyCreatedMessageToFeed(
+  list: ConversationFeedItem[],
+  msg: IMessage
+): ConversationFeedItem[] {
+  const existing = list.find((c) => c._id === msg.conversationId);
+  if (!existing) return list;
+  const senderName = msg.sender
+    ? `${msg.sender.firstName} ${msg.sender.lastName}`.trim()
+    : '';
+  return upsertConversationFeed(list, {
+    ...existing,
+    lastActivityAt: msg.createdAt,
+    lastMessage: {
+      text: msg.text,
+      senderName: senderName || 'Unknown',
+      createdAt: msg.createdAt,
+    },
+  });
+}
+
+export function applyDeletedMessageToFeed(
+  list: ConversationFeedItem[],
+  msg: IMessage
+): ConversationFeedItem[] {
+  return list.map((c) =>
+    c._id === msg.conversationId && c.lastMessage?.createdAt === msg.createdAt
+      ? {
+          ...c,
+          lastMessage: {
+            ...c.lastMessage,
+            text: msg.text,
+          },
+        }
+      : c
+  );
+}
+
+export function applyConversationRenamedToFeed(
+  list: ConversationFeedItem[],
+  conversationId: string,
+  title: string
+): ConversationFeedItem[] {
+  return list.map((c) =>
+    c._id === conversationId ? { ...c, displayName: title } : c
+  );
+}
+
+export function applyConversationRenamedToDetails(
+  details: ConversationDetails | null,
+  conversationId: string,
+  title: string
+): ConversationDetails | null {
+  return details?._id === conversationId
+    ? { ...details, displayName: title, title }
+    : details;
+}
+
+export function applyParticipantAddedToDetails(
+  details: ConversationDetails | null,
+  { conversationId, participants }: ParticipantAddedPayload
+): ConversationDetails | null {
+  if (details?._id !== conversationId) return details;
+  const byId = new Map(
+    [...details.participants, ...participants].map((p) => [p.userId._id, p])
+  );
+  const merged = [...byId.values()].sort(
+    (a, b) =>
+      a.userId.firstName.localeCompare(b.userId.firstName) ||
+      a.userId.lastName.localeCompare(b.userId.lastName)
+  );
+  return { ...details, participants: merged };
+}
+
+export function applyParticipantRemovedToDetails(
+  details: ConversationDetails | null,
+  { conversationId, userId }: ParticipantRemovedPayload
+): ConversationDetails | null {
+  if (details?._id !== conversationId) return details;
+  return {
+    ...details,
+    participants: details.participants.filter((p) => p.userId._id !== userId),
+  };
 }
