@@ -237,3 +237,11 @@ export async function updateMemberRole(
     body: JSON.stringify({ role }),
   });
 }
+
+/**
+ * Removes another member. Removed members cannot rejoin. Self-removal is rejected.
+ * Endpoint: DELETE /api/clubs/:clubId/members/:userId
+ */
+export async function removeMember(clubId: string, userId: string): Promise<void> {
+  await request(clubUrl(clubId, `/members/${encodeURIComponent(userId)}`), { method: 'DELETE' });
+}
