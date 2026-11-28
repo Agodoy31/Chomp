@@ -28,7 +28,6 @@ interface MessageAreaProps {
   onBackToList?: () => void;
   onOpenDetails: () => void;
   onMessageSent: (conversation: ConversationDetails, message: IMessage) => void;
-  isOfficer?: (userId: string) => boolean;
   headingLevel?: 'h1' | 'h2';
   historyFocusable?: boolean;
   detailsExpanded?: boolean;
@@ -42,7 +41,6 @@ export default function MessageArea({
   onBackToList,
   onOpenDetails,
   onMessageSent,
-  isOfficer,
   headingLevel = 'h1',
   historyFocusable = false,
   detailsExpanded,
@@ -176,6 +174,12 @@ export default function MessageArea({
   }
 
   const participants = conversation.participants || [];
+  const senderIsOfficer = (userId: string | undefined) =>
+    conversation.type === 'CHANNEL' &&
+    Boolean(userId) &&
+    participants.some(
+      (participant) => participant.userId._id === userId && participant.permission === 'MODERATE'
+    );
 
   // Check client-side permissions strictly from participant membership
   const currentUserParticipant = currentUserId
@@ -393,7 +397,7 @@ export default function MessageArea({
                 isCurrentUser={Boolean(
                   currentUserId && msg.sender?._id === currentUserId
                 )}
-                officer={Boolean(msg.sender?._id && isOfficer?.(msg.sender._id))}
+                officer={senderIsOfficer(msg.sender?._id)}
               />
             ))}
           </div>

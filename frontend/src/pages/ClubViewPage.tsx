@@ -3,14 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import { InfoCircle } from 'react-bootstrap-icons';
-import { getClub, getClubChannels, getClubMembers, isUnauthorizedError } from '../api/clubApi';
+import { getClub, getClubChannels, isUnauthorizedError } from '../api/clubApi';
 import { fetchConversationDetails } from '../api/messagingApi';
 import ConversationDetailsModal from '../components/Messaging/ConversationDetailsModal';
 import MessageArea from '../components/Messaging/MessageArea';
 import { clubChannelPath } from '../clubChannelPath';
 import ClubInfoModal from '../components/modals/ClubInfoModal';
 import { useAuth } from '../hooks/useAuth';
-import type { ClubChannel, ClubDetails, ClubMember } from '../types/club';
+import type { ClubChannel, ClubDetails } from '../types/club';
 import type { ConversationDetails } from '../types/Messaging/Conversation';
 import './ClubViewPage.css';
 
@@ -19,7 +19,6 @@ type ClubLoad = {
   requestKey: number;
   club: ClubDetails | null;
   channels: ClubChannel[];
-  officerIds: string[];
   error: string;
 };
 
@@ -113,24 +112,14 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
     const controller = new AbortController();
     let ignore = false;
 
-    Promise.all([
-      getClub(clubId, controller.signal),
-      getClubChannels(clubId, controller.signal),
-      getClubMembers(clubId, controller.signal).catch((err: unknown) => {
-        if (isUnauthorizedError(err) || isAbort(err)) throw err;
-        return [] as ClubMember[];
-      }),
-    ])
-      .then(([club, channels, members]) => {
+    Promise.all([getClub(clubId, controller.signal), getClubChannels(clubId, controller.signal)])
+      .then(([club, channels]) => {
         if (ignore) return;
         setClubLoad({
           clubId,
           requestKey: reloadKey,
           club,
           channels,
-          officerIds: members
-            .filter((member) => member.role === 'OFFICER')
-            .map((member) => String(member.userId)),
           error: '',
         });
       })
@@ -146,7 +135,6 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
           requestKey: reloadKey,
           club: null,
           channels: [],
-          officerIds: [],
           error: errorText(err, 'Could not load this club.'),
         });
       });
@@ -227,7 +215,6 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
   }
 
   const club = loadedClub.club;
-  const officerIds = loadedClub.officerIds;
 
   return (
     <div className="club-view">
@@ -306,7 +293,6 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
             onRetryDetails={() => setDetailReloadKey((key) => key + 1)}
             onOpenDetails={() => setShowDetails(true)}
             onMessageSent={() => undefined}
-            isOfficer={(userId) => officerIds.includes(userId)}
           />
         ) : channelUnavailable ? (
           <div className="d-flex flex-grow-1 align-items-center justify-content-center p-4" role="status">
