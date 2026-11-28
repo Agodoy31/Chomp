@@ -74,6 +74,7 @@ export type MessagingSocket = Socket<
 
 // Max simultaneous chat:join_room requests so large conversation lists don't flood the server
 const JOIN_CONCURRENCY = 10;
+const JOIN_TIMEOUT_MS = 10_000;
 
 const socket: MessagingSocket = io({
   withCredentials: true,
@@ -83,8 +84,14 @@ const desiredRooms = new Set<string>();
 const joinedRooms = new Set<string>();
 const inFlightJoins = new Set<string>();
 const failedRooms = new Set<string>();
+const roomJoinedListeners = new Set<
+  (conversationId: string, isReconnect: boolean) => void
+>();
+const roomAccessDeniedListeners = new Set<(conversationId: string) => void>();
 let priorityRoom: string | null = null;
 let connectionEpoch = 0;
+let hasConnectedOnce = false;
+let isReconnectEpoch = false;
 
 function resetConnectionRoomState() {
   connectionEpoch += 1;
@@ -130,35 +137,53 @@ function pumpJoinQueue() {
 
     inFlightJoins.add(conversationId);
     const epoch = connectionEpoch;
+    const isReconnect = isReconnectEpoch;
 
-    socket.emit('chat:join_room', { conversationId }, (ack) => {
-      inFlightJoins.delete(conversationId);
+    socket
+      .timeout(JOIN_TIMEOUT_MS)
+      .emit('chat:join_room', { conversationId }, (err, ack) => {
+        inFlightJoins.delete(conversationId);
 
-      if (epoch !== connectionEpoch) {
-        pumpJoinQueue();
-        return;
-      }
-
-      if (ack.ok) {
-        if (desiredRooms.has(conversationId)) {
-          joinedRooms.add(conversationId);
-        } else if (socket.connected) {
-          socket.emit('chat:leave_room', { conversationId });
+        if (epoch !== connectionEpoch) {
+          pumpJoinQueue();
+          return;
         }
-      } else if (ack.code === 'ERR_AUTHENTICATION_REQUIRED') {
-        disconnectMessagingSocket();
-        window.dispatchEvent(new Event('auth:unauthorized'));
-        return;
-      } else {
-        failedRooms.add(conversationId);
-      }
 
-      pumpJoinQueue();
-    });
+        if (!err && ack) {
+          if (ack.ok) {
+            if (desiredRooms.has(conversationId)) {
+              joinedRooms.add(conversationId);
+              failedRooms.delete(conversationId);
+              for (const listener of roomJoinedListeners) {
+                listener(conversationId, isReconnect);
+              }
+            } else if (socket.connected) {
+              socket.emit('chat:leave_room', { conversationId });
+            }
+          } else if (ack.code === 'ERR_AUTHENTICATION_REQUIRED') {
+            disconnectMessagingSocket();
+            window.dispatchEvent(new Event('auth:unauthorized'));
+            return;
+          } else if (ack.code === 'ERR_CONVERSATION_NOT_FOUND') {
+            failedRooms.add(conversationId);
+            for (const listener of roomAccessDeniedListeners) {
+              listener(conversationId);
+            }
+          } else {
+            failedRooms.add(conversationId);
+          }
+        } else {
+          failedRooms.add(conversationId);
+        }
+
+        pumpJoinQueue();
+      });
   }
 }
 
 socket.on('connect', () => {
+  isReconnectEpoch = hasConnectedOnce;
+  hasConnectedOnce = true;
   resetConnectionRoomState();
   pumpJoinQueue();
 });
@@ -190,8 +215,20 @@ export function connectMessagingSocket(): MessagingSocket {
 export function disconnectMessagingSocket(): void {
   desiredRooms.clear();
   priorityRoom = null;
+  hasConnectedOnce = false;
+  isReconnectEpoch = false;
   resetConnectionRoomState();
   socket.disconnect();
+}
+
+/**
+ * Clears any previous failed join attempt for a conversation and immediately queues a retry.
+ */
+export function retryConversationRoom(conversationId: string): void {
+  failedRooms.delete(conversationId);
+  desiredRooms.add(conversationId);
+  priorityRoom = conversationId;
+  pumpJoinQueue();
 }
 
 /**
@@ -205,6 +242,9 @@ export function syncConversationRooms(
   const nextDesired = new Set(conversationIds);
   if (activeConversationId) {
     nextDesired.add(activeConversationId);
+    if (activeConversationId !== priorityRoom) {
+      failedRooms.delete(activeConversationId);
+    }
   }
   priorityRoom = activeConversationId;
 
@@ -233,6 +273,7 @@ export interface MessagingEventHandlers {
   onParticipantRemoved?: (payload: ParticipantRemovedPayload) => void;
   onConversationAdded?: (payload: InboxConversationAddedPayload) => void;
   onConversationRemoved?: (payload: InboxConversationRemovedPayload) => void;
+  onRoomAccessDenied?: (conversationId: string) => void;
   onReconnect?: () => void;
 }
 
@@ -260,6 +301,9 @@ export function subscribeMessagingEvents(
   if (handlers.onConversationRemoved) {
     socket.on('inbox:conversation_removed', handlers.onConversationRemoved);
   }
+  if (handlers.onRoomAccessDenied) {
+    roomAccessDeniedListeners.add(handlers.onRoomAccessDenied);
+  }
   if (handlers.onReconnect) {
     socket.io.on('reconnect', handlers.onReconnect);
   }
@@ -286,6 +330,9 @@ export function subscribeMessagingEvents(
     if (handlers.onConversationRemoved) {
       socket.off('inbox:conversation_removed', handlers.onConversationRemoved);
     }
+    if (handlers.onRoomAccessDenied) {
+      roomAccessDeniedListeners.delete(handlers.onRoomAccessDenied);
+    }
     if (handlers.onReconnect) {
       socket.io.off('reconnect', handlers.onReconnect);
     }
@@ -296,7 +343,7 @@ export function subscribeConversationMessages(
   conversationId: string,
   handlers: {
     onMessage: (message: IMessage) => void;
-    onReconnect?: () => void;
+    onRoomRejoined?: () => void;
   }
 ): () => void {
   const handleMessage = (msg: IMessage) => {
@@ -305,11 +352,25 @@ export function subscribeConversationMessages(
     }
   };
 
-  return subscribeMessagingEvents({
+  const handleRoomJoined = (joinedId: string, isReconnect: boolean) => {
+    if (joinedId === conversationId && isReconnect) {
+      handlers.onRoomRejoined?.();
+    }
+  };
+
+  if (handlers.onRoomRejoined) {
+    roomJoinedListeners.add(handleRoomJoined);
+  }
+
+  const unsubscribeEvents = subscribeMessagingEvents({
     onMessageCreated: handleMessage,
     onMessageDeleted: handleMessage,
-    onReconnect: handlers.onReconnect,
   });
+
+  return () => {
+    roomJoinedListeners.delete(handleRoomJoined);
+    unsubscribeEvents();
+  };
 }
 
 const getActivityTimestamp = (c: ConversationFeedItem) =>
@@ -351,6 +412,7 @@ export function applyCreatedMessageToFeed(
       text: msg.text,
       senderName: senderName || 'Unknown',
       createdAt: msg.createdAt,
+      messageId: msg._id,
     },
   });
 }
@@ -359,17 +421,25 @@ export function applyDeletedMessageToFeed(
   list: ConversationFeedItem[],
   msg: IMessage
 ): ConversationFeedItem[] {
-  return list.map((c) =>
-    c._id === msg.conversationId && c.lastMessage?.createdAt === msg.createdAt
-      ? {
-          ...c,
-          lastMessage: {
-            ...c.lastMessage,
-            text: msg.text,
-          },
-        }
-      : c
-  );
+  const senderName = msg.sender
+    ? `${msg.sender.firstName} ${msg.sender.lastName}`.trim()
+    : '';
+  return list.map((c) => {
+    if (c._id !== msg.conversationId || !c.lastMessage) return c;
+    const isMatch = c.lastMessage.messageId
+      ? c.lastMessage.messageId === msg._id
+      : c.lastMessage.createdAt === msg.createdAt &&
+        (!senderName || c.lastMessage.senderName === senderName);
+    if (!isMatch) return c;
+    return {
+      ...c,
+      lastMessage: {
+        ...c.lastMessage,
+        text: msg.text,
+        messageId: msg._id,
+      },
+    };
+  });
 }
 
 export function applyConversationRenamedToFeed(

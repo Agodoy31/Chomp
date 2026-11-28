@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
@@ -24,6 +24,7 @@ import {
   applyParticipantRemovedToDetails,
   connectMessagingSocket,
   disconnectMessagingSocket,
+  retryConversationRoom,
   subscribeMessagingEvents,
   syncConversationRooms,
   upsertConversationFeed,
@@ -32,6 +33,19 @@ import { useAuth } from '../hooks/useAuth';
 
 const activity = (c: ConversationFeedItem) =>
   c.lastActivityAt ? Date.parse(c.lastActivityAt) : 0;
+
+function isAccessLostError(err: unknown): boolean {
+  const status =
+    typeof err === 'object' && err !== null && 'status' in err
+      ? (err as { status?: number }).status
+      : undefined;
+  return status === 403 || status === 404;
+}
+
+type FeedUpdater = (list: ConversationFeedItem[]) => ConversationFeedItem[];
+type DetailsUpdater = (
+  details: ConversationDetails | null
+) => ConversationDetails | null;
 
 export default function MessagingPage() {
   const { user, loading } = useAuth();
@@ -48,7 +62,52 @@ export default function MessagingPage() {
   const [isModalDisplayed, setIsModalDisplayed] = useState<boolean>(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
   const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  const mutationSeqRef = useRef(0);
+  const feedInFlightCountRef = useRef(0);
+  const feedEventsDuringFetchRef = useRef<
+    Array<{ seq: number; apply: FeedUpdater }>
+  >([]);
+  const detailsInFlightCountRef = useRef(0);
+  const detailsEventsDuringFetchRef = useRef<
+    Array<{ seq: number; apply: DetailsUpdater }>
+  >([]);
   const userId = user?.id;
+
+  const applyLiveFeedUpdate = useCallback((updater: FeedUpdater) => {
+    if (feedInFlightCountRef.current > 0) {
+      feedEventsDuringFetchRef.current.push({
+        seq: ++mutationSeqRef.current,
+        apply: updater,
+      });
+    }
+    setConversations(updater);
+  }, []);
+
+  const applyLiveDetailsUpdate = useCallback((updater: DetailsUpdater) => {
+    if (detailsInFlightCountRef.current > 0) {
+      detailsEventsDuringFetchRef.current.push({
+        seq: ++mutationSeqRef.current,
+        apply: updater,
+      });
+    }
+    setActiveDetails(updater);
+  }, []);
+
+  const clearRemovedConversation = useCallback(
+    (conversationId: string) => {
+      applyLiveFeedUpdate((prev) =>
+        prev.filter((c) => c._id !== conversationId)
+      );
+      if (activeConversationIdRef.current === conversationId) {
+        setActiveConversationId(null);
+        setActiveDetails(null);
+        setDetailsError(null);
+        setIsModalDisplayed(false);
+        setIsMobileChatOpen(false);
+      }
+    },
+    [applyLiveFeedUpdate]
+  );
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -60,50 +119,67 @@ export default function MessagingPage() {
     connectMessagingSocket();
     const unsubscribe = subscribeMessagingEvents({
       onMessageCreated: (msg) =>
-        setConversations((prev) => applyCreatedMessageToFeed(prev, msg)),
+        applyLiveFeedUpdate((prev) => applyCreatedMessageToFeed(prev, msg)),
       onMessageDeleted: (msg) =>
-        setConversations((prev) => applyDeletedMessageToFeed(prev, msg)),
+        applyLiveFeedUpdate((prev) => applyDeletedMessageToFeed(prev, msg)),
       onConversationRenamed: ({ conversationId, title }) => {
-        setActiveDetails((prev) =>
+        applyLiveDetailsUpdate((prev) =>
           applyConversationRenamedToDetails(prev, conversationId, title)
         );
-        setConversations((prev) =>
+        applyLiveFeedUpdate((prev) =>
           applyConversationRenamedToFeed(prev, conversationId, title)
         );
       },
       onParticipantAdded: (payload) =>
-        setActiveDetails((prev) =>
+        applyLiveDetailsUpdate((prev) =>
           applyParticipantAddedToDetails(prev, payload)
         ),
       onParticipantRemoved: (payload) =>
-        setActiveDetails((prev) =>
+        applyLiveDetailsUpdate((prev) =>
           applyParticipantRemovedToDetails(prev, payload)
         ),
       onConversationAdded: ({ conversation }) =>
-        setConversations((prev) => upsertConversationFeed(prev, conversation)),
+        applyLiveFeedUpdate((prev) =>
+          upsertConversationFeed(prev, conversation)
+        ),
       onConversationRemoved: ({ conversationId }) => {
-        setConversations((prev) => prev.filter((c) => c._id !== conversationId));
-        if (activeConversationIdRef.current === conversationId) {
-          setActiveConversationId(null);
-          setActiveDetails(null);
-          setDetailsError(null);
-          setIsModalDisplayed(false);
-          setIsMobileChatOpen(false);
-        }
+        clearRemovedConversation(conversationId);
+      },
+      onRoomAccessDenied: (conversationId) => {
+        clearRemovedConversation(conversationId);
       },
       onReconnect: () => {
         setReloadKey((key) => key + 1);
         const currentActiveId = activeConversationIdRef.current;
         if (currentActiveId) {
+          const startSeq = mutationSeqRef.current;
+          detailsInFlightCountRef.current += 1;
           fetchConversationDetails(currentActiveId)
             .then((details) => {
               if (activeConversationIdRef.current === currentActiveId) {
-                setActiveDetails(details);
+                const pending = detailsEventsDuringFetchRef.current.filter(
+                  (e) => e.seq > startSeq
+                );
+                const reconciled = pending.reduce<ConversationDetails | null>(
+                  (acc, event) => event.apply(acc),
+                  details
+                );
+                setActiveDetails(reconciled);
                 setDetailsError(null);
               }
             })
             .catch((err) => {
+              if (isAccessLostError(err)) {
+                clearRemovedConversation(currentActiveId);
+                return;
+              }
               console.error('Failed to resync conversation details:', err);
+            })
+            .finally(() => {
+              detailsInFlightCountRef.current -= 1;
+              if (detailsInFlightCountRef.current === 0) {
+                detailsEventsDuringFetchRef.current = [];
+              }
             });
         }
       },
@@ -113,7 +189,13 @@ export default function MessagingPage() {
       unsubscribe();
       disconnectMessagingSocket();
     };
-  }, [loading, userId]);
+  }, [
+    loading,
+    userId,
+    applyLiveFeedUpdate,
+    applyLiveDetailsUpdate,
+    clearRemovedConversation,
+  ]);
 
   useEffect(() => {
     if (loading || !userId) return;
@@ -128,6 +210,7 @@ export default function MessagingPage() {
     if (conv._id === activeConversationId && activeDetails?._id !== conv._id) {
       setDetailsReloadKey((key) => key + 1);
     }
+    retryConversationRoom(conv._id);
     setActiveConversationId(conv._id);
     setIsMobileChatOpen(true);
   };
@@ -141,22 +224,41 @@ export default function MessagingPage() {
       return;
     }
 
+    const currentId = activeConversationId;
     let ignore = false;
     async function fetchDetails() {
+      const startSeq = mutationSeqRef.current;
+      detailsInFlightCountRef.current += 1;
       try {
-        const details = await fetchConversationDetails(activeConversationId!);
+        const details = await fetchConversationDetails(currentId);
         if (!ignore) {
+          const pending = detailsEventsDuringFetchRef.current.filter(
+            (e) => e.seq > startSeq
+          );
+          const reconciled = pending.reduce<ConversationDetails | null>(
+            (acc, event) => event.apply(acc),
+            details
+          );
           setDetailsError(null);
-          setActiveDetails(details);
+          setActiveDetails(reconciled);
         }
       } catch (err) {
         if (ignore) return;
+        if (isAccessLostError(err)) {
+          clearRemovedConversation(currentId);
+          return;
+        }
         console.error('Failed to load conversation details:', err);
         setDetailsError(
           err instanceof Error && err.message
             ? err.message
             : 'Failed to load conversation details'
         );
+      } finally {
+        detailsInFlightCountRef.current -= 1;
+        if (detailsInFlightCountRef.current === 0) {
+          detailsEventsDuringFetchRef.current = [];
+        }
       }
     }
 
@@ -164,19 +266,30 @@ export default function MessagingPage() {
     return () => {
       ignore = true;
     };
-  }, [activeConversationId, activeDetails?._id, reloadKey, detailsReloadKey]);
+  }, [
+    activeConversationId,
+    activeDetails?._id,
+    reloadKey,
+    detailsReloadKey,
+    clearRemovedConversation,
+  ]);
 
   useEffect(() => {
     if (loading || !user) return;
     let ignore = false;
 
     async function loadConversations() {
+      const startSeq = mutationSeqRef.current;
+      feedInFlightCountRef.current += 1;
       setIsLoadingConversations(true);
       setLoadError(null);
       try {
         const feed = await fetchConversations();
         if (ignore) return;
-        // Server metadata always wins; only keep strictly newer local previews or unsent local DMs
+        const pendingEvents = feedEventsDuringFetchRef.current.filter(
+          (e) => e.seq > startSeq
+        );
+        // Server metadata wins for older state; replay any live socket events that arrived in flight
         setConversations((local) => {
           const merged = feed.map((item) => {
             const row = local.find((c) => c._id === item._id);
@@ -192,7 +305,14 @@ export default function MessagingPage() {
           const localOnly = local.filter(
             (row) => !row.lastMessage && !feed.some((item) => item._id === row._id)
           );
-          return [...localOnly, ...merged.sort((a, b) => activity(b) - activity(a))];
+          const baseList = [
+            ...localOnly,
+            ...merged.sort((a, b) => activity(b) - activity(a)),
+          ];
+          return pendingEvents.reduce(
+            (acc, event) => event.apply(acc),
+            baseList
+          );
         });
         // Only auto-select when the user hasn't already opened a chat
         if (feed.length > 0) {
@@ -205,6 +325,10 @@ export default function MessagingPage() {
           err instanceof Error ? err.message : 'Failed to load conversations'
         );
       } finally {
+        feedInFlightCountRef.current -= 1;
+        if (feedInFlightCountRef.current === 0) {
+          feedEventsDuringFetchRef.current = [];
+        }
         if (!ignore) setIsLoadingConversations(false);
       }
     }
@@ -221,7 +345,7 @@ export default function MessagingPage() {
     setActiveDetails(newConv);
     setActiveConversationId(newConv._id);
     setIsMobileChatOpen(true);
-    setConversations((prev) =>
+    applyLiveFeedUpdate((prev) =>
       upsertConversationFeed(prev, {
         _id: newConv._id,
         type: newConv.type,
@@ -237,7 +361,9 @@ export default function MessagingPage() {
       fetchConversations()
         .then((feed) => {
           const item = feed.find((c) => c._id === newConv._id);
-          if (item) setConversations((prev) => upsertConversationFeed(prev, item));
+          if (item) {
+            applyLiveFeedUpdate((prev) => upsertConversationFeed(prev, item));
+          }
         })
         .catch((err) => console.error('Failed to refresh conversations:', err));
     }
@@ -247,7 +373,7 @@ export default function MessagingPage() {
     const senderName = msg.sender
       ? `${msg.sender.firstName} ${msg.sender.lastName}`.trim()
       : '';
-    setConversations((prev) => {
+    applyLiveFeedUpdate((prev) => {
       const existing = prev.find((c) => c._id === conv._id);
       return upsertConversationFeed(prev, {
         _id: conv._id,
@@ -260,21 +386,18 @@ export default function MessagingPage() {
           text: msg.text,
           senderName: senderName || 'You',
           createdAt: msg.createdAt,
+          messageId: msg._id,
         },
       });
     });
   };
 
   const handleTitleUpdated = (conversationId: string, newTitle: string) => {
-    setActiveDetails((prev) =>
-      prev?._id === conversationId
-        ? { ...prev, displayName: newTitle, title: newTitle }
-        : prev
+    applyLiveDetailsUpdate((prev) =>
+      applyConversationRenamedToDetails(prev, conversationId, newTitle)
     );
-    setConversations((prev) =>
-      prev.map((c) =>
-        c._id === conversationId ? { ...c, displayName: newTitle } : c
-      )
+    applyLiveFeedUpdate((prev) =>
+      applyConversationRenamedToFeed(prev, conversationId, newTitle)
     );
   };
 
