@@ -28,6 +28,9 @@ interface MessageAreaProps {
   onBackToList?: () => void;
   onOpenDetails: () => void;
   onMessageSent: (conversation: ConversationDetails, message: IMessage) => void;
+  headingLevel?: 'h1' | 'h2';
+  historyFocusable?: boolean;
+  detailsExpanded?: boolean;
 }
 
 export default function MessageArea({
@@ -38,6 +41,9 @@ export default function MessageArea({
   onBackToList,
   onOpenDetails,
   onMessageSent,
+  headingLevel = 'h1',
+  historyFocusable = false,
+  detailsExpanded,
 }: MessageAreaProps) {
   const { user } = useAuth();
   const currentUserId = user?.id || '';
@@ -168,6 +174,12 @@ export default function MessageArea({
   }
 
   const participants = conversation.participants || [];
+  const senderIsOfficer = (userId: string | undefined) =>
+    conversation.type === 'CHANNEL' &&
+    Boolean(userId) &&
+    participants.some(
+      (participant) => participant.userId._id === userId && participant.permission === 'MODERATE'
+    );
 
   // Check client-side permissions strictly from participant membership
   const currentUserParticipant = currentUserId
@@ -234,6 +246,8 @@ export default function MessageArea({
   };
 
   const isInputDisabled = !canSend || isSending;
+  const TitleTag = headingLevel;
+  const detailsLabel = conversation.type === 'CHANNEL' ? 'Channel details' : 'Conversation details';
 
   return (
     <section
@@ -293,9 +307,9 @@ export default function MessageArea({
             {headerInitial}
           </div>
           <div className="overflow-hidden">
-            <h1 className="h5 fw-bold mb-0 text-dark text-truncate">
+            <TitleTag className="h5 fw-bold mb-0 text-dark text-truncate">
               {conversation.displayName}
-            </h1>
+            </TitleTag>
           </div>
         </div>
 
@@ -310,7 +324,8 @@ export default function MessageArea({
             height: '36px',
             backgroundColor: '#EDF0F5',
           }}
-          aria-label="Conversation details"
+          aria-label={detailsLabel}
+          aria-expanded={detailsExpanded}
         >
           <svg
             width="24"
@@ -344,6 +359,7 @@ export default function MessageArea({
         style={{ overflowX: 'hidden' }}
         role="log"
         aria-label="Message history"
+        tabIndex={historyFocusable ? 0 : undefined}
       >
         {isLoading ? (
           <div
@@ -381,6 +397,7 @@ export default function MessageArea({
                 isCurrentUser={Boolean(
                   currentUserId && msg.sender?._id === currentUserId
                 )}
+                officer={senderIsOfficer(msg.sender?._id)}
               />
             ))}
           </div>

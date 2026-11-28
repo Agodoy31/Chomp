@@ -8,6 +8,7 @@ import ClubDiscovery from './pages/DiscoveryPage'
 import Login from './pages/LoginPage'
 import Signup from './pages/SignupPage'
 import MessagingPage from './pages/MessagingPage'
+import ClubViewPage from './pages/ClubViewPage'
 
 export default function App() {
   return (
@@ -18,6 +19,8 @@ export default function App() {
 
   <Route element={<AppLayout />}>
     <Route path="/clubs" element={<ClubDiscovery />} />
+    <Route path="/clubs/:clubId" element={<ClubViewPage />} />
+    <Route path="/clubs/:clubId/channels/:channelId" element={<ClubViewPage />} />
     <Route path="/myClubs" element={<MyClubs />} />
     <Route path="/club-review" element={<ClubReview />} />
     <Route path="/all-clubs" element={<AllClubs />} />

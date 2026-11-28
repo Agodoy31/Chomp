@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { clubChannelPath } from '../../clubChannelPath';
 import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
@@ -154,7 +155,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="border rounded overflow-hidden">
+    <section className="border rounded overflow-hidden flex-shrink-0">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 bg-light border-bottom">
         <h3 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="h5 mb-0">
           {title}
@@ -215,6 +216,7 @@ function expandedListStyle(scroll: boolean) {
 
 function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: () => void; onLeft?: (clubId: string) => void }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, setUser } = useAuth();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const channelsHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -388,8 +390,9 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
 
   function openChannel(channelId: string) {
     if (actionLocked) return;
+    const path = clubChannelPath(clubId, channelId);
     onHide();
-    navigate(`/messaging?conversation=${encodeURIComponent(channelId)}`);
+    if (location.pathname !== path) navigate(path);
   }
 
   function openAnnouncement() {

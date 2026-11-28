@@ -1,0 +1,154 @@
+.club-view {
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #f5f6fa;
+  font-family: Inter, sans-serif;
+}
+
+.club-view__skip:focus {
+  position: absolute;
+  z-index: 2;
+  top: 0.75rem;
+  left: 0.75rem;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  background: #fff;
+  color: #1e3a8a;
+  border-radius: 0.375rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 0 0 2px #3046c3;
+}
+
+.club-view__sidebar {
+  width: 260px;
+  flex: 0 0 260px;
+  background: #ff6c2f;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.club-view__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.1rem 1rem 0.35rem;
+  background: #c2410c;
+}
+
+.club-view__name {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  margin: 0;
+  min-width: 0;
+}
+
+.club-view__info {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.club-view__info:hover,
+.club-view__info:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.club-view__label {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.85rem 1.15rem 0.35rem;
+  margin: 0;
+}
+
+.club-view__channels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0 0.65rem 1rem;
+}
+
+.club-view__channel {
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0.55rem 0.85rem;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.club-view__channel:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.club-view__channel.is-active,
+.club-view__channel.is-active:hover {
+  background: #fff;
+  color: #f07833;
+}
+
+.club-view__channel:focus-visible,
+.club-view__info:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.club-view__channel.is-active:focus-visible {
+  outline-color: #9a3412;
+}
+
+.club-view__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.club-view__main:focus-visible {
+  outline: 2px solid #3046c3;
+  outline-offset: -2px;
+}
+
+.club-view__main [role='log']:focus-visible {
+  outline: 2px solid #3046c3;
+  outline-offset: -2px;
+}
+
+@media (max-width: 767px) {
+  .club-view {
+    flex-direction: column;
+  }
+
+  .club-view__sidebar {
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 11.5rem;
+  }
+}

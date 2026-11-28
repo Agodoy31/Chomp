@@ -1,15 +1,18 @@
+import Badge from 'react-bootstrap/Badge';
 import type { IMessage } from '../../types/Messaging/Message';
 
 interface MessageProps {
   message: IMessage;
   senderName?: string;
   isCurrentUser?: boolean;
+  officer?: boolean;
 }
 
 export default function Message({
   message,
   senderName = '',
   isCurrentUser = false,
+  officer = false,
 }: MessageProps) {
   if (message.isSystem) {
     return (
@@ -84,6 +87,11 @@ export default function Message({
           <span className="fw-bold text-dark" style={{ fontSize: '15px' }}>
             {displayName}
           </span>
+          {officer && (
+            <Badge bg="warning-subtle" text="warning-emphasis" pill className="fw-semibold">
+              OFFICER
+            </Badge>
+          )}
           <span className="text-muted" style={{ fontSize: '12px' }}>
             {timeString}
           </span>
