@@ -318,13 +318,6 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
         show={showDetails}
         onHide={() => setShowDetails(false)}
         conversation={conversation}
-        onTitleUpdated={(conversationId, title) => {
-          setDetailLoad((current) =>
-            current?.details?._id === conversationId
-              ? { ...current, details: { ...current.details, title, displayName: title } }
-              : current
-          );
-        }}
       />
     </div>
   );

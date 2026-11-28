@@ -131,7 +131,7 @@
   flex-direction: column;
 }
 
-.club-view__main:focus {
+.club-view__main:focus-visible {
   outline: 2px solid #3046c3;
   outline-offset: -2px;
 }
@@ -139,12 +139,6 @@
 .club-view__main [role='log']:focus-visible {
   outline: 2px solid #3046c3;
   outline-offset: -2px;
-}
-
-.club-view__thread {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
 }
 
 @media (max-width: 767px) {
