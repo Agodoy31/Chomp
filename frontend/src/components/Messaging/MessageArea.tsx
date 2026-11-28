@@ -9,15 +9,47 @@ import type { ConversationDetails } from '../../types/Messaging/Conversation';
 import type { IMessage } from '../../types/Messaging/Message';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchMessages, postMessage } from '../../api/messagingApi';
+import { subscribeConversationMessages } from '../../api/messagingSocket';
 import Message from './Message';
 import PostAnnouncementModal from '../modals/AnnouncementModal';
 
-// Combine message lists by ID so incoming server messages overwrite older local copies
+const DEFAULT_HISTORY_LIMIT = 50;
+const NEAR_BOTTOM_THRESHOLD_PX = 80;
+
+// Combine message lists by ID without letting stale non-deleted copies undo a deletion
 function mergeMessages(current: IMessage[], incoming: IMessage[]): IMessage[] {
-  const byId = new Map([...current, ...incoming].map((m) => [m._id, m]));
+  const byId = new Map<string, IMessage>(current.map((m) => [m._id, m]));
+  for (const msg of incoming) {
+    const existing = byId.get(msg._id);
+    if (existing?.removedAt && !msg.removedAt) {
+      continue;
+    }
+    byId.set(msg._id, msg);
+  }
   return [...byId.values()].sort(
     (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
   );
+}
+
+// On reconnect, avoid stitching an invisible gap when more than a full page was missed
+function mergeReconnectedMessages(
+  current: IMessage[],
+  incoming: IMessage[]
+): IMessage[] {
+  if (current.length > 0 && incoming.length >= DEFAULT_HISTORY_LIMIT) {
+    const incomingIds = new Set(incoming.map((m) => m._id));
+    const hasOverlap = current.some((m) => incomingIds.has(m._id));
+    if (!hasOverlap) {
+      const oldestIncomingTime = Math.min(
+        ...incoming.map((m) => Date.parse(m.createdAt))
+      );
+      const recentLive = current.filter(
+        (m) => Date.parse(m.createdAt) >= oldestIncomingTime
+      );
+      return mergeMessages(recentLive, incoming);
+    }
+  }
+  return mergeMessages(current, incoming);
 }
 
 interface MessageAreaProps {
@@ -53,6 +85,8 @@ export default function MessageArea({
   const [reloadKey, setReloadKey] = useState<number>(0);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const pendingClientIdRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef<boolean>(true);
+  const shouldForceScrollRef = useRef<boolean>(true);
 
   const conversationId = conversation?._id;
 
@@ -67,7 +101,10 @@ export default function MessageArea({
       setLoadError(null);
       try {
         const data = await fetchMessages(currentId);
-        if (!ignore) setMessages((prev) => mergeMessages(prev, data));
+        if (!ignore) {
+          shouldForceScrollRef.current = true;
+          setMessages((prev) => mergeMessages(prev, data));
+        }
       } catch (err) {
         if (ignore) return;
         console.error('Error loading messages:', err);
@@ -88,9 +125,46 @@ export default function MessageArea({
   }, [conversationId, reloadKey]);
 
   useEffect(() => {
+    if (!conversationId) return;
+    const currentId = conversationId;
+    let ignore = false;
+
+    const unsubscribe = subscribeConversationMessages(currentId, {
+      onMessage: (msg) => setMessages((prev) => mergeMessages(prev, [msg])),
+      onRoomRejoined: () => {
+        fetchMessages(currentId)
+          .then((data) => {
+            if (!ignore) {
+              setMessages((prev) => mergeReconnectedMessages(prev, data));
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to resync messages after reconnect:', err);
+          });
+      },
+    });
+
+    return () => {
+      ignore = true;
+      unsubscribe();
+    };
+  }, [conversationId]);
+
+  const handleMessagesScroll = () => {
     const container = messagesContainerRef.current;
-    if (container && !isLoading && !loadError) {
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    isNearBottomRef.current = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD_PX;
+  };
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || isLoading || loadError) return;
+    if (shouldForceScrollRef.current || isNearBottomRef.current) {
       container.scrollTop = container.scrollHeight;
+      shouldForceScrollRef.current = false;
+      isNearBottomRef.current = true;
     }
   }, [messages.length, isLoading, loadError]);
 
@@ -214,6 +288,7 @@ export default function MessageArea({
         pendingClientIdRef.current
       );
       pendingClientIdRef.current = null;
+      shouldForceScrollRef.current = true;
       setMessages((prev) => mergeMessages(prev, [newMsg]));
       setInputText('');
       onMessageSent(conversation, newMsg);
@@ -340,6 +415,7 @@ export default function MessageArea({
       {/* Message History Feed */}
       <div
         ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
         className="flex-grow-1 overflow-y-auto px-4 py-3"
         style={{ overflowX: 'hidden' }}
         role="log"
@@ -481,6 +557,7 @@ export default function MessageArea({
           conversationId={conversation._id}
           clubName={conversation.clubName || conversation.displayName}
           onSuccess={(newMsg) => {
+            shouldForceScrollRef.current = true;
             setMessages((prev) => mergeMessages(prev, [newMsg]));
             onMessageSent(conversation, newMsg);
           }}

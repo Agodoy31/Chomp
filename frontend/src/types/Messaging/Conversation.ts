@@ -19,6 +19,7 @@ export interface ConversationLastMessage {
   text: string;
   senderName: string;
   createdAt?: string;
+  messageId?: string;
 }
 
 // Returned by GET /api/conversations
