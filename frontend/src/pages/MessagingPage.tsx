@@ -15,7 +15,6 @@ import {
   fetchConversations,
   fetchConversationDetails,
 } from '../api/messagingApi';
-import { clubChannelPath } from '../clubChannelPath';
 import { useAuth } from '../hooks/useAuth';
 
 const activity = (c: ConversationFeedItem) =>
@@ -49,12 +48,6 @@ export default function MessagingPage() {
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
 
   const handleSelectConversation = (conv: ConversationFeedItem) => {
-    if (conv.type === 'CHANNEL') {
-      if (conv.clubId) {
-        navigate(clubChannelPath(conv.clubId, conv._id));
-      }
-      return;
-    }
     setDetailsError(null);
     if (conv._id === activeConversationId && activeDetails?._id !== conv._id) {
       setDetailsReloadKey((key) => key + 1);

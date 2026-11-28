@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { clubChannelPath } from '../../clubChannelPath';
 import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
@@ -111,7 +111,7 @@ function ListSearch({
 
 function Section({ title, search, children }: { title: string; search?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border rounded overflow-hidden">
+    <section className="border rounded overflow-hidden flex-shrink-0">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 bg-light border-bottom">
         <h3 className="h5 mb-0">{title}</h3>
         {search}
@@ -165,6 +165,7 @@ function expandedListStyle(scroll: boolean) {
 
 function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: () => void; onLeft?: (clubId: string) => void }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, setUser } = useAuth();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const cancelLeaveRef = useRef<HTMLButtonElement>(null);
@@ -282,8 +283,9 @@ function ClubInfoContent({ clubId, onHide, onLeft }: { clubId: string; onHide: (
 
   function openChannel(channelId: string) {
     if (leaving) return;
+    const path = clubChannelPath(clubId, channelId);
     onHide();
-    navigate(clubChannelPath(clubId, channelId));
+    if (location.pathname !== path) navigate(path);
   }
 
   const visibleChannels = showAllChannels ? filteredChannels : filteredChannels.slice(0, PREVIEW_COUNT);
