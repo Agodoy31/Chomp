@@ -90,7 +90,8 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
   const [detailReloadKey, setDetailReloadKey] = useState(0);
   const pendingChannelId = useRef<string | null>(null);
 
-  const loadedClub = clubLoad?.clubId === clubId && clubLoad.requestKey === reloadKey ? clubLoad : null;
+  const loadedClub =
+    clubLoad?.clubId === clubId && (clubLoad.requestKey === reloadKey || clubLoad.club) ? clubLoad : null;
   const channels = loadedClub?.channels ?? [];
   const channel = requestedChannelId ? channelById(channels, requestedChannelId) : defaultChannel(channels);
   const channelUnavailable = Boolean(loadedClub?.club && requestedChannelId && !channel);
@@ -321,7 +322,10 @@ function ClubView({ clubId, requestedChannelId }: { clubId: string; requestedCha
       <ClubInfoModal
         show={showInfo}
         clubId={club._id}
-        onHide={() => setShowInfo(false)}
+        onHide={() => {
+          setShowInfo(false);
+          setReloadKey((key) => key + 1);
+        }}
         onLeft={() => navigate('/myClubs')}
       />
       <ConversationDetailsModal
