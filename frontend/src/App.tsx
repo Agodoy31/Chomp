@@ -1,5 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import MyClubs from './pages/MyClubsPage'
+import ClubReview from './pages/ClubReviewPage'
+import AllClubs from './pages/AllClubsPage'
 import AppLayout from './components/AppLayout'
 import LandingPage from './pages/LandingPage'
 import ClubDiscovery from './pages/DiscoveryPage'
@@ -20,6 +22,8 @@ export default function App() {
     <Route path="/clubs/:clubId" element={<ClubViewPage />} />
     <Route path="/clubs/:clubId/channels/:channelId" element={<ClubViewPage />} />
     <Route path="/myClubs" element={<MyClubs />} />
+    <Route path="/club-review" element={<ClubReview />} />
+    <Route path="/all-clubs" element={<AllClubs />} />
     <Route path="/messaging" element={<MessagingPage />} />
   </Route>
 </Routes>

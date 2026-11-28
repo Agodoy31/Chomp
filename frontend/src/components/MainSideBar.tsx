@@ -2,16 +2,25 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import Button from 'react-bootstrap/Button'
 import { ChevronLeft, ChevronRight } from 'react-bootstrap-icons'
+import { useAuth } from '../hooks/useAuth'
 
 
-const NAV_ITEMS = [
+const STUDENT_NAV = [
   { to: '/clubs', label: 'Discover Clubs' },
   { to: '/myClubs', label: 'My Clubs' },
   { to: '/messaging', label: 'Messaging' },
 ];
 
+const ADMIN_NAV = [
+  { to: '/club-review', label: 'Club Review' },
+  { to: '/all-clubs', label: 'All Clubs' },
+  { to: '/messaging', label: 'Messages' },
+];
+
 export default function Sidebar() {
+    const { user } = useAuth()
     const [collapsed, setCollapsed] = useState(false)
+    const navItems = user?.isAdmin ? ADMIN_NAV : STUDENT_NAV
 
 
     const getLinkStyle = (isActive: boolean) => ({
@@ -60,7 +69,7 @@ export default function Sidebar() {
             {/* Navigation Text Links */}
             {!collapsed && (
                 <nav className="nav flex-column gap-3 p-3 mt-3" id="main-nav" aria-label="Main">
-                    {NAV_ITEMS.map((item) => (
+                    {navItems.map((item) => (
                         <NavLink
                             key={item.to}
                             to={item.to}

@@ -58,6 +58,40 @@ async function request(url: string, init?: RequestInit) {
 }
 
 /**
+ * Approved clubs, sorted by name.
+ * Endpoint: GET /api/clubs
+ */
+export async function getClubs(): Promise<Club[]> {
+  const data = await request('/api/clubs');
+  return data?.clubs ?? [];
+}
+
+/**
+ * Club requests waiting for an admin.
+ * Endpoint: GET /api/clubs/pending
+ */
+export async function getPendingClubs(): Promise<Club[]> {
+  const data = await request('/api/clubs/pending');
+  return data?.clubs ?? [];
+}
+
+/**
+ * Approves a pending club request.
+ * Endpoint: POST /api/clubs/:clubId/approve
+ */
+export async function approveClub(clubId: string): Promise<void> {
+  await request(clubUrl(clubId, '/approve'), { method: 'POST' });
+}
+
+/**
+ * Rejects a pending club request.
+ * Endpoint: POST /api/clubs/:clubId/reject
+ */
+export async function rejectClub(clubId: string): Promise<void> {
+  await request(clubUrl(clubId, '/reject'), { method: 'POST' });
+}
+
+/**
  * Approved club details for the member info view.
  * Endpoint: GET /api/clubs/:clubId
  */
@@ -212,4 +246,36 @@ export async function renameChannel(
   }
 
   return data.channel
+}
+
+/**
+ * Deletes a club channel. The General channel is rejected by the server.
+ * Endpoint: DELETE /api/clubs/:clubId/channels/:channelId
+ */
+export async function deleteChannel(clubId: string, channelId: string): Promise<void> {
+  await request(clubUrl(clubId, `/channels/${encodeURIComponent(channelId)}`), { method: 'DELETE' });
+}
+
+/**
+ * Promotes a member to officer or returns an officer to member.
+ * Endpoint: PATCH /api/clubs/:clubId/members/:userId
+ */
+export async function updateMemberRole(
+  clubId: string,
+  userId: string,
+  role: ClubMember['role'],
+): Promise<void> {
+  await request(clubUrl(clubId, `/members/${encodeURIComponent(userId)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+}
+
+/**
+ * Removes another member. Removed members cannot rejoin. Self-removal is rejected.
+ * Endpoint: DELETE /api/clubs/:clubId/members/:userId
+ */
+export async function removeMember(clubId: string, userId: string): Promise<void> {
+  await request(clubUrl(clubId, `/members/${encodeURIComponent(userId)}`), { method: 'DELETE' });
 }
