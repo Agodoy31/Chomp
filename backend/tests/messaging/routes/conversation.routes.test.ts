@@ -735,13 +735,13 @@ describe('GET /api/conversations/:id/messages', () => {
 });
 
 describe('GET /api/conversations', () => {
-  it('returns active group and channel conversations ordered by lastActivityAt descending and omits empty chats', async () => {
+  it('returns active group conversations ordered by lastActivityAt descending and omits channels and empty chats', async () => {
     const res = await studentA.agent
       .get('/api/conversations')
       .expect(200);
 
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body).toHaveLength(3);
+    expect(res.body).toHaveLength(2);
 
     const groupItem = res.body.find((c: { _id: string }) => c._id === groupConversationId);
     expect(groupItem).toBeDefined();
@@ -753,15 +753,30 @@ describe('GET /api/conversations', () => {
     expect(groupItem.lastMessage).toBeDefined();
 
     const channelItem = res.body.find((c: { _id: string }) => c._id === channelConversationId);
-    expect(channelItem).toBeDefined();
-    expect(channelItem.type).toBe('CHANNEL');
-    expect(channelItem.displayName).toBe('announcements');
-    expect(channelItem.clubId).toBe(clubId);
-    expect(channelItem.clubName).toBe('Chomp Streetwear Collective');
-    expect(channelItem.lastMessage).toBeDefined();
+    expect(channelItem).toBeUndefined();
 
     const emptyDirectItem = res.body.find((c: { _id: string }) => c._id === directConversationId);
     expect(emptyDirectItem).toBeUndefined();
+  });
+
+  it('returns empty array when a club channel is the only conversation with messages', async () => {
+    const channelOnlyStudent = await createSignedInStudent({
+      firstName: 'Southwest',
+      lastName: 'Squatter',
+      email: 'bench_waitlist@ufl.edu',
+    });
+
+    await ConversationParticipant.create({
+      conversationId: new Types.ObjectId(channelConversationId),
+      userId: channelOnlyStudent.user._id,
+      permission: ParticipantPermission.WRITE,
+    });
+
+    const res = await channelOnlyStudent.agent
+      .get('/api/conversations')
+      .expect(200);
+
+    expect(res.body).toEqual([]);
   });
 
   it('masks soft-deleted latest message text in inbox preview', async () => {
@@ -778,7 +793,7 @@ describe('GET /api/conversations', () => {
       .get(`/api/conversations?userId=${studentB.user._id.toString()}`)
       .expect(200);
 
-    expect(res.body).toHaveLength(3);
+    expect(res.body).toHaveLength(2);
 
     jest.spyOn(conversationService, 'getUserConversations').mockRejectedValueOnce(
       new Error('Replica set failover')

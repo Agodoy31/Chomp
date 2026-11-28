@@ -11,6 +11,7 @@ import {
   createChannel,
   createDirectConversation,
   createGroupConversation,
+  getUserConversationFeedItem,
   getUserConversations,
 } from '../../../src/messaging/services/conversation.service';
 import { createTestUser, createTestClub } from './conversationTestUtils';
@@ -113,7 +114,7 @@ describe('getUserConversations service', () => {
     expect(feed[0].lastMessage?.senderName).toBe('Southwest Squatter');
   });
 
-  it('returns club channel feed item with channel title as displayName, clubId, clubName, and latest message', async () => {
+  it('omits club channels with messages from getUserConversations', async () => {
     const user1 = await createTestUser({
       firstName: 'GatorCorner',
       lastName: 'Survivor',
@@ -143,18 +144,10 @@ describe('getUserConversations service', () => {
 
     const feed = await getUserConversations(user1._id);
 
-    expect(feed).toHaveLength(1);
-    expect(feed[0]._id.toString()).toBe(channel._id.toString());
-    expect(feed[0].type).toBe(ConversationType.CHANNEL);
-    expect(feed[0].clubId?.toString()).toBe(club._id.toString());
-    expect(feed[0].clubName).toBe('Reitz Union Food Court Nap Society');
-    expect(feed[0].displayName).toBe('announcements');
-    expect(feed[0].lastMessage).toBeDefined();
-    expect(feed[0].lastMessage?.text).toBe('Quiet hours start now');
-    expect(feed[0].lastMessage?.senderName).toBe('Potato Sculpture');
+    expect(feed).toHaveLength(0);
   });
 
-  it('reflects renamed club name in subsequent getUserConversations calls', async () => {
+  it('returns null from getUserConversationFeedItem for a club channel with messages', async () => {
     const user1 = await createTestUser({
       firstName: 'Broward',
       lastName: 'Freshman',
@@ -182,15 +175,9 @@ describe('getUserConversations service', () => {
       text: 'Bracket starts at 7pm in the game room',
     });
 
-    await Club.findByIdAndUpdate(club._id, {
-      name: 'Broward Dining Raw Chicken Investigators',
-    });
+    const feedItem = await getUserConversationFeedItem(channel._id, user1._id);
 
-    const feed = await getUserConversations(user1._id);
-
-    expect(feed).toHaveLength(1);
-    expect(feed[0]._id.toString()).toBe(channel._id.toString());
-    expect(feed[0].clubName).toBe('Broward Dining Raw Chicken Investigators');
+    expect(feedItem).toBeNull();
   });
 
   it('excludes empty conversations with no messages from the inbox feed', async () => {
