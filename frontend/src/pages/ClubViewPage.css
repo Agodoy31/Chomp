@@ -146,3 +146,15 @@
   min-height: 0;
   overflow: auto;
 }
+
+@media (max-width: 767px) {
+  .club-view {
+    flex-direction: column;
+  }
+
+  .club-view__sidebar {
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 11.5rem;
+  }
+}
