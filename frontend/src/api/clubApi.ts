@@ -58,6 +58,40 @@ async function request(url: string, init?: RequestInit) {
 }
 
 /**
+ * Approved clubs, sorted by name.
+ * Endpoint: GET /api/clubs
+ */
+export async function getClubs(): Promise<Club[]> {
+  const data = await request('/api/clubs');
+  return data?.clubs ?? [];
+}
+
+/**
+ * Club requests waiting for an admin.
+ * Endpoint: GET /api/clubs/pending
+ */
+export async function getPendingClubs(): Promise<Club[]> {
+  const data = await request('/api/clubs/pending');
+  return data?.clubs ?? [];
+}
+
+/**
+ * Approves a pending club request.
+ * Endpoint: POST /api/clubs/:clubId/approve
+ */
+export async function approveClub(clubId: string): Promise<void> {
+  await request(clubUrl(clubId, '/approve'), { method: 'POST' });
+}
+
+/**
+ * Rejects a pending club request.
+ * Endpoint: POST /api/clubs/:clubId/reject
+ */
+export async function rejectClub(clubId: string): Promise<void> {
+  await request(clubUrl(clubId, '/reject'), { method: 'POST' });
+}
+
+/**
  * Approved club details for the member info view.
  * Endpoint: GET /api/clubs/:clubId
  */
